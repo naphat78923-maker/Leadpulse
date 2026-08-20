@@ -155,11 +155,8 @@ export default function DealsPage() {
   const activeDeal = selectedDeal ? deals.find(deal => deal.id === selectedDeal) : null;
 
   const handleCreate = async (data: any) => {
-    try {
-      await createDeal(data);
-    } catch (err) {
-      console.error('Failed to create deal:', err);
-    }
+    // Let errors bubble to the modal so failures are visible.
+    await createDeal(data);
   };
 
   /* ─── Drag & drop lane moves with per-lane gatekeeping ─── */

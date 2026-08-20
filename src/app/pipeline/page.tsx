@@ -54,11 +54,8 @@ export default function PipelinePage() {
   }, [deals]);
 
   const handleCreate = async (data: any) => {
-    try {
-      await createDeal(data);
-    } catch (err) {
-      console.error('Failed to create deal:', err);
-    }
+    // Let errors bubble to the modal so failures are visible.
+    await createDeal(data);
   };
 
   const handleDragStart = (event: DragStartEvent) => setActiveId(event.active.id as string);

@@ -38,7 +38,10 @@ export async function getContacts(): Promise<Contact[]> {
 }
 
 export async function createContact(contact: Omit<Contact, 'id' | 'created_at' | 'updated_at'>) {
-  const { data, error } = await supabase.from('contacts').insert(contact).select().single();
+  const payload: any = { ...contact };
+  // Blank UUID/date fields must be null, never empty strings (22P02 otherwise).
+  if (payload.company_id === '') payload.company_id = null;
+  const { data, error } = await supabase.from('contacts').insert(payload).select().single();
   if (error) throw error;
   return data;
 }
@@ -121,7 +124,12 @@ export async function getMeetings(): Promise<Meeting[]> {
 }
 
 export async function createMeeting(meeting: Omit<Meeting, 'id' | 'created_at'>) {
-  const { data, error } = await supabase.from('meetings').insert(meeting).select().single();
+  const payload: any = { ...meeting };
+  // Blank UUID/date fields must be null, never empty strings.
+  if (payload.company_id === '') payload.company_id = null;
+  if (payload.deal_id === '') payload.deal_id = null;
+  if (payload.followup_date === '') payload.followup_date = null;
+  const { data, error } = await supabase.from('meetings').insert(payload).select().single();
   if (error) throw error;
   return data;
 }

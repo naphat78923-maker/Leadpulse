@@ -70,11 +70,8 @@ export default function ContactsPage() {
   }, [filtered]);
 
   const handleCreate = async (data: any) => {
-    try {
-      await createContact(data);
-    } catch (err) {
-      console.error('Failed to create contact:', err);
-    }
+    // Let errors bubble to the modal so failures are visible.
+    await createContact(data);
   };
 
   const activeContact = selectedContact ? contacts.find(c => c.id === selectedContact) : null;

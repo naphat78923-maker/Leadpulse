@@ -42,11 +42,8 @@ export default function CompaniesPage() {
   }, [filtered]);
 
   const handleCreate = async (data: any) => {
-    try {
-      await createCompany(data);
-    } catch (err) {
-      console.error('Failed to create company:', err);
-    }
+    // Let errors bubble to the modal so failures are visible.
+    await createCompany(data);
   };
 
   const activeCompany = selectedCompany ? companies.find(c => c.id === selectedCompany) : null;

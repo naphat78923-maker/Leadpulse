@@ -11,7 +11,7 @@ type ModalType = 'company' | 'contact' | 'deal' | 'meeting';
 interface CreateModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (data: any) => void;
+  onSave: (data: any) => void | Promise<void>;
   type: ModalType;
   companies?: Company[];
   contacts?: Contact[];
@@ -45,7 +45,7 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
     setForm((prev: Record<string, any>) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (type === 'deal') {
       const laneError = validateDealWorkflow(form);
@@ -61,9 +61,13 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
       cleaned.value = cleaned.value === '' || cleaned.value == null ? null : parseFloat(cleaned.value) || null;
       delete cleaned.notes;
     }
-    onSave(cleaned);
-    setForm(getInitialState(type));
-    onClose();
+    try {
+      await onSave(cleaned);
+      setForm(getInitialState(type));
+      onClose();
+    } catch (err: any) {
+      setError('Could not save: ' + (err?.message || 'Unknown error'));
+    }
   };
 
   const handleWorkflowChange = (e: React.ChangeEvent<HTMLSelectElement>) => {

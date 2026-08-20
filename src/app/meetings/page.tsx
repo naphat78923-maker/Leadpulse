@@ -64,11 +64,8 @@ export default function MeetingsPage() {
   };
 
   const handleSave = async (meeting: Omit<Meeting, 'id' | 'created_at'>) => {
-    try {
-      await addMeeting(meeting);
-    } catch (err) {
-      console.error('Failed to save meeting:', err);
-    }
+    // Let errors bubble to the modal so failures are visible.
+    await addMeeting(meeting);
   };
 
   if (loading) {
