@@ -8,7 +8,7 @@ import clsx from 'clsx';
 import { useTheme } from '@/components/ThemeProvider';
 
 const navItems = [
-  { href: '/dashboard', label: 'Today', icon: LayoutDashboard },
+  { href: '/', label: 'Today', icon: LayoutDashboard },
   { href: '/activity', label: 'Activity', icon: Activity },
   { href: '/contacts', label: 'Contacts', icon: Users },
   { href: '/companies', label: 'Companies', icon: Building2 },
@@ -77,7 +77,7 @@ export default function Sidebar() {
                     onClick={() => setIsOpen(false)}
                     className={clsx(
                       'flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors mb-1',
-                      isActive ? 'bg-clay-card text-clay-ink' : 'text-clay-muted active:bg-clay-surface'
+                      isActive ? 'bg-clay-card text-zams-violet' : 'text-clay-muted active:bg-clay-surface'
                     )}
                   >
                     <Icon className="w-5 h-5" strokeWidth={isActive ? 2.5 : 2} />
@@ -122,7 +122,7 @@ export default function Sidebar() {
                 href={item.href}
                 className={clsx(
                   'flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors mb-1',
-                  isActive ? 'bg-clay-card text-clay-ink' : 'text-clay-muted hover:bg-clay-surface'
+                  isActive ? 'bg-clay-card text-zams-violet' : 'text-clay-muted hover:bg-clay-surface'
                 )}
               >
                 <Icon className="w-4 h-4" strokeWidth={isActive ? 2.5 : 2} />

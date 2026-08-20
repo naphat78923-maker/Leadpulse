@@ -91,17 +91,29 @@ export default function TodayPage() {
     <div className="p-4 md:p-6 max-w-6xl pb-20 lg:pb-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-4 md:mb-6">
-        <div>
-          <h1 className="text-xl md:text-2xl font-semibold text-clay-ink">Today</h1>
-          <p className="text-xs md:text-sm text-clay-muted mt-0.5">
-            {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="relative w-11 h-11 md:w-12 md:h-12 shrink-0">
+            <div className="absolute inset-0 rounded-full bg-clay-lavender/20" />
+            <Image
+              src="/assets/mascot-teardrop.png"
+              alt="LeadPulse mascot"
+              width={1024}
+              height={1024}
+              className="relative w-11 h-11 md:w-12 md:h-12 object-contain"
+            />
+          </div>
+          <div>
+            <p className="zams-eyebrow mb-0.5">
+              {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+            </p>
+            <h1 className="zams-display text-2xl md:text-[28px] leading-none">Today</h1>
+          </div>
         </div>
         <button
           onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 px-3 md:px-4 py-2 bg-clay-ink text-clay-canvas text-sm font-medium rounded-lg active:opacity-85"
+          className="zams-btn-primary"
         >
-          <Plus className="w-4 h-4" /> <span className="hidden sm:inline">New</span>
+          <Plus className="w-4 h-4" /> <span className="hidden sm:inline">New deal</span>
         </button>
       </div>
 
@@ -109,44 +121,44 @@ export default function TodayPage() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2 md:gap-3 mb-4 md:mb-6">
         <button
           onClick={() => router.push('/deals')}
-          className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline p-3 md:p-4 text-left active:bg-clay-surface transition-colors"
+          className="bg-white dark:bg-clay-card rounded-lg border border-clay-hairline p-3 md:p-4 text-left hover:border-zams-violet/40 transition-colors active:bg-clay-surface"
         >
-          <p className="text-lg md:text-2xl font-bold text-clay-ink">{stats.activeDeals}</p>
-          <p className="text-[10px] md:text-xs text-clay-muted">Active</p>
+          <p className="text-lg md:text-2xl font-bold text-clay-ink leading-none">{stats.activeDeals}</p>
+          <p className="zams-mono text-[10px] uppercase tracking-[0.18px] text-clay-muted mt-1.5">Active</p>
         </button>
         <button
           onClick={() => router.push('/deals')}
-          className="bg-clay-mint/20 rounded-xl border border-clay-mint/30 p-3 md:p-4 text-left active:bg-clay-mint/30 transition-colors"
+          className="bg-clay-mint/20 rounded-lg border border-clay-mint/30 p-3 md:p-4 text-left hover:bg-clay-mint/30 transition-colors"
         >
-          <p className="text-lg md:text-2xl font-bold text-clay-teal">{stats.wonDeals}</p>
-          <p className="text-[10px] md:text-xs text-clay-muted">Won</p>
+          <p className="text-lg md:text-2xl font-bold text-clay-teal leading-none">{stats.wonDeals}</p>
+          <p className="zams-mono text-[10px] uppercase tracking-[0.18px] text-clay-muted mt-1.5">Won</p>
         </button>
         <button
           onClick={() => router.push('/contacts')}
-          className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline p-3 md:p-4 text-left active:bg-clay-surface transition-colors"
+          className="bg-white dark:bg-clay-card rounded-lg border border-clay-hairline p-3 md:p-4 text-left hover:border-zams-violet/40 transition-colors active:bg-clay-surface"
         >
-          <p className="text-lg md:text-2xl font-bold text-clay-ink">{stats.contacts}</p>
-          <p className="text-[10px] md:text-xs text-clay-muted">Contacts</p>
+          <p className="text-lg md:text-2xl font-bold text-clay-ink leading-none">{stats.contacts}</p>
+          <p className="zams-mono text-[10px] uppercase tracking-[0.18px] text-clay-muted mt-1.5">Contacts</p>
         </button>
         <button
           onClick={() => router.push('/companies')}
-          className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline p-3 md:p-4 text-left active:bg-clay-surface transition-colors"
+          className="bg-white dark:bg-clay-card rounded-lg border border-clay-hairline p-3 md:p-4 text-left hover:border-zams-violet/40 transition-colors active:bg-clay-surface"
         >
-          <p className="text-lg md:text-2xl font-bold text-clay-ink">{stats.companies}</p>
-          <p className="text-[10px] md:text-xs text-clay-muted">Companies</p>
+          <p className="text-lg md:text-2xl font-bold text-clay-ink leading-none">{stats.companies}</p>
+          <p className="zams-mono text-[10px] uppercase tracking-[0.18px] text-clay-muted mt-1.5">Companies</p>
         </button>
         <button
           onClick={() => router.push('/deals')}
-          className="col-span-2 md:col-span-1 bg-clay-pink/10 rounded-xl border border-clay-pink/20 p-3 md:p-4 text-left active:bg-clay-pink/20 transition-colors"
+          className="col-span-2 md:col-span-1 bg-clay-pink/10 rounded-lg border border-clay-pink/20 p-3 md:p-4 text-left hover:bg-clay-pink/20 transition-colors"
         >
-          <p className="text-lg md:text-2xl font-bold text-clay-pink">{stats.needAction}</p>
-          <p className="text-[10px] md:text-xs text-clay-muted">Need Action</p>
+          <p className="text-lg md:text-2xl font-bold text-clay-pink leading-none">{stats.needAction}</p>
+          <p className="zams-mono text-[10px] uppercase tracking-[0.18px] text-clay-muted mt-1.5">Need action</p>
         </button>
       </div>
 
       {/* Follow-ups */}
       <section className="mb-6">
-        <h2 className="text-sm md:text-base font-semibold text-clay-ink mb-3">Follow-ups</h2>
+        <h2 className="zams-display text-lg md:text-xl mb-3">Follow-ups</h2>
 
         {dealFollowUps.needsAttention.length > 0 && (
           <div className="mb-4">
@@ -268,7 +280,7 @@ export default function TodayPage() {
       {/* Recent Activity */}
       <section>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm md:text-base font-semibold text-clay-ink">Recent Activity</h2>
+          <h2 className="zams-display text-lg md:text-xl">Recent Activity</h2>
           <button onClick={() => router.push('/meetings')} className="text-xs text-clay-muted">
             View all
           </button>

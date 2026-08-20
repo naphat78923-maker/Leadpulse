@@ -46,7 +46,7 @@ export default function AddLeadPage() {
     e.preventDefault();
     setSubmitted(true);
     setTimeout(() => {
-      router.push('/dashboard');
+      router.push('/');
     }, 1500);
   };
 
@@ -67,7 +67,7 @@ export default function AddLeadPage() {
   return (
     <div className="p-8 max-w-3xl">
       <div className="flex items-center gap-4 mb-8">
-        <Link href="/dashboard" className="p-2 hover:bg-clay-surface rounded-lg transition-colors">
+        <Link href="/" className="p-2 hover:bg-clay-surface rounded-lg transition-colors">
           <ArrowLeft className="w-5 h-5 text-clay-muted" />
         </Link>
         <div>
@@ -330,7 +330,7 @@ export default function AddLeadPage() {
             Save Lead
           </button>
           <Link
-            href="/dashboard"
+            href="/"
             className="px-6 py-3 bg-clay-card text-clay-ink font-medium rounded-lg hover:bg-clay-surface transition-colors"
           >
             Cancel

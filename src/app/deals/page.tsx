@@ -129,12 +129,34 @@ export default function DealsPage() {
     <div className="p-4 md:p-6 h-full flex flex-col pb-20 lg:pb-6">
       <div className="flex items-start justify-between gap-3 mb-4">
         <div>
-          <h1 className="text-xl md:text-2xl font-semibold text-clay-ink">Deal Action Board</h1>
-          <p className="text-xs md:text-sm text-clay-muted mt-0.5">Organise clients by the next customer action — pipeline stage stays on each deal.</p>
+          <p className="zams-eyebrow mb-1">Pipeline · Action board</p>
+          <h1 className="zams-display text-2xl md:text-[28px] leading-tight">Deal Action Board</h1>
+          <p className="text-xs md:text-sm text-clay-muted mt-1">Organise clients by the next customer action — pipeline stage stays on each deal.</p>
         </div>
-        <button onClick={() => setIsModalOpen(true)} className="shrink-0 flex items-center gap-2 px-3 py-2 bg-clay-ink text-clay-canvas text-sm font-medium rounded-lg active:opacity-85">
-          <Plus className="w-4 h-4" /> <span className="hidden sm:inline">New</span>
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="zams-btn-primary shrink-0"
+        >
+          <Plus className="w-4 h-4" /> <span className="hidden sm:inline">New deal</span>
         </button>
+      </div>
+
+      {/* Brand banner */}
+      <div className="relative mb-4 rounded-lg border border-clay-hairline bg-white dark:bg-clay-card overflow-hidden">
+        <div className="flex items-center gap-4 p-4 md:p-5">
+          <div className="flex-1 min-w-0">
+            <p className="zams-eyebrow mb-1.5">Win · Lost · Follow up</p>
+            <p className="zams-display text-lg md:text-xl leading-tight">One deal, one next action.</p>
+            <p className="text-xs text-clay-muted mt-1">Sort every deal by what to do next — outreach, follow-up, reschedule, or parked.</p>
+          </div>
+          <Image
+            src="/assets/deal-lanes-hero.png"
+            alt="Clay characters pushing deals through the WIN, LOST, and FOLLOW UP lanes"
+            width={1344}
+            height={768}
+            className="hidden sm:block w-40 md:w-56 h-auto rounded border border-clay-hairline shrink-0"
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
