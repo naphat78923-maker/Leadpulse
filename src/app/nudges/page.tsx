@@ -9,7 +9,7 @@ import LogInteractionModal from '@/components/LogInteractionModal';
 import MascotSprite from '@/components/MascotSprite';
 import { Bell, ChevronRight, MessageCircle, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
-import { WORKFLOW_LANES, getWorkflowAction, nudgeLabel } from '@/utils/deal-workflow';
+import { WORKFLOW_LANES, getWorkflowAction, nudgeLabel, nudgeColorClass } from '@/utils/deal-workflow';
 
 // One-line action verbs for each workflow lane (matches Today's queue).
 const ACTION_VERBS: Record<string, string> = {
@@ -170,7 +170,7 @@ export default function NudgesPage() {
                       </span>
                     )}
                     {nudgeChip && (
-                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-clay-lavender/20 text-clay-lavender shrink-0">
+                      <span className={clsx('text-[10px] font-medium px-1.5 py-0.5 rounded border shrink-0', nudgeColorClass(deal.nudge_stage))}>
                         {nudgeChip}
                       </span>
                     )}
@@ -206,7 +206,7 @@ export default function NudgesPage() {
         <p className="text-[11px] font-medium text-clay-muted-soft uppercase tracking-wide mb-2">Nudge levels</p>
         <div className="flex flex-wrap gap-2">
           {Object.entries(NUDGE_DAYS).map(([stage, days]) => (
-            <span key={stage} className="text-[11px] font-medium px-2 py-1 rounded-full bg-clay-card border border-clay-hairline text-clay-body">
+            <span key={stage} className={clsx('text-[11px] font-medium px-2 py-1 rounded-full border', nudgeColorClass(stage as any))}>
               {nudgeLabel(stage as any)} · {days}d
             </span>
           ))}

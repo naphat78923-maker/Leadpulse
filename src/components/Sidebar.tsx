@@ -79,7 +79,7 @@ export default function Sidebar() {
                     onClick={() => setIsOpen(false)}
                     className={clsx(
                       'flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors mb-1',
-                      isActive ? 'bg-clay-card text-zams-violet' : 'text-clay-muted active:bg-clay-surface'
+                      isActive ? 'bg-clay-card text-clay-lavender' : 'text-clay-muted active:bg-clay-surface'
                     )}
                   >
                     <Icon className="w-5 h-5" strokeWidth={isActive ? 2.5 : 2} />
@@ -124,7 +124,7 @@ export default function Sidebar() {
                 href={item.href}
                 className={clsx(
                   'flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors mb-1',
-                  isActive ? 'bg-clay-card text-zams-violet' : 'text-clay-muted hover:bg-clay-surface'
+                  isActive ? 'bg-clay-card text-clay-lavender' : 'text-clay-muted hover:bg-clay-surface'
                 )}
               >
                 <Icon className="w-4 h-4" strokeWidth={isActive ? 2.5 : 2} />

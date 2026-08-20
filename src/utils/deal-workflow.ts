@@ -113,3 +113,23 @@ export function getWorkflowAction(deal: Deal): DealWorkflowAction {
 export function nudgeLabel(nudgeStage?: NudgeStage | null) {
   return NUDGE_OPTIONS.find(option => option.value === nudgeStage)?.label || null;
 }
+
+/**
+ * Coherent nudge-stage colors — one hue per stage, used everywhere
+ * (chips, LaneGate, DealDetail, Nudges legend).
+ *   warm    → butter/ochre  (gentle first tap)
+ *   remind  → lavender      (the primary clay accent)
+ *   firm    → coral         (escalating attention)
+ *   parking → muted         (stepped-back / shelved)
+ */
+export const NUDGE_COLOR_CLASS: Record<NudgeStage, string> = {
+  warm: 'bg-clay-ochre/15 text-clay-ochre border-clay-ochre/30',
+  remind: 'bg-clay-lavender/20 text-clay-lavender border-clay-lavender/30',
+  firm: 'bg-clay-coral/15 text-clay-coral border-clay-coral/30',
+  parking: 'bg-clay-card text-clay-muted-soft border-clay-hairline',
+};
+
+export function nudgeColorClass(nudgeStage?: NudgeStage | null): string {
+  if (!nudgeStage) return 'bg-clay-card text-clay-muted-soft border-clay-hairline';
+  return NUDGE_COLOR_CLASS[nudgeStage];
+}

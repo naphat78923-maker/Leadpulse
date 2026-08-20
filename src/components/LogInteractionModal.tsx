@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { MeetingType, Meeting, Deal, Contact, Company, MEETING_TYPE_LABELS, PRODUCT_OPTIONS } from '@/types/crm';
+import { MeetingType, Meeting, Deal, Contact, Company, NudgeStage, MEETING_TYPE_LABELS, PRODUCT_OPTIONS } from '@/types/crm';
 import { X, Calendar, MessageCircle, Phone, Mail, Users, Package, Bell, FileText } from 'lucide-react';
 import clsx from 'clsx';
 import ContactPicker from '@/components/ContactPicker';
+import * as crm from '@/lib/crm';
+import { NUDGE_OPTIONS, nudgeColorClass } from '@/utils/deal-workflow';
 
 interface LogInteractionModalProps {
   isOpen: boolean;
@@ -55,12 +57,14 @@ export default function LogInteractionModal({
   const [outcome, setOutcome] = useState<Meeting['outcome']>(null);
   const [followupDate, setFollowupDate] = useState('');
   const [product, setProduct] = useState('Butter');
+  const [nudgeStage, setNudgeStage] = useState<NudgeStage | ''>('');
 
   // Re-sync presets each time the modal opens (component stays mounted while closed).
   useEffect(() => {
     if (isOpen) {
       setSelectedContactIds(initialContactIds || []);
       setSelectedDeal(selectedDealId || '');
+      setNudgeStage('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
@@ -88,12 +92,20 @@ export default function LogInteractionModal({
       followup_date: followupDate || null,
     });
 
+    // If a deal is linked, set its nudge stage from the picker (persists the cadence).
+    if (selectedDeal && nudgeStage) {
+      crm.updateDeal(selectedDeal, { nudge_stage: nudgeStage }).catch((err: any) => {
+        console.error('Failed to set nudge stage on deal:', err);
+      });
+    }
+
     setDescription('');
     setSummary('');
     setFollowupDate('');
     setOutcome(null);
     setSelectedDeal('');
     setSelectedContactIds([]);
+    setNudgeStage('');
     onClose();
   };
 
@@ -187,6 +199,29 @@ export default function LogInteractionModal({
               ))}
             </select>
           </div>
+
+          {/* Nudge stage — only when a deal is linked */}
+          {selectedDeal && (
+            <div className="bg-clay-surface rounded-xl p-3 border border-clay-hairline">
+              <label className="block text-xs font-medium text-clay-body mb-2">Set nudge stage on this deal</label>
+              <div className="grid grid-cols-2 gap-2">
+                {NUDGE_OPTIONS.map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setNudgeStage(nudgeStage === opt.value ? '' : opt.value)}
+                    className={clsx(
+                      'px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors min-h-[44px] flex items-center justify-center gap-1.5',
+                      nudgeStage === opt.value ? nudgeColorClass(opt.value) : 'bg-white dark:bg-clay-card text-clay-muted border-clay-hairline active:bg-clay-surface'
+                    )}
+                  >
+                    {opt.label}
+                    <span className="text-[10px] opacity-70">{opt.days}d</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Linked Contacts */}
           <ContactPicker
