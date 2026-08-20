@@ -85,7 +85,7 @@ export interface Deal {
 }
 
 // ─── Meetings ───
-export type MeetingType = 'call' | 'email' | 'meeting' | 'sample_sent' | 'note' | 'nudge';
+export type MeetingType = 'call' | 'email' | 'dm' | 'meeting' | 'sample_sent' | 'note' | 'nudge';
 
 export interface Meeting {
   id: string;
@@ -138,6 +138,7 @@ export const CONTACT_STATUS_LABELS: Record<ContactStatus, string> = {
 export const MEETING_TYPE_LABELS: Record<MeetingType, string> = {
   call: 'Call',
   email: 'Email',
+  dm: 'DM',
   meeting: 'Meeting',
   sample_sent: 'Sample Sent',
   note: 'Note',

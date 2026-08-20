@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { MeetingType, Meeting, Deal, Contact, Company, MEETING_TYPE_LABELS, PRODUCT_OPTIONS } from '@/types/crm';
-import { X, Calendar, MessageSquare, Phone, Mail, Users, Package, Bell, FileText } from 'lucide-react';
+import { X, Calendar, MessageCircle, Phone, Mail, Users, Package, Bell, FileText } from 'lucide-react';
 import clsx from 'clsx';
 
 interface LogInteractionModalProps {
@@ -18,6 +18,7 @@ interface LogInteractionModalProps {
 const typeOptions: { value: MeetingType; label: string; icon: React.ReactNode }[] = [
   { value: 'call', label: 'Call', icon: <Phone className="w-4 h-4" /> },
   { value: 'email', label: 'Email', icon: <Mail className="w-4 h-4" /> },
+  { value: 'dm', label: 'DM', icon: <MessageCircle className="w-4 h-4" /> },
   { value: 'meeting', label: 'Meeting', icon: <Users className="w-4 h-4" /> },
   { value: 'sample_sent', label: 'Sample Sent', icon: <Package className="w-4 h-4" /> },
   { value: 'nudge', label: 'Nudge', icon: <Bell className="w-4 h-4" /> },

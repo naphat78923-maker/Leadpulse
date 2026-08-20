@@ -1,10 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Deal, DealWorkflowAction, NudgeStage, SampleStatus } from '@/types/crm';
+import { Deal, DealWorkflowAction, MeetingType, NudgeStage, SampleStatus } from '@/types/crm';
 import { WORKFLOW_BY_ID, LANE_MASCOT_PATHS, NUDGE_OPTIONS, SAMPLE_STATUS_OPTIONS } from '@/utils/deal-workflow';
 import MascotSprite from '@/components/MascotSprite';
-import { X, Loader2 } from 'lucide-react';
+import { X, Loader2, Phone, Mail, MessageCircle } from 'lucide-react';
 import clsx from 'clsx';
 
 export interface LaneGatePayload {
@@ -15,7 +15,14 @@ export interface LaneGatePayload {
   next_action?: string | null;
   reply_outcome?: string | null;
   reply_summary?: string | null;
+  channel?: MeetingType | null;
 }
+
+const CHANNEL_OPTIONS: { value: MeetingType; label: string; icon: React.ReactNode }[] = [
+  { value: 'call', label: 'Call', icon: <Phone className="w-4 h-4" /> },
+  { value: 'email', label: 'Email', icon: <Mail className="w-4 h-4" /> },
+  { value: 'dm', label: 'DM', icon: <MessageCircle className="w-4 h-4" /> },
+];
 
 interface LaneGateModalProps {
   deal: Deal;
@@ -37,6 +44,7 @@ export default function LaneGateModal({ deal, targetLane, onCancel, onConfirm }:
   const [followupDate, setFollowupDate] = useState<string>(deal.followup_date || '');
   const [nudgeStage, setNudgeStage] = useState<NudgeStage | ''>('');
   const [nextAction, setNextAction] = useState<string>('');
+  const [channel, setChannel] = useState<MeetingType>('call');
   const [replyOutcome, setReplyOutcome] = useState<string>('');
   const [replySummary, setReplySummary] = useState<string>('');
   const [saving, setSaving] = useState(false);
@@ -69,6 +77,7 @@ export default function LaneGateModal({ deal, targetLane, onCancel, onConfirm }:
         next_action: targetLane === 'outreach' && nextAction.trim() ? nextAction.trim() : null,
         reply_outcome: targetLane === 'reply' ? replyOutcome : null,
         reply_summary: targetLane === 'reply' && replySummary.trim() ? replySummary.trim() : null,
+        channel: (targetLane === 'outreach' || targetLane === 'reply') ? channel : null,
       });
     } catch (err2: any) {
       setError('Could not save: ' + (err2.message || 'Unknown error'));
@@ -164,6 +173,24 @@ export default function LaneGateModal({ deal, targetLane, onCancel, onConfirm }:
           {targetLane === 'reply' && (
             <>
               <div>
+                {fieldLabel('Channel', true)}
+                <div className="grid grid-cols-3 gap-2 mt-2">
+                  {CHANNEL_OPTIONS.map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setChannel(opt.value)}
+                      className={clsx(
+                        'flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border text-xs font-medium transition-colors',
+                        channel === opt.value ? 'border-zams-violet bg-zams-powder/50 text-zams-deep' : 'border-clay-hairline text-clay-muted hover:border-zams-mist'
+                      )}
+                    >
+                      {opt.icon} {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
                 {fieldLabel('Client response', true)}
                 <div className="grid grid-cols-2 gap-2 mt-2">
                   {OUTCOME_OPTIONS.map(opt => (
@@ -194,16 +221,36 @@ export default function LaneGateModal({ deal, targetLane, onCancel, onConfirm }:
           )}
 
           {targetLane === 'outreach' && (
-            <div>
-              {fieldLabel('Next action (optional)', false)}
-              <input
-                type="text"
-                value={nextAction}
-                onChange={(e) => setNextAction(e.target.value)}
-                placeholder="e.g. Call K. Oil about the 10kg trial"
-                className="w-full mt-2 px-3 py-3 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-zams-violet/40"
-              />
-            </div>
+            <>
+              <div>
+                {fieldLabel('Channel', true)}
+                <div className="grid grid-cols-3 gap-2 mt-2">
+                  {CHANNEL_OPTIONS.map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setChannel(opt.value)}
+                      className={clsx(
+                        'flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border text-xs font-medium transition-colors',
+                        channel === opt.value ? 'border-zams-violet bg-zams-powder/50 text-zams-deep' : 'border-clay-hairline text-clay-muted hover:border-zams-mist'
+                      )}
+                    >
+                      {opt.icon} {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                {fieldLabel('Next action (optional)', false)}
+                <input
+                  type="text"
+                  value={nextAction}
+                  onChange={(e) => setNextAction(e.target.value)}
+                  placeholder="e.g. Call K. Oil about the 10kg trial"
+                  className="w-full mt-2 px-3 py-3 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-zams-violet/40"
+                />
+              </div>
+            </>
           )}
 
           {targetLane === 'success' && (

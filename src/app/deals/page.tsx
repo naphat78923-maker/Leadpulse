@@ -211,6 +211,33 @@ export default function DealsPage() {
       description: `${deal.client} moved to the ${lane.shortLabel} lane`,
       undoPayload: before,
     });
+
+    // Feed the pulse: interaction-type lane moves also create an interaction row
+    // so calls, emails, DMs, and samples from the board count on the Activity pulse.
+    const meetingToLog = (() => {
+      const base = {
+        date: new Date().toISOString().split('T')[0],
+        company_id: deal.company_id,
+        contact_ids: deal.contact_ids || [],
+        deal_id: deal.id,
+        product: deal.product,
+      };
+      if (target === 'outreach' && payload.channel) {
+        const chLabel = payload.channel === 'dm' ? 'DM' : payload.channel === 'email' ? 'Email' : 'Call';
+        return { ...base, type: payload.channel, description: `${chLabel} outreach — ${deal.client}`, summary: payload.next_action || null, outcome: null, followup_date: null };
+      }
+      if (target === 'reply' && payload.channel && payload.reply_outcome) {
+        const chLabel = payload.channel === 'dm' ? 'DM' : payload.channel === 'email' ? 'Email' : 'Call';
+        return { ...base, type: payload.channel, description: `${chLabel} reply from ${deal.client}`, summary: payload.reply_summary || null, outcome: payload.reply_outcome, followup_date: null };
+      }
+      if (target === 'sample' && payload.sample_status) {
+        return { ...base, type: 'sample_sent', description: `Sample ${payload.sample_status} — ${deal.client}`, summary: null, outcome: null, followup_date: null };
+      }
+      return null;
+    })();
+    if (meetingToLog) {
+      await crm.createMeeting(meetingToLog as any);
+    }
     setGate(null);
     const celebrationSprite = target === 'success'
       ? (Math.random() < 0.5 ? '/assets/mascots/mascot-won-trophy.png' : '/assets/mascots/mascot-won-confetti.png')

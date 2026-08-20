@@ -5,7 +5,7 @@ import { Meeting, MEETING_TYPE_LABELS } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
 import { meetings as dataMeetings } from '@/data/crmData';
 import LogInteractionModal from '@/components/LogInteractionModal';
-import { Search, Plus, Calendar, Mail, Phone, Users, FileText, Package, Bell } from 'lucide-react';
+import { Search, Plus, Calendar, Mail, Phone, Users, FileText, Package, Bell, MessageCircle } from 'lucide-react';
 import clsx from 'clsx';
 
 type ViewMode = 'meetings' | 'all_activities';
@@ -46,6 +46,7 @@ export default function MeetingsPage() {
       case 'meeting': return <Users className="w-4 h-4" />;
       case 'email': return <Mail className="w-4 h-4" />;
       case 'call': return <Phone className="w-4 h-4" />;
+      case 'dm': return <MessageCircle className="w-4 h-4" />;
       case 'sample_sent': return <Package className="w-4 h-4" />;
       case 'nudge': return <Bell className="w-4 h-4" />;
       default: return <FileText className="w-4 h-4" />;
@@ -57,6 +58,7 @@ export default function MeetingsPage() {
       case 'meeting': return 'bg-clay-lavender/20 text-clay-lavender';
       case 'email': return 'bg-clay-pink/20 text-clay-pink';
       case 'call': return 'bg-clay-mint/20 text-clay-teal';
+      case 'dm': return 'bg-zams-powder/50 text-zams-deep';
       case 'sample_sent': return 'bg-clay-ochre/20 text-clay-ochre';
       case 'nudge': return 'bg-clay-coral/20 text-clay-coral';
       default: return 'bg-clay-card text-clay-muted';

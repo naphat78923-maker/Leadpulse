@@ -10,8 +10,8 @@ import LogInteractionModal from '@/components/LogInteractionModal';
 import CompanyDetail from '@/components/CompanyDetail';
 import ContactDetail from '@/components/ContactDetail';
 import {
-  Search, Plus, Mail, Phone, Users, FileText, Package, Bell,
-  Building2, Loader2, Snowflake, UserX, AlarmClock, Hourglass, Zap,
+  Search, Plus, Mail, Phone, Users, FileText, Package, Bell, MessageCircle,
+  Building2, Loader2, Snowflake, UserX, AlarmClock, Hourglass,
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -38,6 +38,7 @@ const meetingIcon = (type: Meeting['type']) => {
     case 'meeting': return <Users className="w-4 h-4" />;
     case 'email': return <Mail className="w-4 h-4" />;
     case 'call': return <Phone className="w-4 h-4" />;
+    case 'dm': return <MessageCircle className="w-4 h-4" />;
     case 'sample_sent': return <Package className="w-4 h-4" />;
     case 'nudge': return <Bell className="w-4 h-4" />;
     default: return <FileText className="w-4 h-4" />;
@@ -49,6 +50,7 @@ const meetingIconColor = (type: Meeting['type']) => {
     case 'meeting': return 'bg-clay-lavender/20 text-clay-lavender';
     case 'email': return 'bg-clay-pink/20 text-clay-pink';
     case 'call': return 'bg-clay-mint/20 text-clay-teal';
+    case 'dm': return 'bg-zams-powder/50 text-zams-deep';
     case 'sample_sent': return 'bg-clay-ochre/20 text-clay-ochre';
     case 'nudge': return 'bg-clay-coral/20 text-clay-coral';
     default: return 'bg-clay-card text-clay-muted';
@@ -79,7 +81,7 @@ export default function ActivityPage() {
   const pulse = useMemo(() => {
     const start = Date.now() - 7 * dayMs;
     const inWeek = meetings.filter(m => toTs(m.date) >= start);
-    const byType: Record<string, number> = { call: 0, email: 0, meeting: 0, sample_sent: 0, nudge: 0, note: 0 };
+    const byType: Record<string, number> = { call: 0, email: 0, dm: 0, meeting: 0, sample_sent: 0, nudge: 0, note: 0 };
     const outcomes: Record<string, number> = { positive: 0, neutral: 0, negative: 0, no_response: 0 };
     inWeek.forEach(m => {
       if (byType[m.type] !== undefined) byType[m.type]++;
@@ -103,6 +105,7 @@ export default function ActivityPage() {
   const typeStats = [
     { key: 'call', label: 'Calls', icon: <Phone className="w-3.5 h-3.5" />, cls: 'bg-clay-mint/20 text-clay-teal' },
     { key: 'email', label: 'Emails', icon: <Mail className="w-3.5 h-3.5" />, cls: 'bg-clay-pink/20 text-clay-pink' },
+    { key: 'dm', label: 'DMs', icon: <MessageCircle className="w-3.5 h-3.5" />, cls: 'bg-zams-powder/50 text-zams-deep' },
     { key: 'meeting', label: 'Meetings', icon: <Users className="w-3.5 h-3.5" />, cls: 'bg-clay-lavender/20 text-clay-lavender' },
     { key: 'sample_sent', label: 'Samples', icon: <Package className="w-3.5 h-3.5" />, cls: 'bg-clay-ochre/20 text-clay-ochre' },
     { key: 'nudge', label: 'Nudges', icon: <Bell className="w-3.5 h-3.5" />, cls: 'bg-clay-coral/20 text-clay-coral' },
@@ -398,6 +401,7 @@ export default function ActivityPage() {
               <option value="all">All types</option>
               <option value="call">Calls</option>
               <option value="email">Emails</option>
+              <option value="dm">DMs</option>
               <option value="meeting">Meetings</option>
               <option value="sample_sent">Samples</option>
               <option value="nudge">Nudges</option>

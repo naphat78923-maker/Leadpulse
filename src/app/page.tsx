@@ -308,6 +308,8 @@ export default function TodayPage() {
                   ? 'E'
                   : meeting.type === 'call'
                   ? 'C'
+                  : meeting.type === 'dm'
+                  ? 'D'
                   : meeting.type === 'sample_sent'
                   ? 'S'
                   : 'N'}
