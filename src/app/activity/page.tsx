@@ -70,8 +70,14 @@ export default function ActivityPage() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [range, setRange] = useState<'all' | 'today' | '7d' | '30d'>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [logPreset, setLogPreset] = useState<{ contactIds?: string[]; companyId?: string } | null>(null);
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
   const [selectedContact, setSelectedContact] = useState<string | null>(null);
+
+  const openLog = (preset: { contactIds?: string[]; companyId?: string }) => {
+    setLogPreset(preset);
+    setIsModalOpen(true);
+  };
 
   const contactName = (id?: string) => contacts.find(c => c.id === id)?.name;
   const companyFor = (id?: string | null) => (id ? companies.find((c: Company) => c.id === id) : null);
@@ -497,22 +503,30 @@ export default function ActivityPage() {
                 const days = lastTouch === 0 ? null : daysSince(lastTouch);
                 const frozen = lastTouch === 0 || (days !== null && days > 30);
                 return (
-                  <button
-                    key={company.id}
-                    onClick={() => setSelectedCompany(company.id)}
-                    className="w-full flex items-center justify-between gap-2 text-left px-2.5 py-2 rounded hover:bg-clay-surface transition-colors"
-                  >
-                    <span className="text-xs font-medium text-clay-ink truncate flex items-center gap-1.5">
-                      <Building2 className="w-3.5 h-3.5 text-clay-muted-soft shrink-0" />
-                      {company.name}
-                    </span>
-                    <span className={clsx(
-                      'text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0',
-                      frozen ? 'text-clay-coral bg-clay-coral/10' : 'text-clay-ochre bg-clay-ochre/10'
-                    )}>
-                      {lastTouch === 0 ? 'Never' : `${days}d`}
-                    </span>
-                  </button>
+                  <div key={company.id} className="flex items-center gap-1">
+                    <button
+                      onClick={() => setSelectedCompany(company.id)}
+                      className="flex-1 min-w-0 flex items-center justify-between gap-2 text-left px-2.5 py-2 rounded hover:bg-clay-surface transition-colors"
+                    >
+                      <span className="text-xs font-medium text-clay-ink truncate flex items-center gap-1.5">
+                        <Building2 className="w-3.5 h-3.5 text-clay-muted-soft shrink-0" />
+                        {company.name}
+                      </span>
+                      <span className={clsx(
+                        'text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0',
+                        frozen ? 'text-clay-coral bg-clay-coral/10' : 'text-clay-ochre bg-clay-ochre/10'
+                      )}>
+                        {lastTouch === 0 ? 'Never' : `${days}d`}
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => openLog({ companyId: company.id })}
+                      className="shrink-0 w-8 h-8 rounded-lg border border-zams-mist text-zams-deep flex items-center justify-center hover:border-zams-violet transition-colors"
+                      aria-label={`Log touch for ${company.name}`}
+                    >
+                      <MessageCircle className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 );
               })
             )}
@@ -530,18 +544,26 @@ export default function ActivityPage() {
               <p className="text-xs text-clay-muted py-3 text-center">Everyone has been touched.</p>
             ) : (
               radar.neverContacted.map(c => (
-                <button
-                  key={c.id}
-                  onClick={() => setSelectedContact(c.id)}
-                  className="w-full flex items-center justify-between gap-2 text-left px-2.5 py-2 rounded hover:bg-clay-surface transition-colors"
-                >
-                  <span className="text-xs font-medium text-clay-ink truncate flex items-center gap-1.5">
-                    👤 {c.name}
-                  </span>
-                  <span className="text-[10px] text-clay-muted-soft truncate shrink-0 max-w-[45%]">
-                    {companyFor(c.company_id)?.name || '—'}
-                  </span>
-                </button>
+                <div key={c.id} className="flex items-center gap-1">
+                  <button
+                    onClick={() => setSelectedContact(c.id)}
+                    className="flex-1 min-w-0 flex items-center justify-between gap-2 text-left px-2.5 py-2 rounded hover:bg-clay-surface transition-colors"
+                  >
+                    <span className="text-xs font-medium text-clay-ink truncate flex items-center gap-1.5">
+                      👤 {c.name}
+                    </span>
+                    <span className="text-[10px] text-clay-muted-soft truncate shrink-0 max-w-[45%]">
+                      {companyFor(c.company_id)?.name || '—'}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => openLog({ contactIds: [c.id] })}
+                    className="shrink-0 w-8 h-8 rounded-lg border border-zams-mist text-zams-deep flex items-center justify-center hover:border-zams-violet transition-colors"
+                    aria-label={`Log touch for ${c.name}`}
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               ))
             )}
           </RadarCard>
@@ -611,11 +633,13 @@ export default function ActivityPage() {
       {/* Log interaction modal */}
       <LogInteractionModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => { setIsModalOpen(false); setLogPreset(null); }}
         onSave={async (meeting) => { await addMeeting(meeting); }}
         deals={deals}
         contacts={contacts}
         companies={companies}
+        initialContactIds={logPreset?.contactIds}
+        initialCompanyId={logPreset?.companyId}
       />
 
       {activeCompany && (

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MeetingType, Meeting, Deal, Contact, Company, MEETING_TYPE_LABELS, PRODUCT_OPTIONS } from '@/types/crm';
 import { X, Calendar, MessageCircle, Phone, Mail, Users, Package, Bell, FileText } from 'lucide-react';
 import clsx from 'clsx';
@@ -14,6 +14,8 @@ interface LogInteractionModalProps {
   contacts: Contact[];
   companies: Company[];
   selectedDealId?: string;
+  initialContactIds?: string[];
+  initialCompanyId?: string;
 }
 
 const typeOptions: { value: MeetingType; label: string; icon: React.ReactNode }[] = [
@@ -41,16 +43,27 @@ export default function LogInteractionModal({
   contacts,
   companies,
   selectedDealId,
+  initialContactIds,
+  initialCompanyId,
 }: LogInteractionModalProps) {
   const [type, setType] = useState<MeetingType>('call');
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedDeal, setSelectedDeal] = useState(selectedDealId || '');
-  const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
+  const [selectedContactIds, setSelectedContactIds] = useState<string[]>(initialContactIds || []);
   const [summary, setSummary] = useState('');
   const [outcome, setOutcome] = useState<Meeting['outcome']>(null);
   const [followupDate, setFollowupDate] = useState('');
   const [product, setProduct] = useState('Butter');
+
+  // Re-sync presets each time the modal opens (component stays mounted while closed).
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedContactIds(initialContactIds || []);
+      setSelectedDeal(selectedDealId || '');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -60,7 +73,7 @@ export default function LogInteractionModal({
 
     const deal = deals.find(d => d.id === selectedDeal);
     const selectedContacts = contacts.filter(c => selectedContactIds.includes(c.id));
-    const companyId = selectedContacts[0]?.company_id || deal?.company_id || null;
+    const companyId = selectedContacts[0]?.company_id || deal?.company_id || initialCompanyId || null;
 
     onSave({
       description,
