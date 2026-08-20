@@ -145,3 +145,59 @@ export async function getStats() {
     lostDeals: deals.filter(d => d.stage === 'closed_lost').length,
   };
 }
+
+// ─── Activity Events (durable audit trail) ───
+export interface ActivityEvent {
+  id: string;
+  type: string;
+  entity: string;
+  entity_id: string | null;
+  label: string;
+  description: string | null;
+  undo_payload: Record<string, any> | null;
+  applied: boolean;
+  timestamp: string;
+  created_at: string;
+}
+
+export async function getActivityEvents(): Promise<ActivityEvent[]> {
+  const { data, error } = await supabase
+    .from('activity_events')
+    .select('*')
+    .order('timestamp', { ascending: false })
+    .limit(500);
+  if (error) throw error;
+  return data || [];
+}
+
+export async function createActivityEvent(event: {
+  type: string;
+  entity: string;
+  entity_id?: string | null;
+  label: string;
+  description?: string | null;
+  undo_payload?: Record<string, any> | null;
+}) {
+  const { data, error } = await supabase
+    .from('activity_events')
+    .insert({
+      ...event,
+      applied: true,
+      timestamp: new Date().toISOString(),
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateActivityEvent(id: string, patch: Partial<ActivityEvent>) {
+  const { data, error } = await supabase
+    .from('activity_events')
+    .update(patch)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}

@@ -67,11 +67,12 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
   const refresh = useCallback(async () => {
     try {
       setLoading(true);
-      const [companiesRes, contactsRes, dealsRes, meetingsRes] = await Promise.all([
+      const [companiesRes, contactsRes, dealsRes, meetingsRes, eventsRes] = await Promise.all([
         crm.getCompanies(),
         crm.getContacts(),
         crm.getDeals(),
         crm.getMeetings(),
+        crm.getActivityEvents().catch(() => [] as any[]),
       ]);
 
       const mCompanies = (companiesRes || []) as any[];
@@ -148,6 +149,24 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
         updated_at: el.updated_at || new Date().toISOString(),
       })) as any);
 
+      const dbEvents = ((eventsRes || []) as any[]).map((el: any) => ({
+        id: el.id,
+        timestamp: new Date(el.timestamp).getTime(),
+        type: el.type,
+        entity: el.entity,
+        entityId: el.entity_id || undefined,
+        label: el.label,
+        description: el.description || undefined,
+        undoPayload: el.undo_payload || undefined,
+        applied: el.applied !== false,
+      }));
+
+      setActivities(prev => {
+        // Keep in-flight local entries (temp ids) while swapping in DB-backed events.
+        const pending = prev.filter(a => !/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(a.id));
+        return [...pending, ...dbEvents];
+      });
+
       setError(null);
     } catch (err: any) {
       setError(err.message || 'Failed to load CRM data');
@@ -157,12 +176,26 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logActivity = useCallback((entry: Omit<ActivityEntry, 'id' | 'timestamp'>) => {
+    const localId = Math.random().toString(36).slice(2, 9);
     const activity: ActivityEntry = {
       ...entry,
-      id: Math.random().toString(36).slice(2, 9),
+      id: localId,
       timestamp: Date.now(),
     };
-    setActivities(prev => [activity, ...prev].slice(0, 200));
+    setActivities(prev => [activity, ...prev].slice(0, 500));
+    // Persist to Supabase so the audit trail survives reloads.
+    crm.createActivityEvent({
+      type: entry.type,
+      entity: entry.entity,
+      entity_id: entry.entityId || null,
+      label: entry.label,
+      description: entry.description || null,
+      undo_payload: entry.undoPayload || null,
+    }).then((saved: any) => {
+      setActivities(prev => prev.map(a => a.id === localId ? { ...a, id: saved.id } : a));
+    }).catch((err: any) => {
+      console.error('Failed to persist activity event:', err);
+    });
   }, []);
 
   const markActivityApplied = useCallback((id: string) => {
@@ -178,6 +211,9 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
         await crm.updateDeal(activity.entityId, activity.undoPayload);
       }
       setActivities(prev => prev.map(a => a.id === id ? { ...a, applied: false } : a));
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(id)) {
+        await crm.updateActivityEvent(id, { applied: false } as any).catch(() => {});
+      }
       await refresh();
       return true;
     } catch (err) {
