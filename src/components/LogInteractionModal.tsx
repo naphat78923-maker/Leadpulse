@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { MeetingType, Meeting, Deal, Contact, Company, MEETING_TYPE_LABELS, PRODUCT_OPTIONS } from '@/types/crm';
 import { X, Calendar, MessageCircle, Phone, Mail, Users, Package, Bell, FileText } from 'lucide-react';
 import clsx from 'clsx';
+import ContactPicker from '@/components/ContactPicker';
 
 interface LogInteractionModalProps {
   isOpen: boolean;
@@ -83,11 +84,7 @@ export default function LogInteractionModal({
     onClose();
   };
 
-  const toggleContact = (id: string) => {
-    setSelectedContactIds(prev =>
-      prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
-    );
-  };
+  const deal = deals.find(d => d.id === selectedDeal);
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50 p-0 md:p-4" onClick={onClose}>
@@ -179,26 +176,13 @@ export default function LogInteractionModal({
           </div>
 
           {/* Linked Contacts */}
-          <div>
-            <label className="block text-sm font-medium text-clay-body mb-2">Contacts</label>
-            <div className="flex flex-wrap gap-2">
-              {contacts.map(c => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => toggleContact(c.id)}
-                  className={clsx(
-                    'px-3 py-2 rounded-lg text-sm font-medium border transition-colors min-h-[44px]',
-                    selectedContactIds.includes(c.id)
-                      ? 'bg-clay-ink text-clay-canvas border-clay-ink'
-                      : 'bg-white dark:bg-clay-card text-clay-muted border-clay-hairline active:bg-clay-surface'
-                  )}
-                >
-                  {c.name}
-                </button>
-              ))}
-            </div>
-          </div>
+          <ContactPicker
+            contacts={contacts}
+            companies={companies}
+            selectedCompanyId={deal?.company_id ?? undefined}
+            selectedIds={selectedContactIds}
+            onChange={setSelectedContactIds}
+          />
 
           {/* Summary */}
           <div>
