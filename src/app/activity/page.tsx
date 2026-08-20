@@ -5,11 +5,13 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Meeting, MEETING_TYPE_LABELS, Company, Contact, Deal } from '@/types/crm';
 import { useCrm, ActivityEntry } from '@/components/CrmProvider';
+import { WORKFLOW_LANES, getWorkflowAction } from '@/utils/deal-workflow';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import CompanyDetail from '@/components/CompanyDetail';
+import ContactDetail from '@/components/ContactDetail';
 import {
   Search, Plus, Mail, Phone, Users, FileText, Package, Bell,
-  Building2, ChevronRight, Loader2,
+  Building2, Loader2, Snowflake, UserX, AlarmClock, Hourglass, Zap,
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -53,25 +55,130 @@ const meetingIconColor = (type: Meeting['type']) => {
   }
 };
 
+const dayMs = 86400000;
+const toTs = (date: string) => new Date(`${date}T12:00:00`).getTime();
+const daysSince = (ts: number) => Math.floor((Date.now() - ts) / dayMs);
+
 export default function ActivityPage() {
   const router = useRouter();
   const { meetings, contacts, companies, deals, activities, loading, addMeeting, undoActivity, refresh } = useCrm();
 
+  const [tab, setTab] = useState<'timeline' | 'radar'>('timeline');
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [range, setRange] = useState<'all' | 'today' | '7d' | '30d'>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
+  const [selectedContact, setSelectedContact] = useState<string | null>(null);
 
   const contactName = (id?: string) => contacts.find(c => c.id === id)?.name;
   const companyFor = (id?: string | null) => (id ? companies.find((c: Company) => c.id === id) : null);
   const dealFor = (id?: string | null) => (id ? deals.find((d: Deal) => d.id === id) : null);
 
+  /* ─── Pulse: 7-day touchpoint stats ─── */
+  const pulse = useMemo(() => {
+    const start = Date.now() - 7 * dayMs;
+    const inWeek = meetings.filter(m => toTs(m.date) >= start);
+    const byType: Record<string, number> = { call: 0, email: 0, meeting: 0, sample_sent: 0, nudge: 0, note: 0 };
+    const outcomes: Record<string, number> = { positive: 0, neutral: 0, negative: 0, no_response: 0 };
+    inWeek.forEach(m => {
+      if (byType[m.type] !== undefined) byType[m.type]++;
+      if (m.outcome) outcomes[m.outcome] = (outcomes[m.outcome] || 0) + 1;
+    });
+    const days: { label: string; count: number; isToday: boolean }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().split('T')[0];
+      days.push({
+        label: d.toLocaleDateString('en-US', { weekday: 'short' }),
+        count: inWeek.filter(m => m.date === key).length,
+        isToday: i === 0,
+      });
+    }
+    return { byType, outcomes, days, total: inWeek.length, outcomeTotal: Object.values(outcomes).reduce((a, b) => a + b, 0) };
+  }, [meetings]);
+
+  const typeStats = [
+    { key: 'call', label: 'Calls', icon: <Phone className="w-3.5 h-3.5" />, cls: 'bg-clay-mint/20 text-clay-teal' },
+    { key: 'email', label: 'Emails', icon: <Mail className="w-3.5 h-3.5" />, cls: 'bg-clay-pink/20 text-clay-pink' },
+    { key: 'meeting', label: 'Meetings', icon: <Users className="w-3.5 h-3.5" />, cls: 'bg-clay-lavender/20 text-clay-lavender' },
+    { key: 'sample_sent', label: 'Samples', icon: <Package className="w-3.5 h-3.5" />, cls: 'bg-clay-ochre/20 text-clay-ochre' },
+    { key: 'nudge', label: 'Nudges', icon: <Bell className="w-3.5 h-3.5" />, cls: 'bg-clay-coral/20 text-clay-coral' },
+    { key: 'note', label: 'Notes', icon: <FileText className="w-3.5 h-3.5" />, cls: 'bg-clay-card text-clay-muted' },
+  ];
+
+  const outcomeStats = [
+    { key: 'positive', label: 'Positive', cls: 'bg-clay-success/10 text-clay-success border-clay-success/20' },
+    { key: 'neutral', label: 'Neutral', cls: 'bg-clay-card text-clay-body border-clay-hairline' },
+    { key: 'negative', label: 'Negative', cls: 'bg-clay-error/10 text-clay-error border-clay-error/20' },
+    { key: 'no_response', label: 'No reply', cls: 'bg-clay-ochre/10 text-clay-ochre border-clay-ochre/20' },
+  ];
+
+  const maxDayCount = Math.max(...pulse.days.map(d => d.count), 1);
+
+  /* ─── Radar: coverage gaps ─── */
+  const radar = useMemo(() => {
+    // Last touch per company: meetings by company_id or by contact's company.
+    const companyLastTouch: Record<string, number> = {};
+    meetings.forEach(m => {
+      const ts = toTs(m.date);
+      const touch = (cid?: string | null) => {
+        if (cid && (!companyLastTouch[cid] || ts > companyLastTouch[cid])) companyLastTouch[cid] = ts;
+      };
+      touch(m.company_id);
+      (m.contact_ids || []).forEach(cid => {
+        const c = contacts.find(x => x.id === cid);
+        touch(c?.company_id);
+      });
+    });
+
+    const coldAccounts = companies
+      .filter(c => c.status === 'prospect' || c.status === 'active_customer')
+      .map(c => ({ company: c, lastTouch: companyLastTouch[c.id] || 0 }))
+      .filter(x => x.lastTouch === 0 || daysSince(x.lastTouch) > 14)
+      .sort((a, b) => a.lastTouch - b.lastTouch)
+      .slice(0, 6);
+
+    const neverContacted = contacts
+      .filter(c => !meetings.some(m => (m.contact_ids || []).includes(c.id)) && !c.last_contacted_date)
+      .slice(0, 6);
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const openLoops: { kind: 'deal' | 'meeting'; name: string; date: string; dealId?: string }[] = [
+      ...deals
+        .filter(d => d.stage !== 'closed_won' && d.stage !== 'closed_lost' && d.followup_date && d.followup_date < todayStr)
+        .map(d => ({ kind: 'deal' as const, name: d.client, date: d.followup_date!, dealId: d.id })),
+      ...meetings
+        .filter(m => m.followup_date && m.followup_date < todayStr)
+        .map(m => ({ kind: 'meeting' as const, name: m.description, date: m.followup_date! })),
+    ].sort((a, b) => a.date.localeCompare(b.date)).slice(0, 6);
+
+    const dealLastTouch: Record<string, number> = {};
+    meetings.forEach(m => {
+      if (!m.deal_id) return;
+      const ts = toTs(m.date);
+      if (!dealLastTouch[m.deal_id] || ts > dealLastTouch[m.deal_id]) dealLastTouch[m.deal_id] = ts;
+    });
+
+    const stuckDeals = deals
+      .filter(d => d.stage !== 'closed_won' && d.stage !== 'closed_lost')
+      .map(d => ({ deal: d, lastTouch: dealLastTouch[d.id] || 0 }))
+      .filter(x => x.lastTouch === 0 || daysSince(x.lastTouch) > 14)
+      .sort((a, b) => a.lastTouch - b.lastTouch)
+      .slice(0, 6);
+
+    const total = coldAccounts.length + neverContacted.length + openLoops.length + stuckDeals.length;
+    return { coldAccounts, neverContacted, openLoops, stuckDeals, total };
+  }, [meetings, contacts, companies, deals]);
+
+  /* ─── Timeline items ─── */
   const items: TimelineItem[] = useMemo(() => {
     const mItems: TimelineItem[] = meetings.map(m => ({
       kind: 'meeting',
       key: `m-${m.id}`,
-      ts: new Date(`${m.date}T12:00:00`).getTime(),
+      ts: toTs(m.date),
       meeting: m,
     }));
     const eItems: TimelineItem[] = activities.map(a => ({
@@ -85,7 +192,6 @@ export default function ActivityPage() {
 
   const filtered = useMemo(() => {
     const now = Date.now();
-    const dayMs = 86400000;
     const q = search.toLowerCase();
 
     return items.filter(item => {
@@ -103,7 +209,7 @@ export default function ActivityPage() {
       const m = item.meeting;
       if (typeFilter === 'system') return false;
       if (typeFilter !== 'all' && m.type !== typeFilter) return false;
-      if (range === 'today' && new Date(`${m.date}T12:00:00`).getTime() < new Date().setHours(0, 0, 0, 0)) return false;
+      if (range === 'today' && toTs(m.date) < new Date().setHours(0, 0, 0, 0)) return false;
       if (range === '7d' && item.ts < now - 7 * dayMs) return false;
       if (range === '30d' && item.ts < now - 30 * dayMs) return false;
       if (q) {
@@ -128,6 +234,7 @@ export default function ActivityPage() {
   }, [filtered]);
 
   const activeCompany = selectedCompany ? companies.find((c: Company) => c.id === selectedCompany) : null;
+  const activeContact = selectedContact ? contacts.find(c => c.id === selectedContact) : null;
 
   if (loading) {
     return (
@@ -144,7 +251,9 @@ export default function ActivityPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <p className="zams-eyebrow mb-1">Activity · {filtered.length} of {items.length} events</p>
+          <p className="zams-eyebrow mb-1">
+            Activity · {items.length} events{radar.total > 0 ? ` · ${radar.total} need attention` : ''}
+          </p>
           <h1 className="zams-display text-2xl md:text-[28px] leading-none">Activity</h1>
         </div>
         <button onClick={() => setIsModalOpen(true)} className="zams-btn-primary">
@@ -152,100 +261,292 @@ export default function ActivityPage() {
         </button>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2 mb-5">
-        <div className="flex-1 min-w-[180px] relative">
-          <Search className="w-4 h-4 text-clay-muted absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Search people, companies, deals..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-3 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-zams-violet/40"
-          />
+      {/* Pulse bar */}
+      <div className="bg-white dark:bg-clay-card border border-clay-hairline rounded-lg p-4 mb-4">
+        <div className="flex items-center justify-between mb-3">
+          <p className="zams-eyebrow">Pulse · Last 7 days</p>
+          <span className="zams-mono text-[10px] uppercase tracking-[0.18px] text-zams-violet">{pulse.total} touchpoints</span>
         </div>
-        <select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
-          className="bg-white dark:bg-clay-card border border-clay-hairline rounded-lg px-2.5 py-3 text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-zams-violet/40"
-        >
-          <option value="all">All types</option>
-          <option value="call">Calls</option>
-          <option value="email">Emails</option>
-          <option value="meeting">Meetings</option>
-          <option value="sample_sent">Samples</option>
-          <option value="nudge">Nudges</option>
-          <option value="note">Notes</option>
-          <option value="system">System actions</option>
-        </select>
-        <select
-          value={range}
-          onChange={(e) => setRange(e.target.value as any)}
-          className="bg-white dark:bg-clay-card border border-clay-hairline rounded-lg px-2.5 py-3 text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-zams-violet/40"
-        >
-          <option value="all">All time</option>
-          <option value="today">Today</option>
-          <option value="7d">Last 7 days</option>
-          <option value="30d">Last 30 days</option>
-        </select>
-      </div>
-
-      {/* Empty state */}
-      {filtered.length === 0 && (
-        <div className="text-center py-12 bg-white dark:bg-clay-card rounded-lg border border-clay-hairline">
-          <Image
-            src="/assets/mascot-teardrop.png"
-            alt="LeadPulse mascot"
-            width={1024}
-            height={1024}
-            className="w-24 h-24 object-contain mx-auto mb-3"
-          />
-          <p className="text-sm font-medium text-clay-ink mb-1">Nothing here yet</p>
-          <p className="text-xs text-clay-muted mb-4">Log an interaction or widen the filters.</p>
-          <button
-            onClick={() => { setSearch(''); setTypeFilter('all'); setRange('all'); }}
-            className="zams-btn-outline"
-          >
-            Clear filters
-          </button>
-        </div>
-      )}
-
-      {/* Timeline */}
-      {filtered.length > 0 && (
-        <div className="space-y-6">
-          {Object.entries(grouped).map(([date, dayItems]) => (
-            <div key={date}>
-              <div className="flex items-center gap-2 mb-3">
-                <h2 className="zams-mono text-[11px] uppercase tracking-[0.22px] text-zams-fog">{date}</h2>
-                <span className="h-px flex-1 bg-clay-hairline" />
-                <span className="zams-mono text-[10px] text-clay-muted-soft">{dayItems.length}</span>
-              </div>
-              <div className="space-y-2">
-                {dayItems.map(item =>
-                  item.kind === 'event' ? (
-                    <EventCard
-                      key={item.key}
-                      event={item.event}
-                      time={fmtTime(item.ts)}
-                      onUndo={undoActivity}
-                    />
-                  ) : (
-                    <MeetingCard
-                      key={item.key}
-                      meeting={item.meeting}
-                      time={fmtTime(item.ts)}
-                      contactName={contactName}
-                      company={companyFor(item.meeting.company_id) ?? null}
-                      deal={dealFor(item.meeting.deal_id) ?? null}
-                      onOpenCompany={(id: string) => setSelectedCompany(id)}
-                      onOpenDeal={(id: string) => router.push(`/deals?deal=${id}`)}
-                    />
-                  )
-                )}
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-4">
+          {typeStats.map(s => (
+            <div key={s.key} className="flex items-center gap-2 bg-clay-surface/60 dark:bg-clay-card rounded px-2.5 py-2">
+              <span className={clsx('w-6 h-6 rounded flex items-center justify-center shrink-0', s.cls)}>{s.icon}</span>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-clay-ink leading-none">{pulse.byType[s.key] || 0}</p>
+                <p className="zams-mono text-[9px] uppercase tracking-[0.14px] text-clay-muted truncate">{s.label}</p>
               </div>
             </div>
           ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          {outcomeStats.map(o => (
+            <span key={o.key} className={clsx('inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-1 rounded-full border', o.cls)}>
+              {pulse.outcomes[o.key] || 0}
+              {pulse.outcomeTotal > 0 && (
+                <span className="opacity-60">
+                  ({Math.round(((pulse.outcomes[o.key] || 0) / pulse.outcomeTotal) * 100)}%)
+                </span>
+              )}
+              {o.label}
+            </span>
+          ))}
+        </div>
+        <div className="flex items-end gap-2 h-14">
+          {pulse.days.map(d => (
+            <div key={d.label} className="flex-1 flex flex-col items-center gap-1 min-w-0">
+              <span className="text-[10px] font-bold text-clay-ink">{d.count}</span>
+              <div
+                className={clsx('w-full max-w-[36px] rounded-t transition-all', d.isToday ? 'bg-zams-violet' : 'bg-zams-powder')}
+                style={{ height: `${Math.max(4, (d.count / maxDayCount) * 36)}px` }}
+                title={`${d.label}: ${d.count}`}
+              />
+              <span className={clsx('zams-mono text-[9px] uppercase tracking-[0.14px]', d.isToday ? 'text-zams-violet font-medium' : 'text-clay-muted-soft')}>
+                {d.label}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex bg-clay-card rounded-lg p-0.5 mb-4 w-fit">
+        <button
+          onClick={() => setTab('timeline')}
+          className={clsx('px-4 py-2 text-xs font-medium rounded-md transition-colors', tab === 'timeline' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}
+        >
+          Timeline
+        </button>
+        <button
+          onClick={() => setTab('radar')}
+          className={clsx('px-4 py-2 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5', tab === 'radar' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}
+        >
+          Radar
+          {radar.total > 0 && (
+            <span className={clsx('text-[10px] font-bold px-1.5 py-0.5 rounded-full', tab === 'radar' ? 'bg-zams-violet text-white' : 'bg-clay-ochre/20 text-clay-ochre')}>
+              {radar.total}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* ─── Timeline tab ─── */}
+      {tab === 'timeline' && (
+        <>
+          <div className="flex flex-wrap items-center gap-2 mb-5">
+            <div className="flex-1 min-w-[180px] relative">
+              <Search className="w-4 h-4 text-clay-muted absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search people, companies, deals..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-3 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-zams-violet/40"
+              />
+            </div>
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              className="bg-white dark:bg-clay-card border border-clay-hairline rounded-lg px-2.5 py-3 text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-zams-violet/40"
+            >
+              <option value="all">All types</option>
+              <option value="call">Calls</option>
+              <option value="email">Emails</option>
+              <option value="meeting">Meetings</option>
+              <option value="sample_sent">Samples</option>
+              <option value="nudge">Nudges</option>
+              <option value="note">Notes</option>
+              <option value="system">System actions</option>
+            </select>
+            <select
+              value={range}
+              onChange={(e) => setRange(e.target.value as any)}
+              className="bg-white dark:bg-clay-card border border-clay-hairline rounded-lg px-2.5 py-3 text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-zams-violet/40"
+            >
+              <option value="all">All time</option>
+              <option value="today">Today</option>
+              <option value="7d">Last 7 days</option>
+              <option value="30d">Last 30 days</option>
+            </select>
+          </div>
+
+          {filtered.length === 0 && (
+            <div className="text-center py-12 bg-white dark:bg-clay-card rounded-lg border border-clay-hairline">
+              <Image
+                src="/assets/mascot-teardrop.png"
+                alt="LeadPulse mascot"
+                width={1024}
+                height={1024}
+                className="w-24 h-24 object-contain mx-auto mb-3"
+              />
+              <p className="text-sm font-medium text-clay-ink mb-1">Nothing here yet</p>
+              <p className="text-xs text-clay-muted mb-4">Log an interaction or widen the filters.</p>
+              <button
+                onClick={() => { setSearch(''); setTypeFilter('all'); setRange('all'); }}
+                className="zams-btn-outline"
+              >
+                Clear filters
+              </button>
+            </div>
+          )}
+
+          {filtered.length > 0 && (
+            <div className="space-y-6">
+              {Object.entries(grouped).map(([date, dayItems]) => (
+                <div key={date}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <h2 className="zams-mono text-[11px] uppercase tracking-[0.22px] text-zams-fog">{date}</h2>
+                    <span className="h-px flex-1 bg-clay-hairline" />
+                    <span className="zams-mono text-[10px] text-clay-muted-soft">{dayItems.length}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {dayItems.map(item =>
+                      item.kind === 'event' ? (
+                        <EventCard
+                          key={item.key}
+                          event={item.event}
+                          time={fmtTime(item.ts)}
+                          onUndo={undoActivity}
+                        />
+                      ) : (
+                        <MeetingCard
+                          key={item.key}
+                          meeting={item.meeting}
+                          time={fmtTime(item.ts)}
+                          contactName={contactName}
+                          company={companyFor(item.meeting.company_id) ?? null}
+                          deal={dealFor(item.meeting.deal_id) ?? null}
+                          onOpenCompany={(id: string) => setSelectedCompany(id)}
+                          onOpenDeal={(id: string) => router.push(`/deals?deal=${id}`)}
+                        />
+                      )
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ─── Radar tab ─── */}
+      {tab === 'radar' && (
+        <div className="grid md:grid-cols-2 gap-4">
+          {/* Cold accounts */}
+          <RadarCard
+            eyebrow="Cold accounts"
+            icon={<Snowflake className="w-4 h-4" />}
+            accent="text-clay-coral"
+            count={radar.coldAccounts.length}
+            hint="No touch in 14+ days"
+          >
+            {radar.coldAccounts.length === 0 ? (
+              <p className="text-xs text-clay-muted py-3 text-center">Every account is warm. 🔥</p>
+            ) : (
+              radar.coldAccounts.map(({ company, lastTouch }) => (
+                <button
+                  key={company.id}
+                  onClick={() => setSelectedCompany(company.id)}
+                  className="w-full flex items-center justify-between gap-2 text-left px-2.5 py-2 rounded hover:bg-clay-surface transition-colors"
+                >
+                  <span className="text-xs font-medium text-clay-ink truncate flex items-center gap-1.5">
+                    <Building2 className="w-3.5 h-3.5 text-clay-muted-soft shrink-0" />
+                    {company.name}
+                  </span>
+                  <span className="text-[10px] font-semibold text-clay-coral bg-clay-coral/10 px-1.5 py-0.5 rounded shrink-0">
+                    {lastTouch === 0 ? 'Never' : `${daysSince(lastTouch)}d`}
+                  </span>
+                </button>
+              ))
+            )}
+          </RadarCard>
+
+          {/* Never contacted */}
+          <RadarCard
+            eyebrow="Never contacted"
+            icon={<UserX className="w-4 h-4" />}
+            accent="text-zams-deep"
+            count={radar.neverContacted.length}
+            hint="No logged interaction"
+          >
+            {radar.neverContacted.length === 0 ? (
+              <p className="text-xs text-clay-muted py-3 text-center">Everyone has been touched.</p>
+            ) : (
+              radar.neverContacted.map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => setSelectedContact(c.id)}
+                  className="w-full flex items-center justify-between gap-2 text-left px-2.5 py-2 rounded hover:bg-clay-surface transition-colors"
+                >
+                  <span className="text-xs font-medium text-clay-ink truncate flex items-center gap-1.5">
+                    👤 {c.name}
+                  </span>
+                  <span className="text-[10px] text-clay-muted-soft truncate shrink-0 max-w-[45%]">
+                    {companyFor(c.company_id)?.name || '—'}
+                  </span>
+                </button>
+              ))
+            )}
+          </RadarCard>
+
+          {/* Open loops */}
+          <RadarCard
+            eyebrow="Open loops"
+            icon={<AlarmClock className="w-4 h-4" />}
+            accent="text-clay-ochre"
+            count={radar.openLoops.length}
+            hint="Follow-ups past due"
+          >
+            {radar.openLoops.length === 0 ? (
+              <p className="text-xs text-clay-muted py-3 text-center">No overdue follow-ups.</p>
+            ) : (
+              radar.openLoops.map((loop, i) => (
+                <button
+                  key={`${loop.kind}-${i}`}
+                  onClick={() => loop.dealId && router.push(`/deals?deal=${loop.dealId}`)}
+                  className="w-full flex items-center justify-between gap-2 text-left px-2.5 py-2 rounded hover:bg-clay-surface transition-colors"
+                >
+                  <span className="text-xs font-medium text-clay-ink truncate">
+                    {loop.kind === 'deal' ? '💼 ' : '📅 '}{loop.name}
+                  </span>
+                  <span className="text-[10px] font-semibold text-clay-ochre bg-clay-ochre/10 px-1.5 py-0.5 rounded shrink-0">
+                    {loop.date}
+                  </span>
+                </button>
+              ))
+            )}
+          </RadarCard>
+
+          {/* Stuck deals */}
+          <RadarCard
+            eyebrow="Stuck deals"
+            icon={<Hourglass className="w-4 h-4" />}
+            accent="text-zams-violet"
+            count={radar.stuckDeals.length}
+            hint="No movement in 14+ days"
+          >
+            {radar.stuckDeals.length === 0 ? (
+              <p className="text-xs text-clay-muted py-3 text-center">Every deal is moving. 🎉</p>
+            ) : (
+              radar.stuckDeals.map(({ deal, lastTouch }) => {
+                const lane = WORKFLOW_LANES.find(l => l.id === getWorkflowAction(deal));
+                return (
+                  <button
+                    key={deal.id}
+                    onClick={() => router.push(`/deals?deal=${deal.id}`)}
+                    className="w-full flex items-center justify-between gap-2 text-left px-2.5 py-2 rounded hover:bg-clay-surface transition-colors"
+                  >
+                    <span className="text-xs font-medium text-clay-ink truncate">
+                      {lane?.icon} {deal.client}
+                      <span className="text-clay-muted-soft"> · {lane?.shortLabel}</span>
+                    </span>
+                    <span className="text-[10px] font-semibold text-zams-violet bg-zams-powder/60 px-1.5 py-0.5 rounded shrink-0">
+                      {lastTouch === 0 ? 'Never' : `${daysSince(lastTouch)}d`}
+                    </span>
+                  </button>
+                );
+              })
+            )}
+          </RadarCard>
         </div>
       )}
 
@@ -268,6 +569,43 @@ export default function ActivityPage() {
           companyContacts={contacts.filter((c: Contact) => c.company_id === activeCompany.id)}
         />
       )}
+
+      {activeContact && (
+        <ContactDetail
+          contact={activeContact}
+          onClose={() => setSelectedContact(null)}
+          onSaved={refresh}
+          companies={companies}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ─── Radar card shell ─── */
+function RadarCard({
+  eyebrow, icon, accent, count, hint, children,
+}: {
+  eyebrow: string;
+  icon: React.ReactNode;
+  accent: string;
+  count: number;
+  hint: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="bg-white dark:bg-clay-card border border-clay-hairline rounded-lg overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-clay-hairline bg-clay-surface/50 dark:bg-clay-card">
+        <div className="flex items-center gap-2">
+          <span className={accent}>{icon}</span>
+          <span className="zams-mono text-[11px] uppercase tracking-[0.22px] text-clay-ink">{eyebrow}</span>
+        </div>
+        <span className={clsx('text-sm font-bold', accent)}>{count}</span>
+      </div>
+      <p className="zams-mono text-[9px] uppercase tracking-[0.16px] text-zams-fog px-4 pt-2">{hint}</p>
+      <div className="p-2 pb-3">
+        {children}
+      </div>
     </div>
   );
 }
