@@ -1,0 +1,243 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { Company, CompanyStatus, Contact, ContactStatus, Deal, DealStage, DealWorkflowAction, Meeting, MeetingType, PRODUCT_OPTIONS, STAGE_LABELS, COMPANY_STATUS_LABELS, CONTACT_STATUS_LABELS, MEETING_TYPE_LABELS } from '@/types/crm';
+import { X, Save, Building2, Users, Kanban, Calendar } from 'lucide-react';
+import ContactPicker from '@/components/ContactPicker';
+import { NUDGE_OPTIONS, SAMPLE_STATUS_OPTIONS, WORKFLOW_BY_ID, WORKFLOW_LANES } from '@/utils/deal-workflow';
+
+type ModalType = 'company' | 'contact' | 'deal' | 'meeting';
+
+interface CreateModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSave: (data: any) => void;
+  type: ModalType;
+  companies?: Company[];
+  contacts?: Contact[];
+  deals?: Deal[];
+}
+
+export default function CreateModal({ isOpen, onClose, onSave, type, companies = [], contacts = [], deals = [] }: CreateModalProps) {
+  const [form, setForm] = useState<Record<string, any>>(() => getInitialState(type));
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setForm(getInitialState(type));
+      setError(null);
+    }
+  }, [isOpen, type]);
+
+  if (!isOpen) return null;
+
+  function getInitialState(t: ModalType) {
+    switch (t) {
+      case 'company': return { name: '', status: 'prospect', lead_source: '', account_owner: 'Pat', tags: '', industry: '', size: 'B', address: '', website: '', notes: '' };
+      case 'contact': return { name: '', email: '', phone: '', phone_second: '', line: '', job_title: '', company_id: '', status: 'active', notes: '' };
+      case 'deal': return { title: '', stage: 'research', product: 'Butter', client: '', company_id: '', contact_ids: [] as string[], value: '', priority: 'medium', next_action: '', followup_date: '', workflow_action: 'outreach', nudge_stage: '', sample_status: '', notes: '' };
+      case 'meeting': return { description: '', type: 'call', date: new Date().toISOString().split('T')[0], company_id: '', contact_ids: [] as string[], deal_id: '', product: 'Butter', summary: '', outcome: '', followup_date: '' };
+    }
+  }
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setForm((prev: Record<string, any>) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (type === 'deal') {
+      const laneError = validateDealWorkflow(form);
+      if (laneError) {
+        setError(laneError);
+        return;
+      }
+    }
+    setError(null);
+    const cleaned: Record<string, any> = { ...form };
+    if (cleaned.tags) cleaned.tags = cleaned.tags.split(',').map((t: string) => t.trim()).filter(Boolean);
+    if (type === 'deal') {
+      cleaned.value = cleaned.value === '' || cleaned.value == null ? null : parseFloat(cleaned.value) || null;
+      delete cleaned.notes;
+    }
+    onSave(cleaned);
+    setForm(getInitialState(type));
+    onClose();
+  };
+
+  const handleWorkflowChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const lane = e.target.value;
+    setForm((prev: Record<string, any>) => {
+      const next: Record<string, any> = { ...prev, workflow_action: lane };
+      if (lane !== 'reschedule') next.nudge_stage = '';
+      if (lane !== 'sample') next.sample_status = '';
+      // "Successful" is a real outcome — it closes the deal, like the detail drawer does.
+      if (lane === 'success') {
+        next.stage = 'closed_won';
+        next.followup_date = '';
+      }
+      return next;
+    });
+  };
+
+  const titles: Record<ModalType, string> = { company: 'New Company', contact: 'New Contact', deal: 'New Deal', meeting: 'Log Interaction' };
+  const icons: Record<ModalType, React.ReactNode> = { company: <Building2 className="w-5 h-5" />, contact: <Users className="w-5 h-5" />, deal: <Kanban className="w-5 h-5" />, meeting: <Calendar className="w-5 h-5" /> };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50 p-0 md:p-4" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-clay-card w-full md:max-w-lg md:rounded-2xl rounded-t-2xl shadow-2xl max-h-[90vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="sticky top-0 bg-white dark:bg-clay-card flex items-center justify-between p-4 border-b border-clay-hairline z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-clay-ink text-clay-canvas flex items-center justify-center">{icons[type]}</div>
+            <h2 className="text-lg font-semibold text-clay-ink">{titles[type]}</h2>
+          </div>
+          <button onClick={onClose} className="text-clay-muted hover:text-clay-ink p-2 -mr-2">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          {type === 'company' && (
+            <>
+              <Field label="Company Name *" name="name" value={form.name} onChange={handleChange} required placeholder="e.g., April's Bakery" />
+              <div className="grid grid-cols-2 gap-3">
+                <Select label="Status" name="status" value={form.status} onChange={handleChange} options={Object.entries(COMPANY_STATUS_LABELS).map(([v, l]) => ({ value: v, label: l }))} />
+                <Field label="Lead Source" name="lead_source" value={form.lead_source} onChange={handleChange} placeholder="e.g., Website, Referral" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Account Owner" name="account_owner" value={form.account_owner} onChange={handleChange} />
+                <Select label="Size" name="size" value={form.size} onChange={handleChange} options={[{ value: 'A', label: 'A — Large' }, { value: 'B', label: 'B — Medium' }, { value: 'C', label: 'C — Small' }]} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Industry" name="industry" value={form.industry} onChange={handleChange} placeholder="e.g., Food & Beverage" />
+                <Field label="Tags (comma-separated)" name="tags" value={form.tags} onChange={handleChange} placeholder="bakery, chain, export" />
+              </div>
+              <Field label="Address" name="address" value={form.address} onChange={handleChange} placeholder="Full address" />
+              <Field label="Website" name="website" value={form.website} onChange={handleChange} placeholder="https://..." />
+              <TextArea label="Notes" name="notes" value={form.notes} onChange={handleChange} rows={3} />
+            </>
+          )}
+
+          {type === 'contact' && (
+            <>
+              <Field label="Full Name *" name="name" value={form.name} onChange={handleChange} required placeholder="e.g., John Smith" />
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Email" name="email" value={form.email} onChange={handleChange} placeholder="email@example.com" />
+                <Field label="Phone" name="phone" value={form.phone} onChange={handleChange} placeholder="Phone number" />
+              </div>
+              <Field label="Second Phone" name="phone_second" value={form.phone_second} onChange={handleChange} placeholder="Optional second number" />
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="LINE ID" name="line" value={form.line} onChange={handleChange} placeholder="@lineid" />
+                <Field label="Job Title" name="job_title" value={form.job_title} onChange={handleChange} placeholder="e.g., Owner, Purchasing" />
+              </div>
+              <Select label="Company" name="company_id" value={form.company_id} onChange={handleChange} options={[{ value: '', label: '— None —' }, ...companies.map(c => ({ value: c.id, label: c.name }))]} />
+              <Select label="Status" name="status" value={form.status} onChange={handleChange} options={Object.entries(CONTACT_STATUS_LABELS).map(([v, l]) => ({ value: v, label: l }))} />
+              <TextArea label="Notes" name="notes" value={form.notes} onChange={handleChange} rows={3} />
+            </>
+          )}
+
+          {type === 'deal' && (
+            <>
+              <Field label="Deal Title *" name="title" value={form.title} onChange={handleChange} required placeholder="e.g., April's Bakery — Butter Trial" />
+              <div className="grid grid-cols-2 gap-3">
+                <Select label="Stage" name="stage" value={form.stage} onChange={handleChange} options={Object.entries(STAGE_LABELS).map(([v, l]) => ({ value: v, label: l }))} />
+                <Select label="Product" name="product" value={form.product} onChange={handleChange} options={PRODUCT_OPTIONS.map(p => ({ value: p, label: p }))} />
+              </div>
+              <Field label="Client Name *" name="client" value={form.client} onChange={handleChange} required placeholder="e.g., April's Bakery" />
+              <Select label="Company" name="company_id" value={form.company_id} onChange={handleChange} options={[{ value: '', label: '— None —' }, ...companies.map(c => ({ value: c.id, label: c.name }))]} />
+              <div className="grid grid-cols-2 gap-3">
+                <Select label="Priority" name="priority" value={form.priority} onChange={handleChange} options={[{ value: 'high', label: 'High' }, { value: 'medium', label: 'Medium' }, { value: 'low', label: 'Low' }]} />
+                <Field label="Value (THB)" name="value" value={form.value} onChange={handleChange} placeholder="e.g., 50000" />
+              </div>
+              <div>
+                <Select label="Action Lane" name="workflow_action" value={form.workflow_action} onChange={handleWorkflowChange} options={WORKFLOW_LANES.map(lane => ({ value: lane.id, label: `${lane.icon} ${lane.label}` }))} />
+                <p className="text-xs text-clay-muted mt-1">{WORKFLOW_BY_ID[form.workflow_action as DealWorkflowAction]?.description}</p>
+              </div>
+              {form.workflow_action === 'sample' && (
+                <Select label="Sample Status" name="sample_status" value={form.sample_status} onChange={handleChange} options={[{ value: '', label: '— Choose status —' }, ...SAMPLE_STATUS_OPTIONS.map(option => ({ value: option.value, label: option.label }))]} />
+              )}
+              {form.workflow_action === 'reschedule' && (
+                <Select label="Nudge Stage" name="nudge_stage" value={form.nudge_stage} onChange={handleChange} options={[{ value: '', label: '— Choose nudge —' }, ...NUDGE_OPTIONS.map(option => ({ value: option.value, label: `${option.label} · ${option.days} days` }))]} />
+              )}
+              <Field label="Next Action" name="next_action" value={form.next_action} onChange={handleChange} placeholder="What needs to happen next?" />
+              <Field label="Follow-up Date" name="followup_date" type="date" value={form.followup_date} onChange={handleChange} />
+              <ContactPicker contacts={contacts} companies={companies} selectedCompanyId={form.company_id} selectedIds={form.contact_ids || []} onChange={ids => setForm(prev => ({ ...prev, contact_ids: ids }))} />
+            </>
+          )}
+
+          {type === 'meeting' && (
+            <>
+              <Field label="Description *" name="description" value={form.description} onChange={handleChange} required placeholder="e.g., Follow-up call with K. Oil" />
+              <div className="grid grid-cols-2 gap-3">
+                <Select label="Type" name="type" value={form.type} onChange={handleChange} options={Object.entries(MEETING_TYPE_LABELS).map(([v, l]) => ({ value: v, label: l }))} />
+                <Field label="Date" name="date" type="date" value={form.date} onChange={handleChange} />
+              </div>
+              <Select label="Company" name="company_id" value={form.company_id} onChange={handleChange} options={[{ value: '', label: '— None —' }, ...companies.map(c => ({ value: c.id, label: c.name }))]} />
+              <Select label="Linked Deal" name="deal_id" value={form.deal_id} onChange={handleChange} options={[{ value: '', label: '— None —' }, ...deals.map(d => ({ value: d.id, label: `${d.client} — ${d.title}` }))]} />
+              <ContactPicker contacts={contacts} companies={companies} selectedCompanyId={form.company_id} selectedIds={form.contact_ids || []} onChange={ids => setForm(prev => ({ ...prev, contact_ids: ids }))} />
+              <TextArea label="Summary / Notes" name="summary" value={form.summary} onChange={handleChange} rows={3} placeholder="What was discussed, decided, or needs follow-up..." />
+              <div className="grid grid-cols-2 gap-3">
+                <Select label="Outcome" name="outcome" value={form.outcome} onChange={handleChange} options={[{ value: '', label: '— None —' }, { value: 'positive', label: 'Positive' }, { value: 'neutral', label: 'Neutral' }, { value: 'negative', label: 'Negative' }, { value: 'no_response', label: 'No Response' }]} />
+                <Field label="Follow-up Date" name="followup_date" type="date" value={form.followup_date} onChange={handleChange} />
+              </div>
+            </>
+          )}
+
+          {/* Actions */}
+          {error && <div className="rounded-lg bg-clay-error/10 px-3 py-2 text-sm text-clay-error">{error}</div>}
+          <div className="flex items-center gap-3 pt-2 pb-4">
+            <button type="submit" className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-clay-ink text-clay-canvas text-sm font-medium rounded-lg active:opacity-85 transition-opacity min-h-[48px]">
+              <Save className="w-4 h-4" /> Save
+            </button>
+            <button type="button" onClick={onClose} className="px-4 py-3 bg-clay-card text-clay-ink text-sm font-medium rounded-lg active:bg-clay-surface transition-colors min-h-[48px]">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// Same lane rules as the DealDetail drawer, applied at creation time.
+function validateDealWorkflow(form: Record<string, any>): string | null {
+  const lane = form.workflow_action;
+  if (lane === 'sample' && !form.sample_status) return 'Choose whether the sample was sent or received.';
+  if (lane === 'testing' && !form.followup_date) return 'Set the client testing date before saving.';
+  if (lane === 'reschedule' && !form.followup_date) return 'Set the rescheduled follow-up date.';
+  if (lane === 'reschedule' && !form.nudge_stage) return 'Choose Warm, Remind, Firm, or Parking nudge.';
+  if (lane === 'parked' && !form.followup_date) return 'Parked deals need a revisit date.';
+  return null;
+}
+
+function Field({ label, name, value, onChange, type = 'text', required, placeholder }: { label: string; name: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; type?: string; required?: boolean; placeholder?: string }) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-clay-body mb-1">{label}</label>
+      <input type={type} name={name} value={value} onChange={onChange} required={required} placeholder={placeholder} className="w-full px-3 py-3 border border-clay-hairline rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-clay-ink bg-white dark:bg-clay-card text-clay-ink" />
+    </div>
+  );
+}
+
+function TextArea({ label, name, value, onChange, rows = 3, placeholder }: { label: string; name: string; value: string; onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void; rows?: number; placeholder?: string }) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-clay-body mb-1">{label}</label>
+      <textarea name={name} value={value} onChange={onChange} rows={rows} placeholder={placeholder} className="w-full px-3 py-3 border border-clay-hairline rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-clay-ink resize-none bg-white dark:bg-clay-card text-clay-ink" />
+    </div>
+  );
+}
+
+function Select({ label, name, value, onChange, options }: { label: string; name: string; value: string; onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void; options: { value: string; label: string }[] }) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-clay-body mb-1">{label}</label>
+      <select name={name} value={value} onChange={onChange} className="w-full px-3 py-3 border border-clay-hairline rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-clay-ink bg-white dark:bg-clay-card text-clay-ink">
+        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  );
+}

@@ -1,0 +1,328 @@
+'use client';
+
+import { useState, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
+import Image from 'next/image';
+import { Deal, STAGE_LABELS, DealStage } from '@/types/crm';
+import { useCrm } from '@/components/CrmProvider';
+import { deals as dataDeals, contacts as dataContacts, companies as dataCompanies, meetings as dataMeetings } from '@/data/crmData';
+import CreateModal from '@/components/CreateModal';
+import { Plus, TrendingUp, AlertCircle, ChevronRight, Loader2 } from 'lucide-react';
+import { calculateLeadScore, scoreToTier, TIER_LABELS, TIER_COLORS, TIER_BG, PRIORITY_CLASSES, PRIORITY_LABELS } from '@/utils/lead-scoring';
+
+export default function TodayPage() {
+  const router = useRouter();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const { deals: dbDeals, contacts: dbContacts, companies: dbCompanies, meetings: dbMeetings, loading, createDeal } = useCrm();
+
+  const deals = dbDeals.length > 0 ? dbDeals : (dataDeals as Deal[]);
+  const contacts = dbContacts.length > 0 ? dbContacts : (dataContacts as any);
+  const companies = dbCompanies.length > 0 ? dbCompanies : (dataCompanies as any);
+  const meetings = dbMeetings.length > 0 ? dbMeetings : (dataMeetings as any);
+
+  const today = new Date();
+
+  const dealFollowUps = useMemo(() => {
+    const needsAttention: Deal[] = [];
+    const overdue: Deal[] = [];
+    const dueToday: Deal[] = [];
+    const thisWeek: Deal[] = [];
+
+    deals.forEach((deal: Deal) => {
+      if (deal.stage === 'closed_won' || deal.stage === 'closed_lost') return;
+      if (!deal.followup_date) {
+        needsAttention.push(deal);
+      } else {
+        const date = new Date(deal.followup_date);
+        const todayStr = today.toISOString().split('T')[0];
+        const dateStr = date.toISOString().split('T')[0];
+        if (dateStr === todayStr) dueToday.push(deal);
+        else if (date < today) overdue.push(deal);
+        else if (date.getTime() - today.getTime() <= 7 * 86400000) thisWeek.push(deal);
+      }
+    });
+
+    return { needsAttention, overdue, dueToday, thisWeek };
+  }, [deals]);
+
+  const stats = {
+    activeDeals: deals.filter((d: Deal) => d.stage !== 'closed_won' && d.stage !== 'closed_lost').length,
+    wonDeals: deals.filter((d: Deal) => d.stage === 'closed_won').length,
+    contacts: contacts.filter((c: any) => c.status !== 'not_interested' && c.status !== 'parked').length,
+    companies: companies.filter((c: any) => c.status !== 'lost').length,
+    needAction: dealFollowUps.overdue.length + dealFollowUps.needsAttention.length,
+  };
+
+  const handleCreate = async (data: any) => {
+    try {
+      await createDeal(data);
+    } catch (err) {
+      console.error('Failed to create deal:', err);
+    }
+  };
+
+  // ── Deal row: clickable to open deal detail via deep link ──
+  const DealRow = ({ deal, colorClass }: { deal: Deal; colorClass?: string }) => {
+    const score = calculateLeadScore(deal);
+    const tier = scoreToTier(score);
+    return (
+      <button
+        key={deal.id}
+        onClick={() => router.push('/deals?deal=' + deal.id)}
+        className="w-full text-left bg-white dark:bg-clay-card border border-clay-hairline rounded-lg p-3 active:bg-clay-surface transition-colors"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5">
+              <h4 className="text-sm font-medium text-clay-ink truncate">{deal.client}</h4>
+              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${TIER_COLORS[tier]}`}>
+                {TIER_LABELS[tier]}
+              </span>
+            </div>
+            <p className="text-xs text-clay-muted line-clamp-1">{deal.next_action || deal.title}</p>
+          </div>
+          <ChevronRight className="w-4 h-4 text-clay-muted-soft flex-shrink-0" />
+        </div>
+      </button>
+    );
+  };
+
+  return (
+    <div className="p-4 md:p-6 max-w-6xl pb-20 lg:pb-6">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4 md:mb-6">
+        <div>
+          <h1 className="text-xl md:text-2xl font-semibold text-clay-ink">Today</h1>
+          <p className="text-xs md:text-sm text-clay-muted mt-0.5">
+            {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+          </p>
+        </div>
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="flex items-center gap-2 px-3 md:px-4 py-2 bg-clay-ink text-clay-canvas text-sm font-medium rounded-lg active:opacity-85"
+        >
+          <Plus className="w-4 h-4" /> <span className="hidden sm:inline">New</span>
+        </button>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2 md:gap-3 mb-4 md:mb-6">
+        <button
+          onClick={() => router.push('/deals')}
+          className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline p-3 md:p-4 text-left active:bg-clay-surface transition-colors"
+        >
+          <p className="text-lg md:text-2xl font-bold text-clay-ink">{stats.activeDeals}</p>
+          <p className="text-[10px] md:text-xs text-clay-muted">Active</p>
+        </button>
+        <button
+          onClick={() => router.push('/deals')}
+          className="bg-clay-mint/20 rounded-xl border border-clay-mint/30 p-3 md:p-4 text-left active:bg-clay-mint/30 transition-colors"
+        >
+          <p className="text-lg md:text-2xl font-bold text-clay-teal">{stats.wonDeals}</p>
+          <p className="text-[10px] md:text-xs text-clay-muted">Won</p>
+        </button>
+        <button
+          onClick={() => router.push('/contacts')}
+          className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline p-3 md:p-4 text-left active:bg-clay-surface transition-colors"
+        >
+          <p className="text-lg md:text-2xl font-bold text-clay-ink">{stats.contacts}</p>
+          <p className="text-[10px] md:text-xs text-clay-muted">Contacts</p>
+        </button>
+        <button
+          onClick={() => router.push('/companies')}
+          className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline p-3 md:p-4 text-left active:bg-clay-surface transition-colors"
+        >
+          <p className="text-lg md:text-2xl font-bold text-clay-ink">{stats.companies}</p>
+          <p className="text-[10px] md:text-xs text-clay-muted">Companies</p>
+        </button>
+        <button
+          onClick={() => router.push('/deals')}
+          className="col-span-2 md:col-span-1 bg-clay-pink/10 rounded-xl border border-clay-pink/20 p-3 md:p-4 text-left active:bg-clay-pink/20 transition-colors"
+        >
+          <p className="text-lg md:text-2xl font-bold text-clay-pink">{stats.needAction}</p>
+          <p className="text-[10px] md:text-xs text-clay-muted">Need Action</p>
+        </button>
+      </div>
+
+      {/* Follow-ups */}
+      <section className="mb-6">
+        <h2 className="text-sm md:text-base font-semibold text-clay-ink mb-3">Follow-ups</h2>
+
+        {dealFollowUps.needsAttention.length > 0 && (
+          <div className="mb-4">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-clay-error animate-pulse" />
+              <span className="text-xs font-medium text-clay-muted">
+                Needs Attention ({dealFollowUps.needsAttention.length})
+              </span>
+            </div>
+            <div className="space-y-2">
+              {dealFollowUps.needsAttention.slice(0, 4).map((deal: Deal) => (
+                <DealRow key={deal.id} deal={deal} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {dealFollowUps.overdue.length > 0 && (
+          <div className="mb-4">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-clay-error" />
+              <span className="text-xs font-medium text-clay-muted">
+                Overdue ({dealFollowUps.overdue.length})
+              </span>
+            </div>
+            <div className="space-y-2">
+              {dealFollowUps.overdue.slice(0, 4).map((deal: Deal) => (
+                <button
+                  key={deal.id}
+                  onClick={() => router.push('/deals?deal=' + deal.id)}
+                  className="w-full text-left bg-red-50/30 dark:bg-red-900/10 border border-clay-error rounded-lg p-3 active:bg-red-50/50 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <h4 className="text-sm font-medium text-clay-ink truncate">{deal.client}</h4>
+                        <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-clay-error/10 text-clay-error">
+                          ⚡ Overdue
+                        </span>
+                      </div>
+                      <p className="text-xs text-clay-muted line-clamp-1">{deal.next_action}</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-clay-muted-soft flex-shrink-0" />
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {dealFollowUps.dueToday.length > 0 && (
+          <div className="mb-4">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-clay-ochre" />
+              <span className="text-xs font-medium text-clay-muted">
+                Due Today ({dealFollowUps.dueToday.length})
+              </span>
+            </div>
+            <div className="space-y-2">
+              {dealFollowUps.dueToday.map((deal: Deal) => (
+                <button
+                  key={deal.id}
+                  onClick={() => router.push('/deals?deal=' + deal.id)}
+                  className="w-full text-left bg-orange-50/30 dark:bg-orange-900/10 border border-clay-ochre rounded-lg p-3 active:bg-orange-50/50 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-sm font-medium text-clay-ink truncate">{deal.client}</h4>
+                      <p className="text-xs text-clay-muted line-clamp-1">{deal.next_action}</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-clay-muted-soft flex-shrink-0" />
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {dealFollowUps.thisWeek.length > 0 && (
+          <div className="mb-4">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-clay-mint" />
+              <span className="text-xs font-medium text-clay-muted">
+                This Week ({dealFollowUps.thisWeek.length})
+              </span>
+            </div>
+            <div className="space-y-2">
+              {dealFollowUps.thisWeek.slice(0, 4).map((deal: Deal) => (
+                <DealRow key={deal.id} deal={deal} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {deals.filter((d: Deal) => d.stage !== 'closed_won' && d.stage !== 'closed_lost').length === 0 && (
+          <div className="text-center py-10 bg-white dark:bg-clay-card rounded-xl border border-clay-hairline">
+            <div className="relative mx-auto mb-4 w-28 h-28">
+              <div className="absolute inset-0 rounded-full bg-clay-lavender/20" />
+              <Image
+                src="/assets/mascot-teardrop.png"
+                alt="LeadPulse mascot holding a deal card"
+                width={1024}
+                height={1024}
+                className="relative w-28 h-28 object-contain"
+              />
+            </div>
+            <p className="text-sm font-medium text-clay-ink mb-1">No active deals yet</p>
+            <p className="text-xs text-clay-muted mb-4">Your first deal card is waiting to be made.</p>
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-clay-ink text-clay-canvas text-sm font-medium rounded-lg active:opacity-85"
+            >
+              <Plus className="w-4 h-4" /> Create your first deal
+            </button>
+          </div>
+        )}
+      </section>
+
+      {/* Recent Activity */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm md:text-base font-semibold text-clay-ink">Recent Activity</h2>
+          <button onClick={() => router.push('/meetings')} className="text-xs text-clay-muted">
+            View all
+          </button>
+        </div>
+        <div className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline overflow-hidden">
+          {(meetings as any[]).slice(0, 5).map((meeting: any, i: number) => (
+            <button
+              key={meeting.id}
+              onClick={() => router.push('/meetings')}
+              className={`w-full text-left flex items-center gap-3 px-4 py-3 ${i > 0 ? 'border-t border-clay-hairline' : ''} active:bg-clay-surface`}
+            >
+              <div
+                className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-medium flex-shrink-0 ${
+                  meeting.type === 'meeting'
+                    ? 'bg-clay-lavender/20 text-clay-lavender'
+                    : meeting.type === 'email'
+                    ? 'bg-clay-pink/20 text-clay-pink'
+                    : meeting.type === 'call'
+                    ? 'bg-clay-mint/20 text-clay-teal'
+                    : meeting.type === 'sample_sent'
+                    ? 'bg-clay-ochre/20 text-clay-ochre'
+                    : 'bg-clay-card text-clay-muted'
+                }`}
+              >
+                {meeting.type === 'meeting'
+                  ? 'M'
+                  : meeting.type === 'email'
+                  ? 'E'
+                  : meeting.type === 'call'
+                  ? 'C'
+                  : meeting.type === 'sample_sent'
+                  ? 'S'
+                  : 'N'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-clay-ink truncate">
+                  {meeting.description}
+                </p>
+                <p className="text-xs text-clay-muted">{meeting.date}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* Create Modal */}
+      <CreateModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSave={handleCreate}
+        type="deal"
+        companies={companies}
+        contacts={contacts}
+      />
+    </div>
+  );
+}

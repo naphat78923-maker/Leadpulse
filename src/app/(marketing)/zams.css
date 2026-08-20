@@ -1,0 +1,152 @@
+@import "tailwindcss";
+
+/* ─── Zams design language — applied to the LeadPulse marketing site ─── */
+
+@theme {
+  /* Colors (one chromatic accent: Iris Violet) */
+  --color-zams-violet: #7451f2;
+  --color-zams-deep: #5952a1;
+  --color-zams-cobalt: #0072c6;
+  --color-zams-powder: #d6e5ff;
+  --color-zams-ink: #272727;
+  --color-zams-slate: #5d5d5d;
+  --color-zams-ash: #4f4f4f;
+  --color-zams-fog: #858585;
+  --color-zams-mist: #e0e0e0;
+  --color-zams-snow: #f6f6f6;
+  --color-zams-white: #ffffff;
+}
+
+/* Typography — font-to-role mapping is strict:
+   Lustria (display serif) → headlines only
+   DM Sans (sans) → body/UI
+   Martian Mono (mono) → uppercase meta-labels only */
+.zams-display {
+  font-family: var(--font-lustria), ui-serif, Georgia, serif;
+}
+.zams-sans {
+  font-family: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
+}
+.zams-mono {
+  font-family: var(--font-martian-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Section eyebrow — Martian Mono 11px uppercase, build-log voice */
+.zams-eyebrow {
+  font-family: var(--font-martian-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.2;
+  letter-spacing: 0.22px;
+  text-transform: uppercase;
+  color: #858585;
+}
+
+/* Hero display — Lustria 52px with tight negative tracking */
+.zams-display-hero {
+  font-family: var(--font-lustria), ui-serif, Georgia, serif;
+  font-size: clamp(36px, 5.2vw, 52px);
+  line-height: 1.1;
+  letter-spacing: -0.05em;
+  color: #272727;
+  font-weight: 400;
+}
+
+/* Section heading — Lustria 36–42px */
+.zams-display-heading {
+  font-family: var(--font-lustria), ui-serif, Georgia, serif;
+  font-size: clamp(28px, 3.6vw, 42px);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  color: #272727;
+  font-weight: 400;
+}
+
+/* Body — DM Sans 16px / 1.6 in Slate */
+.zams-body {
+  font-family: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  color: #5d5d5d;
+}
+
+/* Primary CTA — violet fill, the single shadow in the system */
+.zams-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background-color: #7451f2;
+  color: #ffffff;
+  font-family: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.24px;
+  padding: 12px 20px;
+  border-radius: 4px;
+  box-shadow: rgba(0, 0, 0, 0.2) 0px 2px 4px 0px;
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+.zams-btn-primary:hover {
+  background-color: #5f3ee0;
+}
+.zams-btn-primary:active {
+  transform: translateY(1px);
+  box-shadow: rgba(0, 0, 0, 0.2) 0px 1px 2px 0px;
+}
+
+/* Outlined secondary — never filled violet */
+.zams-btn-outline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background-color: #ffffff;
+  color: #272727;
+  font-family: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.24px;
+  padding: 12px 20px;
+  border-radius: 4px;
+  border: 1px solid #5d5d5d;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.zams-btn-outline:hover {
+  border-color: #5952a1;
+  color: #5952a1;
+}
+
+/* Dotted grid background — the one allowed texture */
+.zams-dotted-grid {
+  background-image: radial-gradient(#e0e0e0 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Ghost nav link */
+.zams-nav-link {
+  font-family: var(--font-martian-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.24px;
+  text-transform: uppercase;
+  color: #272727;
+  padding: 8px 12px;
+  transition: color 0.15s ease;
+}
+.zams-nav-link:hover {
+  color: #7451f2;
+}
+
+/* COMING SOON pill */
+.zams-pill {
+  font-family: var(--font-martian-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  letter-spacing: 0.22px;
+  text-transform: uppercase;
+  color: #5d5d5d;
+  background-color: #ffffff;
+  border: 1px solid #e0e0e0;
+  border-radius: 100px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
