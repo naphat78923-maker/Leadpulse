@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import Image from 'next/image';
 import { Deal, DealWorkflowAction, NudgeStage, SampleStatus } from '@/types/crm';
-import { WORKFLOW_BY_ID, NUDGE_OPTIONS, SAMPLE_STATUS_OPTIONS } from '@/utils/deal-workflow';
+import { WORKFLOW_BY_ID, LANE_MASCOT_PATHS, NUDGE_OPTIONS, SAMPLE_STATUS_OPTIONS } from '@/utils/deal-workflow';
+import MascotSprite from '@/components/MascotSprite';
 import { X, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -90,16 +90,7 @@ export default function LaneGateModal({ deal, targetLane, onCancel, onConfirm }:
         <div className="sticky top-0 bg-white dark:bg-clay-card border-b border-clay-hairline px-5 py-4 z-10">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="relative w-10 h-10 shrink-0">
-                <div className="absolute inset-0 rounded-full bg-clay-lavender/20" />
-                <Image
-                  src="/assets/mascot-teardrop.png"
-                  alt="LeadPulse mascot"
-                  width={1024}
-                  height={1024}
-                  className="relative w-10 h-10 object-contain"
-                />
-              </div>
+              <MascotSprite src={LANE_MASCOT_PATHS[targetLane]} size={40} alt={lane.shortLabel} />
               <div>
                 <p className="zams-eyebrow mb-0.5">Gate · {lane.shortLabel}</p>
                 <h2 className="text-sm font-semibold text-clay-ink leading-tight">

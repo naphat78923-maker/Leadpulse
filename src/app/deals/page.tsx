@@ -8,6 +8,7 @@ import { deals as dataDeals, contacts as dataContacts, companies as dataCompanie
 import CreateModal from '@/components/CreateModal';
 import DealDetail from '@/components/DealDetail';
 import LaneGateModal, { LaneGatePayload } from '@/components/LaneGateModal';
+import MascotSprite from '@/components/MascotSprite';
 import { useToast } from '@/components/ToastProvider';
 import * as crm from '@/lib/crm';
 import {
@@ -33,7 +34,7 @@ import {
   PRIORITY_CLASSES,
   PRIORITY_LABELS,
 } from '@/utils/lead-scoring';
-import { WORKFLOW_LANES, WORKFLOW_BY_ID, getWorkflowAction, nudgeLabel } from '@/utils/deal-workflow';
+import { WORKFLOW_LANES, WORKFLOW_BY_ID, LANE_MASCOT_PATHS, getWorkflowAction, nudgeLabel } from '@/utils/deal-workflow';
 
 type ViewMode = 'board' | 'closed' | 'table';
 
@@ -78,7 +79,7 @@ export default function DealsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [gate, setGate] = useState<{ deal: Deal; target: DealWorkflowAction } | null>(null);
-  const [celebrate, setCelebrate] = useState<{ dealId: string; laneId: DealWorkflowAction } | null>(null);
+  const [celebrate, setCelebrate] = useState<{ dealId: string; laneId: DealWorkflowAction; sprite?: string } | null>(null);
   const [pickerDeal, setPickerDeal] = useState<Deal | null>(null);
 
   const { deals: dbDeals, contacts: dbContacts, companies: dbCompanies, loading, refresh, createDeal, logActivity } = useCrm();
@@ -214,7 +215,10 @@ export default function DealsPage() {
       undoPayload: before,
     });
     setGate(null);
-    setCelebrate({ dealId: deal.id, laneId: target });
+    const celebrationSprite = target === 'success'
+      ? (Math.random() < 0.5 ? '/assets/mascots/mascot-won-trophy.png' : '/assets/mascots/mascot-won-confetti.png')
+      : LANE_MASCOT_PATHS[target];
+    setCelebrate({ dealId: deal.id, laneId: target, sprite: celebrationSprite });
     setTimeout(() => setCelebrate(null), 900);
     addToast(target === 'success' ? '🎉 Deal closed as won!' : `${lane.icon} Moved to ${lane.shortLabel}`);
     await refresh();
@@ -415,7 +419,10 @@ export default function DealsPage() {
                 <section className={clsx('rounded-2xl border p-3', lane.className)}>
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <div>
-                      <h2 className="text-base font-semibold text-clay-ink">{lane.icon} {lane.label}</h2>
+                      <h2 className="text-base font-semibold text-clay-ink flex items-center gap-1.5">
+                        <MascotSprite src={LANE_MASCOT_PATHS[lane.id]} size={24} alt={lane.label} />
+                        {lane.label}
+                      </h2>
                       <p className="text-xs text-clay-muted mt-1">{lane.description}</p>
                     </div>
                     <span className="text-sm text-clay-muted bg-white/70 dark:bg-clay-card px-2 py-1 rounded-full">{laneDeals.length}</span>
@@ -448,7 +455,10 @@ export default function DealsPage() {
                   <DroppableLane key={lane.id} laneId={lane.id} className={lane.className}>
                     <div className="flex items-start justify-between gap-2 mb-3 shrink-0">
                       <div>
-                        <h2 className="text-sm font-semibold text-clay-ink">{lane.icon} {lane.shortLabel}</h2>
+                        <h2 className="text-sm font-semibold text-clay-ink flex items-center gap-1.5">
+                          <MascotSprite src={LANE_MASCOT_PATHS[lane.id]} size={20} alt={lane.shortLabel} />
+                          {lane.shortLabel}
+                        </h2>
                         <p className="text-xs text-clay-muted mt-0.5 leading-snug">{lane.description}</p>
                         <p className="zams-mono text-[9px] uppercase tracking-[0.14px] text-zams-fog mt-1">{LANE_CRITERIA[lane.id]}</p>
                       </div>
@@ -466,16 +476,22 @@ export default function DealsPage() {
                         </DraggableCard>
                       ))}
                       {dealsByAction[lane.id].length === 0 && (
-                        <div className="text-center py-6 text-xs text-clay-muted-soft border-2 border-dashed border-clay-hairline rounded-lg">Drop here</div>
+                        lane.id === 'parked' ? (
+                          <div className="text-center py-6 rounded-lg border-2 border-dashed border-clay-hairline flex flex-col items-center gap-2 opacity-90">
+                            <MascotSprite src={LANE_MASCOT_PATHS.parked} size={44} alt="Sleepy parked mascot" />
+                            <p className="text-xs text-clay-muted-soft">Nothing parked — everything is moving.</p>
+                          </div>
+                        ) : (
+                          <div className="text-center py-6 text-xs text-clay-muted-soft border-2 border-dashed border-clay-hairline rounded-lg">Drop here</div>
+                        )
                       )}
                       {celebrate && celebrate.laneId === lane.id && (
                         <div className="flex justify-center">
-                          <Image
-                            src="/assets/mascot-teardrop.png"
+                          <MascotSprite
+                            src={celebrate.sprite || LANE_MASCOT_PATHS[lane.id]}
+                            size={40}
                             alt="Mascot celebrating"
-                            width={1024}
-                            height={1024}
-                            className="mascot-pop w-10 h-10 object-contain"
+                            className="mascot-pop"
                           />
                         </div>
                       )}
@@ -511,12 +527,11 @@ export default function DealsPage() {
               {activeDragId ? (
                 <div className="relative w-[272px] rotate-2">
                   {renderDealCard(deals.find(d => d.id === activeDragId)!)}
-                  <Image
-                    src="/assets/mascot-teardrop.png"
+                  <MascotSprite
+                    src={LANE_MASCOT_PATHS[getWorkflowAction(deals.find(d => d.id === activeDragId)!)]}
+                    size={44}
                     alt="Mascot carrying the deal card"
-                    width={1024}
-                    height={1024}
-                    className="mascot-ride absolute -top-7 -right-4 w-12 h-12 object-contain"
+                    className="mascot-ride absolute -top-7 -right-4"
                   />
                 </div>
               ) : null}

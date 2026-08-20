@@ -76,6 +76,17 @@ export const WORKFLOW_BY_ID = Object.fromEntries(
   WORKFLOW_LANES.map(lane => [lane.id, lane])
 ) as Record<DealWorkflowAction, WorkflowLane>;
 
+/** Claymation mascot per lane. Success uses the trophy variant; celebrations randomize trophy/confetti. */
+export const LANE_MASCOT_PATHS: Record<DealWorkflowAction, string> = {
+  outreach: '/assets/mascots/mascot-outreach.png',
+  reply: '/assets/mascots/mascot-reply.png',
+  sample: '/assets/mascots/mascot-sample.png',
+  testing: '/assets/mascots/mascot-testing.png',
+  reschedule: '/assets/mascots/mascot-teardrop.png',
+  parked: '/assets/mascots/mascot-parked.png',
+  success: '/assets/mascots/mascot-won-trophy.png',
+};
+
 export const NUDGE_OPTIONS: Array<{ value: NudgeStage; label: string; days: number }> = [
   { value: 'warm', label: 'Warm nudge', days: 3 },
   { value: 'remind', label: 'Remind nudge', days: 7 },
