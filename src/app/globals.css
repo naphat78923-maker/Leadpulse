@@ -10,15 +10,17 @@
 }
 
 @theme {
-  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Lustria', ui-serif, Georgia, serif;
 
-  /* Zams design language — one chromatic accent (Iris Violet) */
-  --color-zams-violet: #7451f2;
-  --color-zams-deep: #5952a1;
-  --color-zams-cobalt: #0072c6;
-  --color-zams-powder: #d6e5ff;
-  --color-zams-ink: #272727;
+  /* Clay desk — a tiny clay sales desk working late at night.
+     Midnight cocoa base, cream text, butter yellow attention,
+     grape purple primary, mint progress, tomato red only for danger. */
+  --color-zams-violet: #7b5cd6;
+  --color-zams-deep: #5a44a8;
+  --color-zams-cobalt: #4a7bb5;
+  --color-zams-powder: #e8e0f7;
+  --color-zams-ink: #2b211a;
   --color-zams-slate: #5d5d5d;
   --color-zams-ash: #4f4f4f;
   --color-zams-fog: #858585;
@@ -26,31 +28,31 @@
   --color-zams-snow: #f6f6f6;
   --color-zams-white: #ffffff;
 
-  /* Clay light mode (default) */
-  --color-clay-ink: #0a0a0a;
+  /* Clay light mode (warm paper desk, default) */
+  --color-clay-ink: #2b211a;
   --color-clay-ink-light: #1a1a1a;
-  --color-clay-body: #3a3a3a;
+  --color-clay-body: #3f382f;
   --color-clay-body-strong: #1a1a1a;
   --color-clay-muted: #6a6a6a;
   --color-clay-muted-soft: #9a9a9a;
-  --color-clay-canvas: #fffaf0;
+  --color-clay-canvas: #fdf6e9;
   --color-clay-surface: #faf5e8;
   --color-clay-card: #f5f0e0;
   --color-clay-hairline: #e5e5e5;
 
-  /* Brand accents */
-  --color-clay-pink: #ff4d8b;
-  --color-clay-teal: #1a3a3a;
+  /* Brand accents — clay softened */
+  --color-clay-pink: #d98ba8;
+  --color-clay-teal: #2a5a5a;
   --color-clay-lavender: #b8a4ed;
-  --color-clay-peach: #ffb084;
-  --color-clay-ochre: #e8b94a;
-  --color-clay-mint: #a4d4c5;
-  --color-clay-coral: #ff6b5a;
+  --color-clay-peach: #f2b48c;
+  --color-clay-ochre: #eec35a;   /* butter yellow — attention */
+  --color-clay-mint: #7fc9a8;    /* mint — progress */
+  --color-clay-coral: #e0766a;
 
-  /* Semantic */
-  --color-clay-success: #22c55e;
-  --color-clay-warning: #f59e0b;
-  --color-clay-error: #ef4444;
+  /* Semantic — tomato red only for true danger */
+  --color-clay-success: #3daf7a;
+  --color-clay-warning: #eec35a;
+  --color-clay-error: #d9543f;
 
   /* Spacing */
   --spacing-clay-xs: 8px;
@@ -61,34 +63,49 @@
   --spacing-clay-xxl: 48px;
   --spacing-clay-section: 96px;
 
-  /* Radius */
-  --radius-clay-xs: 6px;
-  --radius-clay-sm: 8px;
-  --radius-clay-md: 12px;
-  --radius-clay-lg: 16px;
-  --radius-clay-xl: 24px);
+  /* Radius — rounded clay slabs */
+  --radius-clay-xs: 8px;
+  --radius-clay-sm: 10px;
+  --radius-clay-md: 14px;
+  --radius-clay-lg: 18px;
+  --radius-clay-xl: 24px;
 }
 
-/* ─── Dark Mode Overrides ─── */
+/* ─── Dark Mode Overrides — midnight cocoa desk ─── */
 .dark {
-  --color-clay-ink: #ffffff;
+  --color-clay-ink: #f6f3ea;
   --color-clay-ink-light: #e0e0e0;
-  --color-clay-body: #a0a0a0;
+  --color-clay-body: #b9b3a4;
   --color-clay-body-strong: #d0d0d0;
-  --color-clay-muted: #808080;
-  --color-clay-muted-soft: #606060;
-  --color-clay-canvas: #0f0f0f;
-  --color-clay-surface: #1a1a1a;
-  --color-clay-card: #222222;
-  --color-clay-hairline: #333333;
+  --color-clay-muted: #9c9688;
+  --color-clay-muted-soft: #706a5e;
+  --color-clay-canvas: #17120e;   /* midnight cocoa */
+  --color-clay-surface: #1e1915;
+  --color-clay-card: #262019;
+  --color-clay-hairline: #3a332b;
 
-  --color-clay-pink: #ff6b9a;
+  --color-clay-pink: #d98ba8;
   --color-clay-teal: #2a5a5a;
   --color-clay-lavender: #c4b0f0;
-  --color-clay-peach: #ffc09a;
-  --color-clay-ochre: #f0c850;
-  --color-clay-mint: #b0e0d0;
-  --color-clay-coral: #ff8070;
+  --color-clay-peach: #f2b48c;
+  --color-clay-ochre: #eec35a;
+  --color-clay-mint: #7fc9a8;
+  --color-clay-coral: #e0766a;
+
+  /* Zams mapped onto the same desk */
+  --color-zams-violet: #8a6ae0;
+  --color-zams-deep: #c4b0f0;
+  --color-zams-powder: #3b3357;
+  --color-zams-ink: #f6f3ea;
+  --color-zams-slate: #b9b3a4;
+  --color-zams-ash: #a49d8f;
+  --color-zams-fog: #9c9688;
+  --color-zams-mist: #3a332b;
+  --color-zams-snow: #262019;
+  --color-zams-white: #ffffff;
+
+  /* Dotted grid gets darker in night desk */
+  --color-dot-grid: #3a332b;
 }
 
 html {
@@ -239,17 +256,19 @@ body {
 
 /* ─── Zams design language — applied to the LeadPulse interface ─── */
 
-/* Section eyebrow — Martian Mono 11px uppercase, build-log voice */
+/* Section eyebrow — friendly sans, small caps. Serif is reserved for
+   the daily-briefing voice; mono only for operational metadata. */
 .zams-eyebrow {
-  font-family: var(--font-martian-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
+  font-family: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1.2;
-  letter-spacing: 0.22px;
+  letter-spacing: 0.4px;
   text-transform: uppercase;
   color: var(--color-fog);
 }
 
-/* Display heading — Lustria serif with tight negative tracking */
+/* Display heading — Lustria serif, reserved for the daily briefing voice */
 .zams-display {
   font-family: var(--font-lustria), ui-serif, Georgia, serif;
   font-weight: 400;
@@ -257,42 +276,42 @@ body {
   letter-spacing: -0.03em;
 }
 
-/* Body workhorse — DM Sans */
+/* Body workhorse — DM Sans (rounded, friendly) */
 .zams-sans {
   font-family: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
 }
 
-/* Mono label — Martian Mono, uppercase micro-tags only */
+/* Mono label — Martian Mono, uppercase micro-tags for metadata only */
 .zams-mono {
   font-family: var(--font-martian-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-/* Primary CTA — violet fill, the single shadow in the system */
+/* Primary CTA — grape purple, clay-slab rounded, one soft shadow */
 .zams-btn-primary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background-color: #7451f2;
+  background-color: #7b5cd6;
   color: #ffffff;
   font-family: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.24px;
   padding: 10px 18px;
-  border-radius: 4px;
-  box-shadow: rgba(0, 0, 0, 0.2) 0px 2px 4px 0px;
-  transition: background-color 0.15s ease, transform 0.1s ease;
+  border-radius: 12px;
+  box-shadow: 0 2px 6px rgba(43, 33, 26, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  transition: background-color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
 }
 .zams-btn-primary:hover {
-  background-color: #5f3ee0;
+  background-color: #6a4bc8;
 }
 .zams-btn-primary:active {
   transform: translateY(1px);
-  box-shadow: rgba(0, 0, 0, 0.2) 0px 1px 2px 0px;
+  box-shadow: 0 1px 3px rgba(43, 33, 26, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
-/* Outlined secondary */
+/* Outlined secondary — clay slab */
 .zams-btn-outline {
   display: inline-flex;
   align-items: center;
@@ -305,7 +324,7 @@ body {
   font-weight: 500;
   letter-spacing: 0.24px;
   padding: 10px 18px;
-  border-radius: 4px;
+  border-radius: 12px;
   border: 1px solid #5d5d5d;
   transition: border-color 0.15s ease, color 0.15s ease;
 }
@@ -316,16 +335,16 @@ body {
 
 /* Dotted grid background — the one allowed texture */
 .zams-dotted-grid {
-  background-image: radial-gradient(#e0e0e0 1px, transparent 1px);
+  background-image: radial-gradient(var(--color-dot-grid, #e0e0e0) 1px, transparent 1px);
   background-size: 20px 20px;
 }
 
-/* Ghost nav link */
+/* Ghost nav link — sans, small caps (mono reserved for metadata) */
 .zams-nav-link {
-  font-family: var(--font-martian-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
   font-size: 12px;
   font-weight: 500;
-  letter-spacing: 0.24px;
+  letter-spacing: 0.4px;
   text-transform: uppercase;
   color: #272727;
   padding: 8px 12px;
@@ -337,7 +356,7 @@ body {
 
 /* COMING SOON pill */
 .zams-pill {
-  font-family: var(--font-martian-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
   font-size: 11px;
   letter-spacing: 0.22px;
   text-transform: uppercase;

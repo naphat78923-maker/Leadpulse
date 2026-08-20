@@ -11,6 +11,18 @@ import LogInteractionModal from '@/components/LogInteractionModal';
 import MascotSprite from '@/components/MascotSprite';
 import { Plus, TrendingUp, AlertCircle, ChevronRight, Loader2, MessageCircle, Phone, Mail, Users, Package, Bell } from 'lucide-react';
 import { calculateLeadScore, scoreToTier, TIER_LABELS, TIER_COLORS, TIER_BG, PRIORITY_CLASSES, PRIORITY_LABELS } from '@/utils/lead-scoring';
+import { WORKFLOW_LANES, getWorkflowAction, nudgeLabel } from '@/utils/deal-workflow';
+
+// One-line action verbs for the queue (brief item 5: "Call, DM, Send sample, Find buyer")
+const ACTION_VERBS: Record<string, string> = {
+  outreach: 'Send outreach',
+  reply: 'Reply',
+  sample: 'Send sample',
+  testing: 'Confirm test',
+  reschedule: 'Reschedule',
+  parked: 'Revisit',
+  success: 'Congratulate',
+};
 
 const PULSE_ITEMS = [
   { key: 'call', label: 'Calls', icon: <Phone className="w-3.5 h-3.5 text-clay-teal" /> },
@@ -148,16 +160,23 @@ export default function TodayPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setIsLogModalOpen(true)}
-            className="hidden sm:flex items-center gap-2 px-4 py-2.5 border border-zams-mist text-clay-ink text-sm font-medium rounded-md hover:border-zams-violet hover:text-zams-violet transition-colors"
+            onClick={() => setIsModalOpen(true)}
+            className="sm:hidden flex items-center justify-center w-10 h-10 border border-zams-mist text-clay-ink rounded-md active:bg-clay-surface"
+            aria-label="New deal"
           >
-            <MessageCircle className="w-4 h-4" /> Log interaction
+            <Plus className="w-4 h-4" />
           </button>
           <button
             onClick={() => setIsModalOpen(true)}
+            className="hidden sm:flex items-center gap-2 px-4 py-2.5 border border-zams-mist text-clay-ink text-sm font-medium rounded-md hover:border-zams-violet hover:text-zams-violet transition-colors"
+          >
+            <Plus className="w-4 h-4" /> New deal
+          </button>
+          <button
+            onClick={() => setIsLogModalOpen(true)}
             className="zams-btn-primary"
           >
-            <Plus className="w-4 h-4" /> <span className="hidden sm:inline">New deal</span>
+            <MessageCircle className="w-4 h-4" /> <span className="hidden sm:inline">Log interaction</span>
           </button>
         </div>
       </div>
@@ -182,7 +201,7 @@ export default function TodayPage() {
       </div>
 
       {/* Today's plan — the hero */}
-      <div className="mb-4 rounded-2xl border border-zams-violet/25 bg-white dark:bg-clay-card p-5 md:p-6 flex flex-col md:flex-row md:items-center gap-4 md:gap-5 relative overflow-hidden shadow-[0_10px_30px_-14px_rgba(116,81,242,0.4)]">
+      <div className="mb-4 rounded-2xl border border-clay-hairline bg-white dark:bg-clay-card p-5 md:p-6 flex flex-col md:flex-row md:items-center gap-4 md:gap-5 relative overflow-hidden shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_6px_20px_-12px_rgba(43,33,26,0.25)]">
         <MascotSprite
           src={startHere ? '/assets/mascots/mascot-teardrop.png' : '/assets/mascots/mascot-outreach.png'}
           size={56}
@@ -252,14 +271,14 @@ export default function TodayPage() {
         </span>
       </div>
 
-      {/* Action queue */}
+      {/* Action queue — top 3 overdue first, one-line verbs, chips */}
       <section className="mb-6">
         <div className="flex items-center gap-2.5 mb-3">
-          <MascotSprite src="/assets/mascots/mascot-testing.png" size={28} alt="Watchdog mascot" />
+          <MascotSprite src="/assets/mascots/mascot-followup.png" size={28} alt="Follow-up mascot" />
           <div>
             <h2 className="zams-display text-lg md:text-xl leading-tight">Action queue</h2>
             <p className="text-xs text-clay-muted">
-              {actionQueue.length === 0 ? 'Nothing waiting' : `${actionQueue.length} ${actionQueue.length === 1 ? 'item' : 'items'} waiting`}
+              {dealFollowUps.overdue.length === 0 ? 'Nothing waiting' : `${dealFollowUps.overdue.length} ${dealFollowUps.overdue.length === 1 ? 'item' : 'items'} waiting`}
             </p>
           </div>
         </div>
@@ -270,45 +289,72 @@ export default function TodayPage() {
             <p className="text-sm text-clay-muted">Everything is moving. Nothing waiting.</p>
           </div>
         ) : (
-          <div className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline divide-y divide-clay-hairline overflow-hidden">
-            {actionQueue.map(item => {
-              const days = item.kind === 'overdue' && item.deal.followup_date ? daysOverdue(item.deal.followup_date) : 0;
-              const badgeCls = item.kind === 'overdue'
-                ? (days > 7 ? 'bg-clay-error/15 text-clay-error' : 'bg-clay-ochre/15 text-clay-ochre')
-                : item.kind === 'today'
-                  ? 'bg-clay-ochre/15 text-clay-ochre'
-                  : 'bg-zams-powder/60 text-zams-deep';
-              return (
-                <div key={item.deal.id} className="px-4 py-3 flex items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-sm font-medium text-clay-ink truncate">Follow up with {item.deal.client}</p>
-                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${badgeCls}`}>
-                        {item.kind === 'overdue' ? `⚡ ${days}d late` : item.kind === 'today' ? 'Due today' : 'Needs action'}
-                      </span>
+          <>
+            <div className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline divide-y divide-clay-hairline overflow-hidden">
+              {actionQueue.slice(0, 4).map(item => {
+                const days = item.kind === 'overdue' && item.deal.followup_date ? daysOverdue(item.deal.followup_date) : 0;
+                const lane = WORKFLOW_LANES.find(l => l.id === getWorkflowAction(item.deal))!;
+                const verb = ACTION_VERBS[getWorkflowAction(item.deal)] || 'Follow up';
+                const nudgeChip = item.deal.nudge_stage ? nudgeLabel(item.deal.nudge_stage) : null;
+                return (
+                  <div key={item.deal.id} className="px-4 py-3 flex items-center gap-3 group">
+                    {/* Left-edge urgency marker — the clay stamp, not a red box */}
+                    {item.kind === 'overdue' && (
+                      <span className="w-1 self-stretch shrink-0 rounded-full bg-clay-error" aria-hidden />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-medium text-clay-ink truncate">{item.deal.client}</p>
+                        {item.kind === 'overdue' && (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-clay-error/10 text-clay-error shrink-0">
+                            {days}d late
+                          </span>
+                        )}
+                        {item.kind === 'today' && (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-clay-ochre/15 text-clay-ochre shrink-0">
+                            Due today
+                          </span>
+                        )}
+                        {nudgeChip && (
+                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-clay-lavender/20 text-clay-lavender shrink-0">
+                            {nudgeChip}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-clay-muted truncate mt-0.5">
+                        <span className="font-semibold text-clay-body">{verb}</span>
+                        {item.deal.next_action ? ` — ${item.deal.next_action}` : ` · ${lane.label.toLowerCase()}`}
+                      </p>
                     </div>
-                    <p className="text-xs text-clay-muted truncate mt-0.5">
-                      {item.deal.next_action || item.deal.title}
-                    </p>
+                    <button
+                      onClick={() => { setLogDealId(item.deal.id); setIsLogModalOpen(true); }}
+                      className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zams-mist text-zams-deep text-xs font-medium hover:border-zams-violet hover:text-zams-violet transition-colors min-h-[44px]"
+                      aria-label={`Log follow-up for ${item.deal.client}`}
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      <span className="hidden sm:inline">Log follow-up</span>
+                    </button>
+                    <button
+                      onClick={() => router.push('/deals?deal=' + item.deal.id)}
+                      className="shrink-0 w-9 h-9 rounded-lg bg-zams-violet text-white flex items-center justify-center hover:bg-[#6a4bc8] transition-colors"
+                      aria-label={`Open ${item.deal.client}`}
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
                   </div>
-                  <button
-                    onClick={() => { setLogDealId(item.deal.id); setIsLogModalOpen(true); }}
-                    className="shrink-0 w-9 h-9 rounded-lg border border-zams-mist text-zams-deep flex items-center justify-center hover:border-zams-violet transition-colors"
-                    aria-label={`Log touch for ${item.deal.client}`}
-                  >
-                    <MessageCircle className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => router.push('/deals?deal=' + item.deal.id)}
-                    className="shrink-0 w-9 h-9 rounded-lg bg-zams-violet text-white flex items-center justify-center hover:bg-[#5f3ee0] transition-colors"
-                    aria-label={`Open ${item.deal.client}`}
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+
+            {dealFollowUps.overdue.length > 3 && (
+              <button
+                onClick={() => router.push('/deals')}
+                className="mt-2.5 text-xs font-semibold text-clay-muted hover:text-clay-ink transition-colors flex items-center gap-1"
+              >
+                View all {dealFollowUps.overdue.length} overdue <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </>
         )}
 
         {deals.filter((d: Deal) => d.stage !== 'closed_won' && d.stage !== 'closed_lost').length === 0 && (
