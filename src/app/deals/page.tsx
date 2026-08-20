@@ -442,7 +442,7 @@ export default function DealsPage() {
           </div>
 
           <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-            <div className="hidden md:relative">
+            <div className="hidden md:block relative">
               <div ref={boardRef} className="flex gap-3 items-stretch overflow-x-auto pb-3 pr-1">
                 {WORKFLOW_LANES.map(lane => (
                   <DroppableLane key={lane.id} laneId={lane.id} className={lane.className}>
