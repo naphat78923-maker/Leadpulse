@@ -40,6 +40,8 @@ export default function TodayPage() {
   const meetings = dbMeetings.length > 0 ? dbMeetings : (dataMeetings as any);
 
   const today = new Date();
+  const hour = today.getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
   const dealFollowUps = useMemo(() => {
     const needsAttention: Deal[] = [];
@@ -143,7 +145,30 @@ export default function TodayPage() {
             <p className="zams-eyebrow mb-0.5">
               {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
             </p>
-            <h1 className="zams-display text-2xl md:text-[28px] leading-none">Today</h1>
+            <h1 className="zams-display text-2xl md:text-[28px] leading-none">
+              {greeting}, Pat
+            </h1>
+            <p className="text-xs md:text-sm text-clay-muted mt-1">
+              {dealFollowUps.dueToday.length + dealFollowUps.overdue.length === 0 ? (
+                'All clear — a clean day ahead.'
+              ) : (
+                <>
+                  You have{' '}
+                  {dealFollowUps.dueToday.length > 0 && (
+                    <span className="text-clay-ochre font-semibold">
+                      {dealFollowUps.dueToday.length} deal{dealFollowUps.dueToday.length === 1 ? '' : 's'} due today
+                    </span>
+                  )}
+                  {dealFollowUps.dueToday.length > 0 && dealFollowUps.overdue.length > 0 && ' and '}
+                  {dealFollowUps.overdue.length > 0 && (
+                    <span className="text-clay-error font-semibold">
+                      {dealFollowUps.overdue.length} overdue
+                    </span>
+                  )}
+                  .
+                </>
+              )}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
