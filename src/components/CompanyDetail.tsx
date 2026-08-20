@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Company, COMPANY_STATUS_LABELS, CompanyStatus, Contact } from '@/types/crm';
-import { Building2, Tag, X, Edit2, Loader2, Check, UserPlus } from 'lucide-react';
+import { Building2, Tag, X, Edit2, Loader2, Check, UserPlus, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
 import { useToast } from '@/components/ToastProvider';
 import { useCrm } from '@/components/CrmProvider';
@@ -20,12 +20,13 @@ interface CompanyDetailProps {
 
 export default function CompanyDetail({ company, onClose, onSaved, contacts, companyContacts }: CompanyDetailProps) {
   const { addToast } = useToast();
-  const { createContact, refresh } = useCrm();
+  const { createContact, refresh, deleteEntity } = useCrm();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAddContact, setShowAddContact] = useState(false);
+  const [confirmArchive, setConfirmArchive] = useState(false);
   const [newContact, setNewContact] = useState<any>({ name: '', email: '', phone: '', phone_second: '', line: '', job_title: '' });
   const [editData, setEditData] = useState({
     name: company.name,
@@ -108,6 +109,9 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
             )}
             <button onClick={() => setEditing(!editing)} className="p-2 text-clay-muted active:opacity-70">
               <Edit2 className="w-5 h-5" />
+            </button>
+            <button onClick={() => setConfirmArchive(true)} className="p-2 text-clay-muted-soft active:opacity-70 hover:text-clay-error transition-colors" aria-label="Archive company">
+              <Trash2 className="w-5 h-5" />
             </button>
             <button onClick={onClose} className="p-2 text-clay-muted active:opacity-70">
               <X className="w-5 h-5" />
@@ -368,6 +372,12 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
               <p className="text-xs text-clay-muted-soft">No contacts linked yet. Add one above or create a contact and select this company.</p>
             )}
           </div>
+          {confirmArchive && (
+            <div className="mt-4 rounded-xl border border-clay-hairline bg-clay-surface p-4">
+              <div className="flex gap-3"><span className="text-2xl">🗑️</span><div><p className="font-semibold text-clay-ink">Archive this company?</p><p className="text-xs text-clay-muted mt-1">{company.name} and its linked contacts will be hidden from lists. You can undo this from the Activity feed.</p></div></div>
+              <div className="grid grid-cols-2 gap-2 mt-3"><button onClick={() => { setConfirmArchive(false); setSaving(true); deleteEntity('company', company.id, company.name).then(() => { setSaving(false); addToast('Company archived'); onClose(); }).catch(err => { setSaving(false); setError('Could not archive: ' + (err.message || 'Unknown error')); }); }} className="px-3 py-2.5 bg-clay-error text-white text-sm font-medium rounded-lg">Archive</button><button onClick={() => setConfirmArchive(false)} className="px-3 py-2.5 bg-clay-card text-clay-ink text-sm font-medium rounded-lg">Cancel</button></div>
+            </div>
+          )}
         </div>
       </div>
     </div>

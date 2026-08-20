@@ -3,11 +3,29 @@
 import { supabase } from './supabase';
 import { Company, Contact, Deal, Meeting } from '@/types/crm';
 
+// Soft-delete (archive) helpers — recoverable, never a hard DELETE.
+export async function softDelete(entity: 'companies' | 'contacts' | 'deals' | 'meetings', id: string) {
+  const { error } = await supabase
+    .from(entity)
+    .update({ deleted_at: new Date().toISOString() } as any)
+    .eq('id', id);
+  if (error) throw error;
+}
+
+export async function restoreEntity(entity: 'companies' | 'contacts' | 'deals' | 'meetings', id: string) {
+  const { error } = await supabase
+    .from(entity)
+    .update({ deleted_at: null } as any)
+    .eq('id', id);
+  if (error) throw error;
+}
+
 // ─── Companies ───
 export async function getCompanies(): Promise<Company[]> {
   const { data, error } = await supabase
     .from('companies')
     .select('*')
+    .is('deleted_at', null)
     .order('name');
   if (error) throw error;
   return data || [];
@@ -32,6 +50,7 @@ export async function getContacts(): Promise<Contact[]> {
   const { data, error } = await supabase
     .from('contacts')
     .select('*')
+    .is('deleted_at', null)
     .order('name');
   if (error) throw error;
   return data || [];
@@ -65,6 +84,7 @@ export async function getDeals(): Promise<Deal[]> {
   const { data, error } = await supabase
     .from('deals')
     .select('*')
+    .is('deleted_at', null)
     .order('created_at', { ascending: false });
   if (error) throw error;
   return data || [];
@@ -118,6 +138,7 @@ export async function getMeetings(): Promise<Meeting[]> {
   const { data, error } = await supabase
     .from('meetings')
     .select('*')
+    .is('deleted_at', null)
     .order('date', { ascending: false });
   if (error) throw error;
   return data || [];

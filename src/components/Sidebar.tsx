@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Users, Building2, Kanban, Calendar, Activity, Zap, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Users, Building2, Kanban, Calendar, Activity, Zap, Menu, X, BarChart3 } from 'lucide-react';
 import clsx from 'clsx';
 import { useTheme } from '@/components/ThemeProvider';
 
@@ -14,6 +14,7 @@ const navItems = [
   { href: '/companies', label: 'Companies', icon: Building2 },
   { href: '/deals', label: 'Deals', icon: Kanban },
   { href: '/meetings', label: 'Meetings', icon: Calendar },
+  { href: '/analytics', label: 'Analytics', icon: BarChart3 },
 ];
 
 export default function Sidebar() {

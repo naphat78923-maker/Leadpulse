@@ -103,6 +103,7 @@ export const SAMPLE_STATUS_OPTIONS: Array<{ value: SampleStatus; label: string }
 export function getWorkflowAction(deal: Deal): DealWorkflowAction {
   if (deal.workflow_action) return deal.workflow_action;
   if (deal.stage === 'closed_won') return 'success';
+  if (deal.stage === 'closed_lost') return 'parked'; // archived/closed deals rest in Parked
   if (deal.stage === 'negotiation') return 'testing';
   if (deal.stage === 'proposal') return 'sample';
   if (deal.stage === 'contacted') return 'reply';

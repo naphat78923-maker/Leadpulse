@@ -4,7 +4,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef } f
 import { Company, Contact, Deal, Meeting } from '@/types/crm';
 import * as crm from '@/lib/crm';
 
-export type ActivityType = 'quick_action' | 'edit' | 'create' | 'delete';
+export type ActivityType = 'quick_action' | 'edit' | 'create' | 'delete' | 'restore';
 
 export interface ActivityEntry {
   id: string;
@@ -30,6 +30,8 @@ interface CrmContextType {
   createContact: (contact: Omit<Contact, 'id' | 'created_at' | 'updated_at'>) => Promise<void>;
   createCompany: (company: Omit<Company, 'id' | 'created_at' | 'updated_at'>) => Promise<void>;
   createDeal: (deal: Omit<Deal, 'id' | 'created_at' | 'updated_at'>) => Promise<void>;
+  deleteEntity: (entity: ActivityEntry['entity'], id: string, label: string) => Promise<void>;
+  restoreEntity: (entity: ActivityEntry['entity'], id: string) => Promise<void>;
   activities: ActivityEntry[];
   logActivity: (entry: Omit<ActivityEntry, 'id' | 'timestamp'>) => void;
   markActivityApplied: (id: string) => void;
@@ -48,11 +50,21 @@ const CrmContext = createContext<CrmContextType>({
   createContact: async () => {},
   createCompany: async () => {},
   createDeal: async () => {},
+  deleteEntity: async () => {},
+  restoreEntity: async () => {},
   activities: [],
   logActivity: () => {},
   markActivityApplied: () => {},
   undoActivity: async () => false,
 });
+
+// Map the UI entity name to its Supabase table name.
+const TABLE_FOR: Record<ActivityEntry['entity'], 'companies' | 'contacts' | 'deals' | 'meetings'> = {
+  company: 'companies',
+  contact: 'contacts',
+  deal: 'deals',
+  meeting: 'meetings',
+};
 
 export function CrmProvider({ children }: { children: React.ReactNode }) {
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -207,7 +219,14 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
     if (!activity?.undoPayload || activity.applied === false) return false;
 
     try {
-      if (activity.entity === 'deal' && activity.entityId) {
+      const table = TABLE_FOR[activity.entity];
+      if (activity.type === 'delete') {
+        // Undo a deletion = restore the archived row.
+        await crm.restoreEntity(table, activity.entityId!);
+      } else if (activity.type === 'create') {
+        // Undo a creation = archive the just-created row.
+        await crm.softDelete(table, activity.entityId!);
+      } else if (activity.entity === 'deal' && activity.entityId) {
         await crm.updateDeal(activity.entityId, activity.undoPayload);
       }
       setActivities(prev => prev.map(a => a.id === id ? { ...a, applied: false } : a));
@@ -253,15 +272,58 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
         await refresh();
       },
       createContact: async (contact) => {
-        await crm.createContact(contact);
+        const created = await crm.createContact(contact);
+        logActivity({
+          type: 'create',
+          entity: 'contact',
+          entityId: (created as any).id,
+          label: `Created contact · ${(created as any).name}`,
+          undoPayload: { id: (created as any).id },
+        });
         await refresh();
       },
       createCompany: async (company) => {
-        await crm.createCompany(company);
+        const created = await crm.createCompany(company);
+        logActivity({
+          type: 'create',
+          entity: 'company',
+          entityId: (created as any).id,
+          label: `Created company · ${(created as any).name}`,
+          undoPayload: { id: (created as any).id },
+        });
         await refresh();
       },
       createDeal: async (deal) => {
-        await crm.createDeal(deal);
+        const created = await crm.createDeal(deal);
+        logActivity({
+          type: 'create',
+          entity: 'deal',
+          entityId: (created as any).id,
+          label: `Created deal · ${(created as any).client || (created as any).title}`,
+          undoPayload: { id: (created as any).id },
+        });
+        await refresh();
+      },
+      deleteEntity: async (entity, id, label) => {
+        await crm.softDelete(TABLE_FOR[entity], id);
+        logActivity({
+          type: 'delete',
+          entity,
+          entityId: id,
+          label: `Archived ${entity} · ${label}`,
+          undoPayload: { id },
+        });
+        await refresh();
+      },
+      restoreEntity: async (entity, id) => {
+        await crm.restoreEntity(TABLE_FOR[entity], id);
+        logActivity({
+          type: 'restore',
+          entity,
+          entityId: id,
+          label: `Restored ${entity}`,
+          undoPayload: { id },
+        });
         await refresh();
       },
       activities,

@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import { Contact, CONTACT_STATUS_LABELS, ContactStatus, Company } from '@/types/crm';
-import { Mail, Phone, X, Edit2, Save, Loader2, Check } from 'lucide-react';
+import { Mail, Phone, X, Edit2, Save, Loader2, Check, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
 import { useToast } from '@/components/ToastProvider';
 import * as crm from '@/lib/crm';
+import { useCrm } from '@/components/CrmProvider';
 
 const statusOptions: ContactStatus[] = ['active', 'replied', 'not_interested', 'no_response', 'parked'];
 
@@ -18,10 +19,12 @@ interface ContactDetailProps {
 
 export default function ContactDetail({ contact, onClose, onSaved, companies }: ContactDetailProps) {
   const { addToast } = useToast();
+  const { deleteEntity } = useCrm();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmArchive, setConfirmArchive] = useState(false);
   const [editData, setEditData] = useState({
     name: contact.name,
     email: contact.email || '',
@@ -100,6 +103,9 @@ export default function ContactDetail({ contact, onClose, onSaved, companies }: 
             )}
             <button onClick={() => setEditing(!editing)} className="p-2 text-clay-muted active:opacity-70">
               <Edit2 className="w-5 h-5" />
+            </button>
+            <button onClick={() => setConfirmArchive(true)} className="p-2 text-clay-muted-soft active:opacity-70 hover:text-clay-error transition-colors" aria-label="Archive contact">
+              <Trash2 className="w-5 h-5" />
             </button>
             <button onClick={onClose} className="p-2 text-clay-muted active:opacity-70">
               <X className="w-5 h-5" />
@@ -254,6 +260,12 @@ export default function ContactDetail({ contact, onClose, onSaved, companies }: 
               </div>
             )}
           </div>
+          {confirmArchive && (
+            <div className="mt-4 rounded-xl border border-clay-hairline bg-clay-surface p-4">
+              <div className="flex gap-3"><span className="text-2xl">🗑️</span><div><p className="font-semibold text-clay-ink">Archive this contact?</p><p className="text-xs text-clay-muted mt-1">{contact.name} will be hidden from lists and the company view. You can undo this from the Activity feed.</p></div></div>
+              <div className="grid grid-cols-2 gap-2 mt-3"><button onClick={() => { setConfirmArchive(false); setSaving(true); deleteEntity('contact', contact.id, contact.name).then(() => { setSaving(false); addToast('Contact archived'); onClose(); }).catch(err => { setSaving(false); setError('Could not archive: ' + (err.message || 'Unknown error')); }); }} className="px-3 py-2.5 bg-clay-error text-white text-sm font-medium rounded-lg">Archive</button><button onClick={() => setConfirmArchive(false)} className="px-3 py-2.5 bg-clay-card text-clay-ink text-sm font-medium rounded-lg">Cancel</button></div>
+            </div>
+          )}
         </div>
       </div>
     </div>
