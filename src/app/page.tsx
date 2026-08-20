@@ -32,6 +32,7 @@ export default function TodayPage() {
   const router = useRouter();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
+  const [logDealId, setLogDealId] = useState<string | undefined>(undefined);
   const { deals: dbDeals, contacts: dbContacts, companies: dbCompanies, meetings: dbMeetings, loading, createDeal, addMeeting } = useCrm();
 
   const deals = dbDeals.length > 0 ? dbDeals : (dataDeals as Deal[]);
@@ -90,6 +91,15 @@ export default function TodayPage() {
     return pool[0].d;
   }, [sortedOverdue, dealFollowUps.dueToday]);
 
+  const actionQueue = useMemo(() => {
+    const items: { deal: Deal; kind: 'overdue' | 'today' | 'attention' }[] = [
+      ...sortedOverdue.map(d => ({ deal: d, kind: 'overdue' as const })),
+      ...dealFollowUps.dueToday.map(d => ({ deal: d, kind: 'today' as const })),
+      ...dealFollowUps.needsAttention.map(d => ({ deal: d, kind: 'attention' as const })),
+    ];
+    return items.slice(0, 12);
+  }, [sortedOverdue, dealFollowUps.dueToday, dealFollowUps.needsAttention]);
+
   const todayLocal = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   const todayMeetings = meetings.filter((m: any) => m.date === todayLocal);
   const todayCounts: Record<string, number> = { call: 0, email: 0, dm: 0, meeting: 0, sample_sent: 0, nudge: 0, note: 0 };
@@ -100,47 +110,12 @@ export default function TodayPage() {
     await createDeal(data);
   };
 
-  // ── Deal row: clickable to open deal detail via deep link ──
-  const DealRow = ({ deal, colorClass }: { deal: Deal; colorClass?: string }) => {
-    const score = calculateLeadScore(deal);
-    const tier = scoreToTier(score);
-    return (
-      <button
-        key={deal.id}
-        onClick={() => router.push('/deals?deal=' + deal.id)}
-        className="w-full text-left bg-white dark:bg-clay-card border border-clay-hairline rounded-lg p-3 active:bg-clay-surface transition-colors"
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5">
-              <h4 className="text-sm font-medium text-clay-ink truncate">{deal.client}</h4>
-              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${TIER_COLORS[tier]}`}>
-                {TIER_LABELS[tier]}
-              </span>
-            </div>
-            <p className="text-xs text-clay-muted line-clamp-1">{deal.next_action || deal.title}</p>
-          </div>
-          <ChevronRight className="w-4 h-4 text-clay-muted-soft flex-shrink-0" />
-        </div>
-      </button>
-    );
-  };
-
   return (
     <div className="p-4 md:p-6 max-w-6xl pb-20 lg:pb-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-4 md:mb-6">
         <div className="flex items-center gap-3">
-          <div className="relative w-11 h-11 md:w-12 md:h-12 shrink-0">
-            <div className="absolute inset-0 rounded-full bg-clay-lavender/20" />
-            <Image
-              src="/assets/mascot-teardrop.png"
-              alt="LeadPulse mascot"
-              width={1024}
-              height={1024}
-              className="relative w-11 h-11 md:w-12 md:h-12 object-contain"
-            />
-          </div>
+          <MascotSprite src="/assets/mascot-teardrop.png" size={46} alt="LeadPulse mascot" />
           <div>
             <p className="zams-eyebrow mb-0.5">
               {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
@@ -187,78 +162,70 @@ export default function TodayPage() {
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-2 md:gap-3 mb-4 md:mb-6">
-        <button
-          onClick={() => router.push('/deals')}
-          className="bg-white dark:bg-clay-card rounded-lg border border-clay-hairline p-3 md:p-4 text-left hover:border-zams-violet/40 transition-colors active:bg-clay-surface"
-        >
-          <p className="text-lg md:text-2xl font-bold text-clay-ink leading-none">{stats.activeDeals}</p>
-          <p className="zams-mono text-[10px] uppercase tracking-[0.18px] text-clay-muted mt-1.5">Active</p>
-        </button>
-        <button
-          onClick={() => router.push('/deals')}
-          className="bg-clay-mint/20 rounded-lg border border-clay-mint/30 p-3 md:p-4 text-left hover:bg-clay-mint/30 transition-colors"
-        >
-          <p className="text-lg md:text-2xl font-bold text-clay-teal leading-none">{stats.wonDeals}</p>
-          <p className="zams-mono text-[10px] uppercase tracking-[0.18px] text-clay-muted mt-1.5">Won</p>
-        </button>
-        <button
-          onClick={() => router.push('/contacts')}
-          className="bg-white dark:bg-clay-card rounded-lg border border-clay-hairline p-3 md:p-4 text-left hover:border-zams-violet/40 transition-colors active:bg-clay-surface"
-        >
-          <p className="text-lg md:text-2xl font-bold text-clay-ink leading-none">{stats.contacts}</p>
-          <p className="zams-mono text-[10px] uppercase tracking-[0.18px] text-clay-muted mt-1.5">Contacts</p>
-        </button>
-        <button
-          onClick={() => router.push('/companies')}
-          className="bg-white dark:bg-clay-card rounded-lg border border-clay-hairline p-3 md:p-4 text-left hover:border-zams-violet/40 transition-colors active:bg-clay-surface"
-        >
-          <p className="text-lg md:text-2xl font-bold text-clay-ink leading-none">{stats.companies}</p>
-          <p className="zams-mono text-[10px] uppercase tracking-[0.18px] text-clay-muted mt-1.5">Companies</p>
-        </button>
-        <button
-          onClick={() => router.push('/deals')}
-          className="col-span-2 md:col-span-1 bg-clay-pink/10 rounded-lg border border-clay-pink/20 p-3 md:p-4 text-left hover:bg-clay-pink/20 transition-colors"
-        >
-          <p className="text-lg md:text-2xl font-bold text-clay-pink leading-none">{stats.needAction}</p>
-          <p className="zams-mono text-[10px] uppercase tracking-[0.18px] text-clay-muted mt-1.5">Need action</p>
-        </button>
+      {/* Mini stats — quiet, one strip */}
+      <div className="mb-4 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-4 py-2 flex items-center overflow-x-auto">
+        {[
+          { label: 'Active', value: stats.activeDeals, to: '/deals' },
+          { label: 'Won', value: stats.wonDeals, to: '/deals' },
+          { label: 'Contacts', value: stats.contacts, to: '/contacts' },
+          { label: 'Companies', value: stats.companies, to: '/companies' },
+        ].map((s, i) => (
+          <button
+            key={s.label}
+            onClick={() => router.push(s.to)}
+            className={`flex items-baseline gap-1.5 px-4 shrink-0 text-left active:bg-clay-surface ${i > 0 ? 'border-l border-clay-hairline' : ''}`}
+          >
+            <span className="text-sm font-semibold text-clay-ink leading-none">{s.value}</span>
+            <span className="zams-mono text-[9px] uppercase tracking-[0.14px] text-clay-muted">{s.label}</span>
+          </button>
+        ))}
       </div>
 
-      {/* Today's plan */}
-      <div className="mb-4 rounded-xl border border-zams-mist bg-white dark:bg-clay-card p-4 flex flex-col md:flex-row md:items-center gap-3">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <MascotSprite src="/assets/mascots/mascot-outreach.png" size={38} alt="LeadPulse mascot" />
-          <div className="min-w-0">
-            <p className="zams-eyebrow mb-0.5">Today's plan</p>
-            <p className="text-sm text-clay-ink truncate">
-              {startHere ? (
-                <>
-                  Start with <strong>{startHere.client}</strong>
-                  {dealFollowUps.overdue.some(d => d.id === startHere.id) && startHere.followup_date
-                    ? <> — <span className="text-clay-error font-semibold">{daysOverdue(startHere.followup_date)}d overdue</span></>
-                    : <> — <span className="text-clay-ochre font-semibold">due today</span></>}
-                </>
-              ) : (
-                'All clear — nothing due or overdue today.'
-              )}
-            </p>
-          </div>
+      {/* Today's plan — the hero */}
+      <div className="mb-4 rounded-2xl border border-zams-violet/25 bg-white dark:bg-clay-card p-5 md:p-6 flex flex-col md:flex-row md:items-center gap-4 md:gap-5 relative overflow-hidden shadow-[0_10px_30px_-14px_rgba(116,81,242,0.4)]">
+        <MascotSprite
+          src={startHere ? '/assets/mascots/mascot-teardrop.png' : '/assets/mascots/mascot-outreach.png'}
+          size={56}
+          alt={startHere ? 'Planner mascot' : 'Scout mascot'}
+        />
+        <div className="flex-1 min-w-0">
+          <p className="zams-eyebrow mb-1">Today's plan</p>
+          {startHere ? (
+            <>
+              <h2 className="zams-display text-xl md:text-2xl leading-tight mb-1">
+                Start with <span className="text-zams-violet">{startHere.client}</span>
+              </h2>
+              <p className="text-sm text-clay-muted truncate">
+                {dealFollowUps.overdue.some(d => d.id === startHere.id) && startHere.followup_date ? (
+                  <><span className="text-clay-error font-semibold">{daysOverdue(startHere.followup_date)} days overdue</span> · {startHere.next_action || 'No next action set'}</>
+                ) : (
+                  <>Due today · {startHere.next_action || 'No next action set'}</>
+                )}
+              </p>
+            </>
+          ) : (
+            <>
+              <h2 className="zams-display text-xl md:text-2xl leading-tight mb-1">All clear</h2>
+              <p className="text-sm text-clay-muted">Nothing due or overdue. Time to find your next prospect.</p>
+            </>
+          )}
         </div>
-        <div className="flex items-center gap-2 shrink-0 flex-wrap">
-          <span className="zams-mono text-[10px] uppercase tracking-[0.14px] px-2 py-1 rounded-full bg-clay-ochre/10 text-clay-ochre border border-clay-ochre/20">
-            Due today {dealFollowUps.dueToday.length}
-          </span>
-          <span className="zams-mono text-[10px] uppercase tracking-[0.14px] px-2 py-1 rounded-full bg-clay-error/10 text-clay-error border border-clay-error/20">
-            Overdue {dealFollowUps.overdue.length}
-          </span>
-          <span className="zams-mono text-[10px] uppercase tracking-[0.14px] px-2 py-1 rounded-full bg-zams-powder/50 text-zams-deep border border-zams-mist">
-            Need action {dealFollowUps.needsAttention.length}
-          </span>
-          {startHere && (
-            <button onClick={() => router.push('/deals?deal=' + startHere.id)} className="zams-btn-primary text-xs px-3 py-2">
-              Open <ChevronRight className="w-3.5 h-3.5" />
+        <div className="flex items-center gap-2 shrink-0">
+          {startHere ? (
+            <>
+              <button
+                onClick={() => { setLogDealId(startHere.id); setIsLogModalOpen(true); }}
+                className="flex items-center gap-2 px-4 py-2.5 border border-zams-mist text-clay-ink text-sm font-medium rounded-md hover:border-zams-violet hover:text-zams-violet transition-colors"
+              >
+                <MessageCircle className="w-4 h-4" /> Log touch
+              </button>
+              <button onClick={() => router.push('/deals?deal=' + startHere.id)} className="zams-btn-primary">
+                Open lead <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </>
+          ) : (
+            <button onClick={() => router.push('/companies')} className="zams-btn-primary">
+              Go prospecting <ChevronRight className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
@@ -266,7 +233,10 @@ export default function TodayPage() {
 
       {/* Today's pulse */}
       <div className="mb-6 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-4 py-2.5 flex items-center gap-3 overflow-x-auto">
-        <p className="zams-mono text-[10px] uppercase tracking-[0.16px] text-zams-fog shrink-0">Today's pulse</p>
+        <div className="flex items-center gap-2 shrink-0">
+          <MascotSprite src="/assets/mascots/mascot-reply.png" size={20} alt="Listener mascot" />
+          <p className="zams-mono text-[10px] uppercase tracking-[0.16px] text-zams-fog">Today's pulse</p>
+        </div>
         <div className="flex items-center gap-3 shrink-0">
           {PULSE_ITEMS.map(p => (
             <div key={p.key} className="flex items-center gap-1.5">
@@ -276,116 +246,73 @@ export default function TodayPage() {
             </div>
           ))}
         </div>
-        <span className="text-[11px] text-clay-muted-soft ml-auto shrink-0">
+        <span className="text-[11px] text-clay-muted-soft ml-auto shrink-0 flex items-center gap-1.5">
+          {todayMeetings.length === 0 && <MascotSprite src="/assets/mascots/mascot-parked.png" size={18} alt="Sleepy mascot" />}
           {todayMeetings.length === 0 ? 'No touches yet today' : `${todayMeetings.length} ${todayMeetings.length === 1 ? 'touch' : 'touches'} today`}
         </span>
       </div>
 
-      {/* Follow-ups */}
+      {/* Action queue */}
       <section className="mb-6">
-        <h2 className="zams-display text-lg md:text-xl mb-3">Follow-ups</h2>
-
-        {dealFollowUps.needsAttention.length > 0 && (
-          <div className="mb-4">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-clay-error animate-pulse" />
-              <span className="text-xs font-medium text-clay-muted">
-                Needs Attention ({dealFollowUps.needsAttention.length})
-              </span>
-            </div>
-            <div className="space-y-2">
-              {dealFollowUps.needsAttention.slice(0, 4).map((deal: Deal) => (
-                <DealRow key={deal.id} deal={deal} />
-              ))}
-            </div>
+        <div className="flex items-center gap-2.5 mb-3">
+          <MascotSprite src="/assets/mascots/mascot-testing.png" size={28} alt="Watchdog mascot" />
+          <div>
+            <h2 className="zams-display text-lg md:text-xl leading-tight">Action queue</h2>
+            <p className="text-xs text-clay-muted">
+              {actionQueue.length === 0 ? 'Nothing waiting' : `${actionQueue.length} ${actionQueue.length === 1 ? 'item' : 'items'} waiting`}
+            </p>
           </div>
-        )}
+        </div>
 
-        {dealFollowUps.overdue.length > 0 && (
-          <div className="mb-4">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-clay-error" />
-              <span className="text-xs font-medium text-clay-muted">
-                Overdue ({dealFollowUps.overdue.length})
-              </span>
-            </div>
-            <div className="space-y-2">
-              {sortedOverdue.slice(0, 4).map((deal: Deal) => {
-                const days = daysOverdue(deal.followup_date || '');
-                return (
-                  <button
-                    key={deal.id}
-                    onClick={() => router.push('/deals?deal=' + deal.id)}
-                    className="w-full text-left bg-red-50/30 dark:bg-red-900/10 border border-clay-error rounded-lg p-3 active:bg-red-50/50 transition-colors"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <h4 className="text-sm font-medium text-clay-ink truncate">{deal.client}</h4>
-                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${days > 7 ? 'bg-clay-error/15 text-clay-error' : 'bg-clay-ochre/15 text-clay-ochre'}`}>
-                            ⚡ {days}d late
-                          </span>
-                        </div>
-                        <p className="text-xs text-clay-muted line-clamp-1">{deal.next_action || deal.title}</p>
-                      </div>
-                      <ChevronRight className="w-4 h-4 text-clay-muted-soft flex-shrink-0" />
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+        {actionQueue.length === 0 ? (
+          <div className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline p-8 flex flex-col items-center gap-3">
+            <MascotSprite src="/assets/mascots/mascot-parked.png" size={44} alt="Sleepy mascot" />
+            <p className="text-sm text-clay-muted">Everything is moving. Nothing waiting.</p>
           </div>
-        )}
-
-        {dealFollowUps.dueToday.length > 0 && (
-          <div className="mb-4">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-clay-ochre" />
-              <span className="text-xs font-medium text-clay-muted">
-                Due Today ({dealFollowUps.dueToday.length})
-              </span>
-            </div>
-            <div className="space-y-2">
-              {dealFollowUps.dueToday.map((deal: Deal) => (
-                <button
-                  key={deal.id}
-                  onClick={() => router.push('/deals?deal=' + deal.id)}
-                  className="w-full text-left bg-orange-50/30 dark:bg-orange-900/10 border border-clay-ochre rounded-lg p-3 active:bg-orange-50/50 transition-colors"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <h4 className="text-sm font-medium text-clay-ink truncate">{deal.client}</h4>
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-clay-ochre/15 text-clay-ochre">Due today</span>
-                      </div>
-                      <p className="text-xs text-clay-muted line-clamp-1">{deal.next_action || deal.title}</p>
+        ) : (
+          <div className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline divide-y divide-clay-hairline overflow-hidden">
+            {actionQueue.map(item => {
+              const days = item.kind === 'overdue' && item.deal.followup_date ? daysOverdue(item.deal.followup_date) : 0;
+              const badgeCls = item.kind === 'overdue'
+                ? (days > 7 ? 'bg-clay-error/15 text-clay-error' : 'bg-clay-ochre/15 text-clay-ochre')
+                : item.kind === 'today'
+                  ? 'bg-clay-ochre/15 text-clay-ochre'
+                  : 'bg-zams-powder/60 text-zams-deep';
+              return (
+                <div key={item.deal.id} className="px-4 py-3 flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium text-clay-ink truncate">Follow up with {item.deal.client}</p>
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${badgeCls}`}>
+                        {item.kind === 'overdue' ? `⚡ ${days}d late` : item.kind === 'today' ? 'Due today' : 'Needs action'}
+                      </span>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-clay-muted-soft flex-shrink-0" />
+                    <p className="text-xs text-clay-muted truncate mt-0.5">
+                      {item.deal.next_action || item.deal.title}
+                    </p>
                   </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {dealFollowUps.thisWeek.length > 0 && (
-          <div className="mb-4">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-clay-mint" />
-              <span className="text-xs font-medium text-clay-muted">
-                This Week ({dealFollowUps.thisWeek.length})
-              </span>
-            </div>
-            <div className="space-y-2">
-              {dealFollowUps.thisWeek.slice(0, 4).map((deal: Deal) => (
-                <DealRow key={deal.id} deal={deal} />
-              ))}
-            </div>
+                  <button
+                    onClick={() => { setLogDealId(item.deal.id); setIsLogModalOpen(true); }}
+                    className="shrink-0 w-9 h-9 rounded-lg border border-zams-mist text-zams-deep flex items-center justify-center hover:border-zams-violet transition-colors"
+                    aria-label={`Log touch for ${item.deal.client}`}
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => router.push('/deals?deal=' + item.deal.id)}
+                    className="shrink-0 w-9 h-9 rounded-lg bg-zams-violet text-white flex items-center justify-center hover:bg-[#5f3ee0] transition-colors"
+                    aria-label={`Open ${item.deal.client}`}
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
 
         {deals.filter((d: Deal) => d.stage !== 'closed_won' && d.stage !== 'closed_lost').length === 0 && (
-          <div className="text-center py-10 bg-white dark:bg-clay-card rounded-xl border border-clay-hairline">
+          <div className="mt-4 text-center py-10 bg-white dark:bg-clay-card rounded-xl border border-clay-hairline">
             <div className="relative mx-auto mb-4 w-28 h-28">
               <div className="absolute inset-0 rounded-full bg-clay-lavender/20" />
               <Image
@@ -470,13 +397,14 @@ export default function TodayPage() {
       />
       <LogInteractionModal
         isOpen={isLogModalOpen}
-        onClose={() => setIsLogModalOpen(false)}
+        onClose={() => { setIsLogModalOpen(false); setLogDealId(undefined); }}
         onSave={async (meeting) => {
           await addMeeting(meeting);
         }}
         deals={deals}
         contacts={contacts}
         companies={companies}
+        selectedDealId={logDealId}
       />
     </div>
   );

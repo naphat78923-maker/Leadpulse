@@ -223,6 +223,20 @@ body {
   }
 }
 
+/* ─── Zams tokens: dark-mode (night desk) overrides ─── */
+.dark {
+  --color-graphite-ink: #f6f3ea;   /* primary: warm off-white */
+  --color-slate: #b9b3a4;          /* secondary text */
+  --color-ash: #a49d8f;
+  --color-fog: #9c9688;            /* metadata: legible calm grey */
+  --color-charcoal-hairline: #d9d3c4;
+  --color-mist: #46423a;           /* borders on dark */
+  --color-mauve-dust: #6c665e;
+  --color-soft-snow: #232120;      /* dark surface band */
+  --color-powder-blue: #3b3357;    /* violet-tinted dark surface */
+  --color-paper-white: #ffffff;    /* keep button text white */
+}
+
 /* ─── Zams design language — applied to the LeadPulse interface ─── */
 
 /* Section eyebrow — Martian Mono 11px uppercase, build-log voice */
@@ -232,14 +246,14 @@ body {
   line-height: 1.2;
   letter-spacing: 0.22px;
   text-transform: uppercase;
-  color: #858585;
+  color: var(--color-fog);
 }
 
 /* Display heading — Lustria serif with tight negative tracking */
 .zams-display {
   font-family: var(--font-lustria), ui-serif, Georgia, serif;
   font-weight: 400;
-  color: #272727;
+  color: var(--color-graphite-ink);
   letter-spacing: -0.03em;
 }
 
