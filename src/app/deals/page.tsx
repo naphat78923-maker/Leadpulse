@@ -22,7 +22,7 @@ import {
   DragStartEvent,
   DragEndEvent,
 } from '@dnd-kit/core';
-import { Plus, TrendingUp, AlertCircle, Loader2, CalendarDays, GripVertical } from 'lucide-react';
+import { Plus, TrendingUp, AlertCircle, Loader2, CalendarDays, GripVertical, ArrowRight } from 'lucide-react';
 import clsx from 'clsx';
 import {
   calculateLeadScore,
@@ -71,6 +71,7 @@ export default function DealsPage() {
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [gate, setGate] = useState<{ deal: Deal; target: DealWorkflowAction } | null>(null);
   const [celebrate, setCelebrate] = useState<{ dealId: string; laneId: DealWorkflowAction } | null>(null);
+  const [pickerDeal, setPickerDeal] = useState<Deal | null>(null);
 
   const { deals: dbDeals, contacts: dbContacts, companies: dbCompanies, loading, refresh, createDeal, logActivity } = useCrm();
   const { addToast } = useToast();
@@ -232,7 +233,7 @@ export default function DealsPage() {
   };
 
   return (
-    <div className="p-4 md:p-6 h-full flex flex-col pb-20 lg:pb-6">
+    <div className="p-4 md:px-4 md:py-6 h-full flex flex-col pb-20 lg:pb-6">
       <div className="flex items-start justify-between gap-3 mb-4">
         <div>
           <p className="zams-eyebrow mb-1">Pipeline · Action board</p>
@@ -337,7 +338,19 @@ export default function DealsPage() {
                     <span className="text-sm text-clay-muted bg-white/70 dark:bg-clay-card px-2 py-1 rounded-full">{laneDeals.length}</span>
                   </div>
                   <div className="space-y-2">
-                    {laneDeals.map(d => renderDealCard(d))}
+                    {laneDeals.map(d => (
+                      <div key={d.id} className="flex items-stretch gap-1.5">
+                        <div className="flex-1 min-w-0">{renderDealCard(d)}</div>
+                        <button
+                          onClick={() => setPickerDeal(d)}
+                          className="w-11 shrink-0 flex flex-col items-center justify-center gap-0.5 rounded-xl border border-zams-mist bg-white dark:bg-clay-card text-zams-deep active:bg-zams-powder/60"
+                          aria-label={`Move ${d.client} to another lane`}
+                        >
+                          <ArrowRight className="w-4 h-4" />
+                          <span className="zams-mono text-[8px] uppercase tracking-[0.12px]">Move</span>
+                        </button>
+                      </div>
+                    ))}
                     {laneDeals.length === 0 && <div className="border border-dashed border-clay-hairline rounded-xl px-3 py-8 text-center text-sm text-clay-muted-soft">No deals in this lane</div>}
                   </div>
                 </section>
@@ -439,6 +452,19 @@ export default function DealsPage() {
         />
       )}
 
+      {pickerDeal && (
+        <LanePickerSheet
+          deal={pickerDeal}
+          currentLane={getWorkflowAction(pickerDeal)}
+          counts={dealsByAction}
+          onPick={(target) => {
+            setPickerDeal(null);
+            setGate({ deal: pickerDeal, target });
+          }}
+          onClose={() => setPickerDeal(null)}
+        />
+      )}
+
       <CreateModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={handleCreate} type="deal" companies={companies} contacts={contacts} />
     </div>
   );
@@ -486,12 +512,61 @@ function DroppableLane({
     <section
       ref={setNodeRef}
       className={clsx(
-        'flex-1 min-w-[272px] rounded-2xl border p-3 flex flex-col transition-colors',
+        'flex-1 min-w-[200px] min-h-[440px] md:min-h-[520px] 2xl:min-w-[150px] rounded-2xl border p-3 flex flex-col transition-colors',
         className,
         isOver && 'lane-drop-over'
       )}
     >
       {children}
     </section>
+  );
+}
+
+/* ─── Mobile lane picker: tap Move, choose the lane, then the gate opens ─── */
+function LanePickerSheet({
+  deal, currentLane, counts, onPick, onClose,
+}: {
+  deal: Deal;
+  currentLane: DealWorkflowAction;
+  counts: Record<string, Deal[]>;
+  onPick: (target: DealWorkflowAction) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[65] md:hidden flex items-end">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white dark:bg-clay-card w-full rounded-t-2xl animate-slide-up max-h-[80vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white dark:bg-clay-card border-b border-clay-hairline px-5 py-4 z-10 flex items-start justify-between gap-3">
+          <div>
+            <p className="zams-eyebrow mb-0.5">Move deal</p>
+            <h2 className="text-sm font-semibold text-clay-ink truncate">{deal.client}</h2>
+          </div>
+          <button onClick={onClose} className="p-2 text-clay-muted active:bg-clay-surface rounded-lg shrink-0">
+            <ArrowRight className="w-5 h-5 -rotate-90" />
+          </button>
+        </div>
+        <div className="p-3 space-y-1.5">
+          {WORKFLOW_LANES.map(lane => (
+            <button
+              key={lane.id}
+              onClick={() => onPick(lane.id)}
+              className={clsx(
+                'w-full flex items-center gap-3 px-3 py-3 rounded-lg border text-left transition-colors',
+                currentLane === lane.id
+                  ? 'border-zams-violet bg-zams-powder/40'
+                  : 'border-clay-hairline bg-white dark:bg-clay-card active:bg-clay-surface'
+              )}
+            >
+              <span className="text-lg shrink-0">{lane.icon}</span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-medium text-clay-ink truncate">{lane.label}</span>
+                <span className="block zams-mono text-[9px] uppercase tracking-[0.14px] text-zams-fog mt-0.5">{LANE_CRITERIA[lane.id]}</span>
+              </span>
+              <span className="text-xs text-clay-muted-soft shrink-0">{counts[lane.id]?.length ?? 0}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
