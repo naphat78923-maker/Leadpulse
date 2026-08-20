@@ -118,9 +118,37 @@ export default function ActivityPage() {
 
   const maxDayCount = Math.max(...pulse.days.map(d => d.count), 1);
 
-  /* ─── Radar: coverage gaps ─── */
+  /* ─── Radar: coverage gaps ───
+     Touch detection is multi-source: the deals board (updated_at), system
+     events, logged meetings, and explicit contact dates all count as activity.
+     This keeps the radar consistent with what the Deals section shows. */
   const radar = useMemo(() => {
-    // Last touch per company: meetings by company_id or by contact's company.
+    // ── Deal last touch: board edits + system events + meetings on the deal ──
+    const eventTsByDeal: Record<string, number> = {};
+    activities.forEach(a => {
+      if (a.entity === 'deal' && a.entityId && a.applied !== false) {
+        if (!eventTsByDeal[a.entityId] || a.timestamp > eventTsByDeal[a.entityId]) {
+          eventTsByDeal[a.entityId] = a.timestamp;
+        }
+      }
+    });
+
+    const dealLastTouch: Record<string, number> = {};
+    deals.forEach(d => {
+      // NOTE: deal.updated_at is NOT used: the action-board migration bulk-updated
+      // every row, so it cannot distinguish real edits from the import. Real touch
+      // = logged meetings + persisted system events.
+      let ts = eventTsByDeal[d.id] || 0;
+      meetings.forEach(m => {
+        if (m.deal_id === d.id) {
+          const mts = toTs(m.date);
+          if (mts > ts) ts = mts;
+        }
+      });
+      dealLastTouch[d.id] = ts;
+    });
+
+    // ── Company last touch: any signal that the account was worked ──
     const companyLastTouch: Record<string, number> = {};
     meetings.forEach(m => {
       const ts = toTs(m.date);
@@ -133,6 +161,17 @@ export default function ActivityPage() {
         touch(c?.company_id);
       });
     });
+    companies.forEach(c => {
+      let ts = companyLastTouch[c.id] || 0;
+      const consider = (t?: number) => { if (t && t > ts) ts = t; };
+      consider(c.last_contact_date ? toTs(c.last_contact_date) : undefined);
+      // company.updated_at excluded: bulk-import polluted, same reason as deals.
+      contacts.filter(x => x.company_id === c.id).forEach(x => {
+        consider(x.last_contacted_date ? toTs(x.last_contacted_date) : undefined);
+      });
+      deals.filter(d => d.company_id === c.id).forEach(d => consider(dealLastTouch[d.id]));
+      companyLastTouch[c.id] = ts;
+    });
 
     const coldAccounts = companies
       .filter(c => c.status === 'prospect' || c.status === 'active_customer')
@@ -141,8 +180,12 @@ export default function ActivityPage() {
       .sort((a, b) => a.lastTouch - b.lastTouch)
       .slice(0, 6);
 
+    const touchedContactIds = new Set<string>();
+    meetings.forEach(m => (m.contact_ids || []).forEach(cid => touchedContactIds.add(cid)));
+    deals.forEach(d => (d.contact_ids || []).forEach(cid => touchedContactIds.add(cid)));
+
     const neverContacted = contacts
-      .filter(c => !meetings.some(m => (m.contact_ids || []).includes(c.id)) && !c.last_contacted_date)
+      .filter(c => !touchedContactIds.has(c.id) && !c.last_contacted_date)
       .slice(0, 6);
 
     const todayStr = new Date().toISOString().split('T')[0];
@@ -151,16 +194,20 @@ export default function ActivityPage() {
         .filter(d => d.stage !== 'closed_won' && d.stage !== 'closed_lost' && d.followup_date && d.followup_date < todayStr)
         .map(d => ({ kind: 'deal' as const, name: d.client, date: d.followup_date!, dealId: d.id })),
       ...meetings
-        .filter(m => m.followup_date && m.followup_date < todayStr)
+        .filter(m => {
+          if (!m.followup_date || m.followup_date >= todayStr) return false;
+          // Stale-loop guard: ignore if a newer interaction exists on the same deal/company.
+          const newer = meetings.some(x => {
+            if (x.id === m.id) return false;
+            if (m.deal_id ? x.deal_id === m.deal_id : x.company_id === m.company_id) {
+              return x.date > m.followup_date!;
+            }
+            return false;
+          });
+          return !newer;
+        })
         .map(m => ({ kind: 'meeting' as const, name: m.description, date: m.followup_date! })),
     ].sort((a, b) => a.date.localeCompare(b.date)).slice(0, 6);
-
-    const dealLastTouch: Record<string, number> = {};
-    meetings.forEach(m => {
-      if (!m.deal_id) return;
-      const ts = toTs(m.date);
-      if (!dealLastTouch[m.deal_id] || ts > dealLastTouch[m.deal_id]) dealLastTouch[m.deal_id] = ts;
-    });
 
     const stuckDeals = deals
       .filter(d => d.stage !== 'closed_won' && d.stage !== 'closed_lost')
@@ -171,7 +218,7 @@ export default function ActivityPage() {
 
     const total = coldAccounts.length + neverContacted.length + openLoops.length + stuckDeals.length;
     return { coldAccounts, neverContacted, openLoops, stuckDeals, total };
-  }, [meetings, contacts, companies, deals]);
+  }, [meetings, contacts, companies, deals, activities]);
 
   /* ─── Timeline items ─── */
   const items: TimelineItem[] = useMemo(() => {
