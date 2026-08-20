@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { Deal, DealWorkflowAction, STAGE_LABELS } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
@@ -58,6 +58,14 @@ function appendOutcome(existing: string | null, entry?: string | null) {
   return existing ? `${existing}\n---\n${entry}` : entry;
 }
 
+function dueStateFor(deal: Deal, todayStr: string): 'overdue' | 'today' | null {
+  if (!deal.followup_date) return null;
+  if (deal.stage === 'closed_won' || deal.stage === 'closed_lost') return null;
+  if (deal.followup_date < todayStr) return 'overdue';
+  if (deal.followup_date === todayStr) return 'today';
+  return null;
+}
+
 function compactDate(date?: string | null) {
   if (!date) return null;
   return new Date(`${date}T12:00:00`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
@@ -82,6 +90,36 @@ export default function DealsPage() {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   );
+
+  /* ─── Board overflow indicator ─── */
+  const boardRef = useRef<HTMLDivElement>(null);
+  const [compact, setCompact] = useState(false);
+  const [boardScroll, setBoardScroll] = useState({ canScrollRight: false, canScrollLeft: false });
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  useEffect(() => {
+    const el = boardRef.current;
+    if (!el) return;
+    const update = () => {
+      setBoardScroll({
+        canScrollRight: el.scrollLeft + el.clientWidth < el.scrollWidth - 8,
+        canScrollLeft: el.scrollLeft > 8,
+      });
+    };
+    update();
+    el.addEventListener('scroll', update);
+    window.addEventListener('resize', update);
+    return () => {
+      el.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, [view]);
+
+  const scrollBoard = (dir: 1 | -1) => {
+    const el = boardRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir * el.clientWidth * 0.8, behavior: 'smooth' });
+  };
 
   const scoredDeals = useMemo(
     () => deals.map(deal => ({ deal, score: calculateLeadScore(deal), tier: scoreToTier(calculateLeadScore(deal)) })),
@@ -190,42 +228,76 @@ export default function DealsPage() {
     );
   }
 
-  const renderDealCard = (deal: Deal, opts?: { grip?: boolean }) => {
+  const renderDealCard = (deal: Deal, opts?: { grip?: boolean; compact?: boolean }) => {
     const score = calculateLeadScore(deal);
     const tier = scoreToTier(score);
     const action = getWorkflowAction(deal);
     const nudge = nudgeLabel(deal.nudge_stage);
     const lane = WORKFLOW_LANES.find(item => item.id === action)!;
+    const due = dueStateFor(deal, todayStr);
+    const isCompact = !!opts?.compact;
 
     return (
       <button
         key={deal.id}
         onClick={() => setSelectedDeal(deal.id)}
         className={clsx(
-          'w-full text-left bg-white dark:bg-clay-card rounded-xl p-3 border transition-all active:scale-[0.98] active:bg-clay-surface',
+          'w-full text-left bg-white dark:bg-clay-card rounded-xl border transition-all active:scale-[0.98] active:bg-clay-surface',
+          isCompact ? 'p-2.5' : 'p-3',
           TIER_BG[tier]
         )}
       >
-        <div className="flex items-center justify-between gap-2 mb-2">
+        <div className={clsx('flex items-center justify-between gap-2', !isCompact && 'mb-2')}>
           <span className={clsx('text-[10px] font-semibold px-2 py-0.5 rounded border', TIER_COLORS[tier])}>{TIER_LABELS[tier]}</span>
           <span className="flex items-center gap-1.5">
             <span className="text-[10px] font-mono text-clay-muted">{score}/100</span>
             {opts?.grip && <GripVertical className="w-3.5 h-3.5 text-clay-muted-soft" />}
           </span>
         </div>
-        <h3 className="text-sm font-semibold text-clay-ink truncate">{deal.client}</h3>
-        <p className="text-xs text-clay-muted line-clamp-2 mt-0.5">{deal.title}</p>
-        <div className="flex flex-wrap items-center gap-1.5 mt-2">
-          <span className="text-[10px] font-medium text-clay-muted bg-clay-card px-1.5 py-0.5 rounded">{STAGE_LABELS[deal.stage]}</span>
-          <span className={clsx('text-[10px] font-semibold px-1.5 py-0.5 rounded', PRIORITY_CLASSES[deal.priority])}>{PRIORITY_LABELS[deal.priority]}</span>
-          {deal.sample_status && <span className="text-[10px] text-clay-ochre">{deal.sample_status === 'sent' ? 'Sent' : 'Received'}</span>}
-          {nudge && <span className="text-[10px] text-clay-muted">{nudge}</span>}
+
+        <div className="flex items-start justify-between gap-1.5">
+          <h3 className={clsx(
+            'text-sm font-semibold text-clay-ink leading-snug',
+            isCompact ? 'truncate' : 'line-clamp-2'
+          )}>
+            {deal.client}
+          </h3>
+          {due && (
+            <span
+              className={clsx(
+                'inline-flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap shrink-0 mt-0.5',
+                due === 'overdue' ? 'bg-clay-error/10 text-clay-error' : 'bg-clay-ochre/10 text-clay-ochre'
+              )}
+            >
+              <span className={clsx('w-1.5 h-1.5 rounded-full animate-pulse-dot', due === 'overdue' ? 'bg-clay-error' : 'bg-clay-ochre')} />
+              {due === 'overdue' ? 'Overdue' : 'Due today'}
+            </span>
+          )}
         </div>
-        {(deal.followup_date || deal.next_action) && (
-          <div className="mt-2 pt-2 border-t border-clay-hairline/60">
-            {deal.followup_date && <p className="text-[10px] text-clay-muted">📅 {compactDate(deal.followup_date)}</p>}
-            {deal.next_action && <p className="text-[10px] text-clay-muted line-clamp-1 mt-0.5">{deal.next_action}</p>}
-          </div>
+
+        {!isCompact && (
+          <>
+            <p className="text-xs text-clay-muted line-clamp-2 mt-0.5">{deal.title}</p>
+            <div className="flex flex-wrap items-center gap-1.5 mt-2">
+              <span className="text-[10px] font-medium text-clay-muted bg-clay-card px-1.5 py-0.5 rounded">{STAGE_LABELS[deal.stage]}</span>
+              <span className={clsx('text-[10px] font-semibold px-1.5 py-0.5 rounded', PRIORITY_CLASSES[deal.priority])}>{PRIORITY_LABELS[deal.priority]}</span>
+              {deal.sample_status && <span className="text-[10px] text-clay-ochre">{deal.sample_status === 'sent' ? 'Sent' : 'Received'}</span>}
+              {nudge && <span className="text-[10px] text-clay-muted">{nudge}</span>}
+            </div>
+            {(deal.followup_date || deal.next_action) && (
+              <div className="mt-2 pt-2 border-t border-clay-hairline/60">
+                {deal.followup_date && (
+                  <p className={clsx(
+                    'text-[10px]',
+                    due === 'overdue' ? 'text-clay-error font-semibold' : due === 'today' ? 'text-clay-ochre font-semibold' : 'text-clay-muted'
+                  )}>
+                    📅 {compactDate(deal.followup_date)}
+                  </p>
+                )}
+                {deal.next_action && <p className="text-[10px] text-clay-muted line-clamp-1 mt-0.5">{deal.next_action}</p>}
+              </div>
+            )}
+          </>
         )}
         <p className="sr-only">Open {deal.client} in {lane.label}</p>
       </button>
@@ -281,9 +353,20 @@ export default function DealsPage() {
 
       {view === 'board' && (
         <>
-          <div className="mb-3 rounded-xl border border-clay-hairline bg-clay-surface px-3 py-2 text-xs text-clay-muted flex items-start gap-2">
-            <CalendarDays className="w-4 h-4 mt-0.5 text-zams-violet shrink-0" />
-            <span>Drag a deal card into another lane. Each lane <strong className="text-clay-ink">gates the info it needs</strong> (dates, sample status, nudge level) before the move saves.</span>
+          <div className="mb-3 rounded-xl border border-clay-hairline bg-clay-surface px-3 py-2 flex items-center justify-between gap-3">
+            <div className="flex items-start gap-2 text-xs text-clay-muted min-w-0">
+              <CalendarDays className="w-4 h-4 mt-0.5 text-zams-violet shrink-0" />
+              <span>Drag a deal card into another lane. Each lane <strong className="text-clay-ink">gates the info it needs</strong> (dates, sample status, nudge level) before the move saves.</span>
+            </div>
+            <button
+              onClick={() => setCompact(!compact)}
+              className={clsx(
+                'shrink-0 zams-mono text-[10px] uppercase tracking-[0.16px] px-2.5 py-1.5 rounded-lg border transition-colors',
+                compact ? 'border-zams-violet bg-zams-powder/50 text-zams-deep' : 'border-clay-hairline text-clay-muted hover:border-zams-mist'
+              )}
+            >
+              {compact ? 'Full cards' : 'Compact'}
+            </button>
           </div>
 
           {actionBoardDeals.length === 0 && (
@@ -340,7 +423,7 @@ export default function DealsPage() {
                   <div className="space-y-2">
                     {laneDeals.map(d => (
                       <div key={d.id} className="flex items-stretch gap-1.5">
-                        <div className="flex-1 min-w-0">{renderDealCard(d)}</div>
+                        <div className="flex-1 min-w-0">{renderDealCard(d, { compact })}</div>
                         <button
                           onClick={() => setPickerDeal(d)}
                           className="w-11 shrink-0 flex flex-col items-center justify-center gap-0.5 rounded-xl border border-zams-mist bg-white dark:bg-clay-card text-zams-deep active:bg-zams-powder/60"
@@ -359,45 +442,70 @@ export default function DealsPage() {
           </div>
 
           <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-            <div className="hidden md:flex gap-3 flex-1 overflow-x-auto pb-4">
-              {WORKFLOW_LANES.map(lane => (
-                <DroppableLane key={lane.id} laneId={lane.id} className={lane.className}>
-                  <div className="flex items-start justify-between gap-2 mb-3">
-                    <div>
-                      <h2 className="text-sm font-semibold text-clay-ink">{lane.icon} {lane.shortLabel}</h2>
-                      <p className="text-xs text-clay-muted mt-0.5 leading-snug">{lane.description}</p>
-                      <p className="zams-mono text-[9px] uppercase tracking-[0.14px] text-zams-fog mt-1">{LANE_CRITERIA[lane.id]}</p>
-                    </div>
-                    <span className="text-xs text-clay-muted bg-white/70 dark:bg-clay-card px-2 py-0.5 rounded-full shrink-0">{dealsByAction[lane.id].length}</span>
-                  </div>
-                  <div className="space-y-2 flex-1">
-                    {dealsByAction[lane.id].map(deal => (
-                      <DraggableCard
-                        key={deal.id}
-                        deal={deal}
-                        landing={celebrate?.dealId === deal.id && celebrate?.laneId === lane.id}
-                        onClick={() => setSelectedDeal(deal.id)}
-                      >
-                        {renderDealCard(deal, { grip: true })}
-                      </DraggableCard>
-                    ))}
-                    {dealsByAction[lane.id].length === 0 && (
-                      <div className="text-center py-6 text-xs text-clay-muted-soft border-2 border-dashed border-clay-hairline rounded-lg">Drop here</div>
-                    )}
-                    {celebrate && celebrate.laneId === lane.id && (
-                      <div className="flex justify-center">
-                        <Image
-                          src="/assets/mascot-teardrop.png"
-                          alt="Mascot celebrating"
-                          width={1024}
-                          height={1024}
-                          className="mascot-pop w-10 h-10 object-contain"
-                        />
+            <div className="hidden md:flex flex-col flex-1 min-h-0 relative">
+              <div ref={boardRef} className="flex gap-3 h-full overflow-x-auto overflow-y-hidden pb-3 pr-1">
+                {WORKFLOW_LANES.map(lane => (
+                  <DroppableLane key={lane.id} laneId={lane.id} className={lane.className}>
+                    <div className="flex items-start justify-between gap-2 mb-3 shrink-0">
+                      <div>
+                        <h2 className="text-sm font-semibold text-clay-ink">{lane.icon} {lane.shortLabel}</h2>
+                        <p className="text-xs text-clay-muted mt-0.5 leading-snug">{lane.description}</p>
+                        <p className="zams-mono text-[9px] uppercase tracking-[0.14px] text-zams-fog mt-1">{LANE_CRITERIA[lane.id]}</p>
                       </div>
-                    )}
-                  </div>
-                </DroppableLane>
-              ))}
+                      <span className="text-xs text-clay-muted bg-white/70 dark:bg-clay-card px-2 py-0.5 rounded-full shrink-0">{dealsByAction[lane.id].length}</span>
+                    </div>
+                    <div className="space-y-2 flex-1 min-h-0 overflow-y-auto pr-0.5">
+                      {dealsByAction[lane.id].map(deal => (
+                        <DraggableCard
+                          key={deal.id}
+                          deal={deal}
+                          landing={celebrate?.dealId === deal.id && celebrate?.laneId === lane.id}
+                          onClick={() => setSelectedDeal(deal.id)}
+                        >
+                          {renderDealCard(deal, { grip: true, compact })}
+                        </DraggableCard>
+                      ))}
+                      {dealsByAction[lane.id].length === 0 && (
+                        <div className="text-center py-6 text-xs text-clay-muted-soft border-2 border-dashed border-clay-hairline rounded-lg">Drop here</div>
+                      )}
+                      {celebrate && celebrate.laneId === lane.id && (
+                        <div className="flex justify-center">
+                          <Image
+                            src="/assets/mascot-teardrop.png"
+                            alt="Mascot celebrating"
+                            width={1024}
+                            height={1024}
+                            className="mascot-pop w-10 h-10 object-contain"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </DroppableLane>
+                ))}
+              </div>
+
+              {/* Overflow indicators: fade + scroll arrows */}
+              {boardScroll.canScrollRight && (
+                <>
+                  <div className="absolute right-0 top-0 bottom-3 w-14 bg-gradient-to-l from-clay-canvas to-transparent pointer-events-none rounded-r-xl" />
+                  <button
+                    onClick={() => scrollBoard(1)}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 z-20 w-9 h-9 rounded-full bg-white dark:bg-clay-card border border-clay-hairline shadow-sm flex items-center justify-center text-clay-ink hover:border-zams-violet hover:text-zams-violet transition-colors"
+                    aria-label="Scroll to more lanes"
+                  >
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </>
+              )}
+              {boardScroll.canScrollLeft && (
+                <button
+                  onClick={() => scrollBoard(-1)}
+                  className="absolute left-1.5 top-1/2 -translate-y-1/2 z-20 w-9 h-9 rounded-full bg-white dark:bg-clay-card border border-clay-hairline shadow-sm flex items-center justify-center text-clay-ink hover:border-zams-violet hover:text-zams-violet transition-colors"
+                  aria-label="Scroll back"
+                >
+                  <ArrowRight className="w-4 h-4 rotate-180" />
+                </button>
+              )}
             </div>
             <DragOverlay>
               {activeDragId ? (
@@ -512,7 +620,7 @@ function DroppableLane({
     <section
       ref={setNodeRef}
       className={clsx(
-        'flex-1 min-w-[200px] min-h-[440px] md:min-h-[520px] 2xl:min-w-[150px] rounded-2xl border p-3 flex flex-col transition-colors',
+        'flex-1 min-w-[200px] h-full 2xl:min-w-[150px] rounded-2xl border p-3 flex flex-col transition-colors',
         className,
         isOver && 'lane-drop-over'
       )}
