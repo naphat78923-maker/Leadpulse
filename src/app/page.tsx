@@ -7,13 +7,32 @@ import { Deal, STAGE_LABELS, DealStage } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
 import { deals as dataDeals, contacts as dataContacts, companies as dataCompanies, meetings as dataMeetings } from '@/data/crmData';
 import CreateModal from '@/components/CreateModal';
-import { Plus, TrendingUp, AlertCircle, ChevronRight, Loader2 } from 'lucide-react';
+import LogInteractionModal from '@/components/LogInteractionModal';
+import MascotSprite from '@/components/MascotSprite';
+import { Plus, TrendingUp, AlertCircle, ChevronRight, Loader2, MessageCircle, Phone, Mail, Users, Package, Bell } from 'lucide-react';
 import { calculateLeadScore, scoreToTier, TIER_LABELS, TIER_COLORS, TIER_BG, PRIORITY_CLASSES, PRIORITY_LABELS } from '@/utils/lead-scoring';
+
+const PULSE_ITEMS = [
+  { key: 'call', label: 'Calls', icon: <Phone className="w-3.5 h-3.5 text-clay-teal" /> },
+  { key: 'email', label: 'Emails', icon: <Mail className="w-3.5 h-3.5 text-clay-pink" /> },
+  { key: 'dm', label: 'DMs', icon: <MessageCircle className="w-3.5 h-3.5 text-zams-violet" /> },
+  { key: 'meeting', label: 'Meetings', icon: <Users className="w-3.5 h-3.5 text-clay-lavender" /> },
+  { key: 'sample_sent', label: 'Samples', icon: <Package className="w-3.5 h-3.5 text-clay-ochre" /> },
+  { key: 'nudge', label: 'Nudges', icon: <Bell className="w-3.5 h-3.5 text-clay-coral" /> },
+];
+
+function daysOverdue(dateStr: string): number {
+  const d = new Date(dateStr + 'T00:00:00');
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.round((now.getTime() - d.getTime()) / 86400000));
+}
 
 export default function TodayPage() {
   const router = useRouter();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const { deals: dbDeals, contacts: dbContacts, companies: dbCompanies, meetings: dbMeetings, loading, createDeal } = useCrm();
+  const [isLogModalOpen, setIsLogModalOpen] = useState(false);
+  const { deals: dbDeals, contacts: dbContacts, companies: dbCompanies, meetings: dbMeetings, loading, createDeal, addMeeting } = useCrm();
 
   const deals = dbDeals.length > 0 ? dbDeals : (dataDeals as Deal[]);
   const contacts = dbContacts.length > 0 ? dbContacts : (dataContacts as any);
@@ -52,6 +71,27 @@ export default function TodayPage() {
     companies: companies.filter((c: any) => c.status !== 'lost').length,
     needAction: dealFollowUps.overdue.length + dealFollowUps.needsAttention.length,
   };
+
+  // ── Today's plan + pulse ──
+  const priorityRank: Record<string, number> = { high: 0, medium: 1, low: 2 };
+  const sortedOverdue = useMemo(
+    () => [...dealFollowUps.overdue].sort((a, b) => (a.followup_date || '').localeCompare(b.followup_date || '')),
+    [dealFollowUps.overdue]
+  );
+  const startHere = useMemo(() => {
+    const pool = [
+      ...sortedOverdue.map(d => ({ d, rank: 0 })),
+      ...dealFollowUps.dueToday.map(d => ({ d, rank: 1 })),
+    ];
+    if (!pool.length) return null;
+    pool.sort((a, b) => a.rank - b.rank || (priorityRank[a.d.priority || 'medium'] ?? 1) - (priorityRank[b.d.priority || 'medium'] ?? 1));
+    return pool[0].d;
+  }, [sortedOverdue, dealFollowUps.dueToday]);
+
+  const todayLocal = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const todayMeetings = meetings.filter((m: any) => m.date === todayLocal);
+  const todayCounts: Record<string, number> = { call: 0, email: 0, dm: 0, meeting: 0, sample_sent: 0, nudge: 0, note: 0 };
+  todayMeetings.forEach((m: any) => { if (todayCounts[m.type] !== undefined) todayCounts[m.type]++; });
 
   const handleCreate = async (data: any) => {
     // Let errors bubble to the modal so failures are visible.
@@ -106,12 +146,20 @@ export default function TodayPage() {
             <h1 className="zams-display text-2xl md:text-[28px] leading-none">Today</h1>
           </div>
         </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="zams-btn-primary"
-        >
-          <Plus className="w-4 h-4" /> <span className="hidden sm:inline">New deal</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsLogModalOpen(true)}
+            className="hidden sm:flex items-center gap-2 px-4 py-2.5 border border-zams-mist text-clay-ink text-sm font-medium rounded-md hover:border-zams-violet hover:text-zams-violet transition-colors"
+          >
+            <MessageCircle className="w-4 h-4" /> Log interaction
+          </button>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="zams-btn-primary"
+          >
+            <Plus className="w-4 h-4" /> <span className="hidden sm:inline">New deal</span>
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -153,6 +201,61 @@ export default function TodayPage() {
         </button>
       </div>
 
+      {/* Today's plan */}
+      <div className="mb-4 rounded-xl border border-zams-mist bg-white dark:bg-clay-card p-4 flex flex-col md:flex-row md:items-center gap-3">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <MascotSprite src="/assets/mascots/mascot-outreach.png" size={38} alt="LeadPulse mascot" />
+          <div className="min-w-0">
+            <p className="zams-eyebrow mb-0.5">Today's plan</p>
+            <p className="text-sm text-clay-ink truncate">
+              {startHere ? (
+                <>
+                  Start with <strong>{startHere.client}</strong>
+                  {dealFollowUps.overdue.some(d => d.id === startHere.id) && startHere.followup_date
+                    ? <> — <span className="text-clay-error font-semibold">{daysOverdue(startHere.followup_date)}d overdue</span></>
+                    : <> — <span className="text-clay-ochre font-semibold">due today</span></>}
+                </>
+              ) : (
+                'All clear — nothing due or overdue today.'
+              )}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          <span className="zams-mono text-[10px] uppercase tracking-[0.14px] px-2 py-1 rounded-full bg-clay-ochre/10 text-clay-ochre border border-clay-ochre/20">
+            Due today {dealFollowUps.dueToday.length}
+          </span>
+          <span className="zams-mono text-[10px] uppercase tracking-[0.14px] px-2 py-1 rounded-full bg-clay-error/10 text-clay-error border border-clay-error/20">
+            Overdue {dealFollowUps.overdue.length}
+          </span>
+          <span className="zams-mono text-[10px] uppercase tracking-[0.14px] px-2 py-1 rounded-full bg-zams-powder/50 text-zams-deep border border-zams-mist">
+            Need action {dealFollowUps.needsAttention.length}
+          </span>
+          {startHere && (
+            <button onClick={() => router.push('/deals?deal=' + startHere.id)} className="zams-btn-primary text-xs px-3 py-2">
+              Open <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Today's pulse */}
+      <div className="mb-6 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-4 py-2.5 flex items-center gap-3 overflow-x-auto">
+        <p className="zams-mono text-[10px] uppercase tracking-[0.16px] text-zams-fog shrink-0">Today's pulse</p>
+        <div className="flex items-center gap-3 shrink-0">
+          {PULSE_ITEMS.map(p => (
+            <div key={p.key} className="flex items-center gap-1.5">
+              {p.icon}
+              <span className="text-sm font-semibold text-clay-ink leading-none">{todayCounts[p.key] ?? 0}</span>
+              <span className="zams-mono text-[9px] uppercase tracking-[0.1px] text-zams-fog">{p.label}</span>
+            </div>
+          ))}
+        </div>
+        <span className="text-[11px] text-clay-muted-soft ml-auto shrink-0">
+          {todayMeetings.length === 0 ? 'No touches yet today' : `${todayMeetings.length} ${todayMeetings.length === 1 ? 'touch' : 'touches'} today`}
+        </span>
+      </div>
+
       {/* Follow-ups */}
       <section className="mb-6">
         <h2 className="zams-display text-lg md:text-xl mb-3">Follow-ups</h2>
@@ -182,26 +285,29 @@ export default function TodayPage() {
               </span>
             </div>
             <div className="space-y-2">
-              {dealFollowUps.overdue.slice(0, 4).map((deal: Deal) => (
-                <button
-                  key={deal.id}
-                  onClick={() => router.push('/deals?deal=' + deal.id)}
-                  className="w-full text-left bg-red-50/30 dark:bg-red-900/10 border border-clay-error rounded-lg p-3 active:bg-red-50/50 transition-colors"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <h4 className="text-sm font-medium text-clay-ink truncate">{deal.client}</h4>
-                        <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-clay-error/10 text-clay-error">
-                          ⚡ Overdue
-                        </span>
+              {sortedOverdue.slice(0, 4).map((deal: Deal) => {
+                const days = daysOverdue(deal.followup_date || '');
+                return (
+                  <button
+                    key={deal.id}
+                    onClick={() => router.push('/deals?deal=' + deal.id)}
+                    className="w-full text-left bg-red-50/30 dark:bg-red-900/10 border border-clay-error rounded-lg p-3 active:bg-red-50/50 transition-colors"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <h4 className="text-sm font-medium text-clay-ink truncate">{deal.client}</h4>
+                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${days > 7 ? 'bg-clay-error/15 text-clay-error' : 'bg-clay-ochre/15 text-clay-ochre'}`}>
+                            ⚡ {days}d late
+                          </span>
+                        </div>
+                        <p className="text-xs text-clay-muted line-clamp-1">{deal.next_action || deal.title}</p>
                       </div>
-                      <p className="text-xs text-clay-muted line-clamp-1">{deal.next_action}</p>
+                      <ChevronRight className="w-4 h-4 text-clay-muted-soft flex-shrink-0" />
                     </div>
-                    <ChevronRight className="w-4 h-4 text-clay-muted-soft flex-shrink-0" />
-                  </div>
-                </button>
-              ))}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -223,8 +329,11 @@ export default function TodayPage() {
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex-1 min-w-0">
-                      <h4 className="text-sm font-medium text-clay-ink truncate">{deal.client}</h4>
-                      <p className="text-xs text-clay-muted line-clamp-1">{deal.next_action}</p>
+                      <div className="flex items-center gap-1.5">
+                        <h4 className="text-sm font-medium text-clay-ink truncate">{deal.client}</h4>
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-clay-ochre/15 text-clay-ochre">Due today</span>
+                      </div>
+                      <p className="text-xs text-clay-muted line-clamp-1">{deal.next_action || deal.title}</p>
                     </div>
                     <ChevronRight className="w-4 h-4 text-clay-muted-soft flex-shrink-0" />
                   </div>
@@ -325,7 +434,7 @@ export default function TodayPage() {
         </div>
       </section>
 
-      {/* Create Modal */}
+      {/* Modals */}
       <CreateModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -333,6 +442,16 @@ export default function TodayPage() {
         type="deal"
         companies={companies}
         contacts={contacts}
+      />
+      <LogInteractionModal
+        isOpen={isLogModalOpen}
+        onClose={() => setIsLogModalOpen(false)}
+        onSave={async (meeting) => {
+          await addMeeting(meeting);
+        }}
+        deals={deals}
+        contacts={contacts}
+        companies={companies}
       />
     </div>
   );
