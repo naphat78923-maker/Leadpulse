@@ -240,6 +240,16 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
       refresh,
       addMeeting: async (meeting) => {
         await crm.createMeeting(meeting);
+        // Touch the linked contacts + company so last-touch dates stay honest
+        // (feeds the "never contacted" radar and cold-account tracking).
+        const touches: Promise<any>[] = [];
+        (meeting.contact_ids || []).forEach(cid => {
+          touches.push(crm.updateContact(cid, { last_contacted_date: meeting.date }).catch(() => null));
+        });
+        if (meeting.company_id) {
+          touches.push(crm.updateCompany(meeting.company_id, { last_contact_date: meeting.date }).catch(() => null));
+        }
+        await Promise.all(touches);
         await refresh();
       },
       createContact: async (contact) => {

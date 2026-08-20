@@ -82,7 +82,7 @@ export default function DealsPage() {
   const [celebrate, setCelebrate] = useState<{ dealId: string; laneId: DealWorkflowAction; sprite?: string } | null>(null);
   const [pickerDeal, setPickerDeal] = useState<Deal | null>(null);
 
-  const { deals: dbDeals, contacts: dbContacts, companies: dbCompanies, loading, refresh, createDeal, logActivity } = useCrm();
+  const { deals: dbDeals, contacts: dbContacts, companies: dbCompanies, loading, refresh, createDeal, logActivity, addMeeting } = useCrm();
   const { addToast } = useToast();
   const deals: Deal[] = dbDeals.length > 0 ? dbDeals : (dataDeals as Deal[]);
   const contacts = dbContacts.length > 0 ? dbContacts : (dataContacts as any);
@@ -224,19 +224,19 @@ export default function DealsPage() {
       };
       if (target === 'outreach' && payload.channel) {
         const chLabel = payload.channel === 'dm' ? 'DM' : payload.channel === 'email' ? 'Email' : 'Call';
-        return { ...base, type: payload.channel, description: `${chLabel} outreach — ${deal.client}`, summary: payload.next_action || null, outcome: null, followup_date: null };
+        return { ...base, type: payload.channel, description: `${chLabel} outreach — ${deal.client}`, summary: payload.next_action || null, outcome: null, followup_date: null, contact_ids: payload.contact_ids || deal.contact_ids || [] };
       }
       if (target === 'reply' && payload.channel && payload.reply_outcome) {
         const chLabel = payload.channel === 'dm' ? 'DM' : payload.channel === 'email' ? 'Email' : 'Call';
-        return { ...base, type: payload.channel, description: `${chLabel} reply from ${deal.client}`, summary: payload.reply_summary || null, outcome: payload.reply_outcome, followup_date: null };
+        return { ...base, type: payload.channel, description: `${chLabel} reply from ${deal.client}`, summary: payload.reply_summary || null, outcome: payload.reply_outcome, followup_date: null, contact_ids: payload.contact_ids || deal.contact_ids || [] };
       }
       if (target === 'sample' && payload.sample_status) {
-        return { ...base, type: 'sample_sent', description: `Sample ${payload.sample_status} — ${deal.client}`, summary: null, outcome: null, followup_date: null };
+        return { ...base, type: 'sample_sent', description: `Sample ${payload.sample_status} — ${deal.client}`, summary: null, outcome: null, followup_date: null, contact_ids: payload.contact_ids || deal.contact_ids || [] };
       }
       return null;
     })();
     if (meetingToLog) {
-      await crm.createMeeting(meetingToLog as any);
+      await addMeeting(meetingToLog as any);
     }
     setGate(null);
     const celebrationSprite = target === 'success'
@@ -594,6 +594,8 @@ export default function DealsPage() {
         <LaneGateModal
           deal={gate.deal}
           targetLane={gate.target}
+          contacts={contacts}
+          companies={companies}
           onCancel={() => setGate(null)}
           onConfirm={handleGateConfirm}
         />

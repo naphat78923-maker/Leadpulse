@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Deal, DealWorkflowAction, MeetingType, NudgeStage, SampleStatus } from '@/types/crm';
+import { Deal, DealWorkflowAction, MeetingType, NudgeStage, SampleStatus, Contact, Company } from '@/types/crm';
 import { WORKFLOW_BY_ID, LANE_MASCOT_PATHS, NUDGE_OPTIONS, SAMPLE_STATUS_OPTIONS } from '@/utils/deal-workflow';
 import MascotSprite from '@/components/MascotSprite';
+import ContactPicker from '@/components/ContactPicker';
 import { X, Loader2, Phone, Mail, MessageCircle } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -16,6 +17,7 @@ export interface LaneGatePayload {
   reply_outcome?: string | null;
   reply_summary?: string | null;
   channel?: MeetingType | null;
+  contact_ids?: string[];
 }
 
 const CHANNEL_OPTIONS: { value: MeetingType; label: string; icon: React.ReactNode }[] = [
@@ -27,6 +29,8 @@ const CHANNEL_OPTIONS: { value: MeetingType; label: string; icon: React.ReactNod
 interface LaneGateModalProps {
   deal: Deal;
   targetLane: DealWorkflowAction;
+  contacts?: Contact[];
+  companies?: Company[];
   onCancel: () => void;
   onConfirm: (payload: LaneGatePayload) => Promise<void>;
 }
@@ -38,7 +42,7 @@ const OUTCOME_OPTIONS = [
   { value: 'no_response', label: 'No response', cls: 'border-clay-ochre/30 bg-clay-ochre/10 text-clay-ochre' },
 ];
 
-export default function LaneGateModal({ deal, targetLane, onCancel, onConfirm }: LaneGateModalProps) {
+export default function LaneGateModal({ deal, targetLane, contacts = [], companies = [], onCancel, onConfirm }: LaneGateModalProps) {
   const lane = WORKFLOW_BY_ID[targetLane];
   const [sampleStatus, setSampleStatus] = useState<SampleStatus | ''>(deal.sample_status || '');
   const [followupDate, setFollowupDate] = useState<string>(deal.followup_date || '');
@@ -47,6 +51,7 @@ export default function LaneGateModal({ deal, targetLane, onCancel, onConfirm }:
   const [channel, setChannel] = useState<MeetingType>('call');
   const [replyOutcome, setReplyOutcome] = useState<string>('');
   const [replySummary, setReplySummary] = useState<string>('');
+  const [selectedContactIds, setSelectedContactIds] = useState<string[]>(deal.contact_ids || []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -78,6 +83,7 @@ export default function LaneGateModal({ deal, targetLane, onCancel, onConfirm }:
         reply_outcome: targetLane === 'reply' ? replyOutcome : null,
         reply_summary: targetLane === 'reply' && replySummary.trim() ? replySummary.trim() : null,
         channel: (targetLane === 'outreach' || targetLane === 'reply') ? channel : null,
+        contact_ids: selectedContactIds,
       });
     } catch (err2: any) {
       setError('Could not save: ' + (err2.message || 'Unknown error'));
@@ -257,6 +263,16 @@ export default function LaneGateModal({ deal, targetLane, onCancel, onConfirm }:
             <div className="bg-clay-mint/20 border border-clay-mint/30 rounded-lg px-3 py-3 text-xs text-clay-teal">
               🎉 This closes the deal as <strong>won</strong>. The card moves to the Successful lane and leaves the active pipeline.
             </div>
+          )}
+
+          {(targetLane === 'outreach' || targetLane === 'reply' || targetLane === 'sample') && (
+            <ContactPicker
+              contacts={contacts}
+              companies={companies}
+              selectedCompanyId={deal.company_id ?? undefined}
+              selectedIds={selectedContactIds}
+              onChange={setSelectedContactIds}
+            />
           )}
 
           {error && (

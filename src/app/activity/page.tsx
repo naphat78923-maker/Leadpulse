@@ -228,7 +228,7 @@ export default function ActivityPage() {
     const mItems: TimelineItem[] = meetings.map(m => ({
       kind: 'meeting',
       key: `m-${m.id}`,
-      ts: toTs(m.date),
+      ts: m.created_at ? new Date(m.created_at).getTime() : toTs(m.date),
       meeting: m,
     }));
     const eItems: TimelineItem[] = activities.map(a => ({
