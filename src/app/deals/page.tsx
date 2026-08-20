@@ -7,7 +7,22 @@ import { useCrm } from '@/components/CrmProvider';
 import { deals as dataDeals, contacts as dataContacts, companies as dataCompanies } from '@/data/crmData';
 import CreateModal from '@/components/CreateModal';
 import DealDetail from '@/components/DealDetail';
-import { Plus, TrendingUp, AlertCircle, Loader2, CalendarDays } from 'lucide-react';
+import LaneGateModal, { LaneGatePayload } from '@/components/LaneGateModal';
+import { useToast } from '@/components/ToastProvider';
+import * as crm from '@/lib/crm';
+import {
+  DndContext,
+  DragOverlay,
+  closestCorners,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  useDraggable,
+  useDroppable,
+  DragStartEvent,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import { Plus, TrendingUp, AlertCircle, Loader2, CalendarDays, GripVertical } from 'lucide-react';
 import clsx from 'clsx';
 import {
   calculateLeadScore,
@@ -18,9 +33,30 @@ import {
   PRIORITY_CLASSES,
   PRIORITY_LABELS,
 } from '@/utils/lead-scoring';
-import { WORKFLOW_LANES, getWorkflowAction, nudgeLabel } from '@/utils/deal-workflow';
+import { WORKFLOW_LANES, WORKFLOW_BY_ID, getWorkflowAction, nudgeLabel } from '@/utils/deal-workflow';
 
 type ViewMode = 'board' | 'closed' | 'table';
+
+const LANE_CRITERIA: Record<DealWorkflowAction, string> = {
+  outreach: 'Optional: next action',
+  reply: 'Requires: outcome',
+  sample: 'Requires: sent / received',
+  testing: 'Requires: testing date',
+  reschedule: 'Requires: date + nudge',
+  parked: 'Requires: revisit date',
+  success: 'Closes deal as won',
+};
+
+function timestampedEntry(text: string) {
+  const now = new Date();
+  const stamp = `${now.toISOString().replace('T', ' ').substring(0, 19)} UTC`;
+  return `[${stamp}] ${text}`;
+}
+
+function appendOutcome(existing: string | null, entry?: string | null) {
+  if (!entry) return existing;
+  return existing ? `${existing}\n---\n${entry}` : entry;
+}
 
 function compactDate(date?: string | null) {
   if (!date) return null;
@@ -32,11 +68,19 @@ export default function DealsPage() {
   const [mobileLane, setMobileLane] = useState<DealWorkflowAction>('outreach');
   const [selectedDeal, setSelectedDeal] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [gate, setGate] = useState<{ deal: Deal; target: DealWorkflowAction } | null>(null);
+  const [celebrate, setCelebrate] = useState<{ dealId: string; laneId: DealWorkflowAction } | null>(null);
 
-  const { deals: dbDeals, contacts: dbContacts, companies: dbCompanies, loading, refresh, createDeal } = useCrm();
+  const { deals: dbDeals, contacts: dbContacts, companies: dbCompanies, loading, refresh, createDeal, logActivity } = useCrm();
+  const { addToast } = useToast();
   const deals: Deal[] = dbDeals.length > 0 ? dbDeals : (dataDeals as Deal[]);
   const contacts = dbContacts.length > 0 ? dbContacts : (dataContacts as any);
   const companies = dbCompanies.length > 0 ? dbCompanies : (dataCompanies as any);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  );
 
   const scoredDeals = useMemo(
     () => deals.map(deal => ({ deal, score: calculateLeadScore(deal), tier: scoreToTier(calculateLeadScore(deal)) })),
@@ -78,6 +122,65 @@ export default function DealsPage() {
     }
   };
 
+  /* ─── Drag & drop lane moves with per-lane gatekeeping ─── */
+  const handleDragStart = (event: DragStartEvent) => setActiveDragId(event.active.id as string);
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const id = event.active.id as string;
+    setActiveDragId(null);
+    const over = event.over?.id as string | undefined;
+    if (!over) return;
+    const deal = deals.find(d => d.id === id);
+    if (!deal) return;
+    const current = getWorkflowAction(deal);
+    if (over === current) return;
+    setGate({ deal, target: over as DealWorkflowAction });
+  };
+
+  const handleGateConfirm = async (payload: LaneGatePayload) => {
+    if (!gate) return;
+    const { deal, target } = gate;
+    const lane = WORKFLOW_BY_ID[target];
+    const before: Partial<Deal> = {
+      workflow_action: getWorkflowAction(deal),
+      sample_status: deal.sample_status || null,
+      nudge_stage: deal.nudge_stage || null,
+      followup_date: deal.followup_date,
+      stage: deal.stage,
+      next_action: deal.next_action,
+      last_outcome: deal.last_outcome,
+    };
+    const updates: Partial<Deal> = { workflow_action: target };
+    if (target === 'sample') updates.sample_status = payload.sample_status || null;
+    if (target === 'testing' || target === 'parked' || target === 'reschedule') updates.followup_date = payload.followup_date || null;
+    if (target === 'reschedule') updates.nudge_stage = payload.nudge_stage || null;
+    if (target !== 'sample') updates.sample_status = null;
+    if (target !== 'reschedule') updates.nudge_stage = null;
+    if (target === 'outreach' && payload.next_action) updates.next_action = payload.next_action;
+    if (target === 'reply') {
+      const detail = payload.reply_summary ? `: ${payload.reply_summary}` : '';
+      updates.last_outcome = appendOutcome(deal.last_outcome, timestampedEntry(`💬 Client replied — ${payload.reply_outcome}${detail}`));
+    }
+    if (target === 'success') {
+      updates.stage = 'closed_won';
+      updates.followup_date = null;
+    }
+    await crm.updateDeal(deal.id, updates);
+    logActivity({
+      type: 'edit',
+      entity: 'deal',
+      entityId: deal.id,
+      label: `${lane.icon} ${lane.label}`,
+      description: `${deal.client} moved to the ${lane.shortLabel} lane`,
+      undoPayload: before,
+    });
+    setGate(null);
+    setCelebrate({ dealId: deal.id, laneId: target });
+    setTimeout(() => setCelebrate(null), 900);
+    addToast(target === 'success' ? '🎉 Deal closed as won!' : `${lane.icon} Moved to ${lane.shortLabel}`);
+    await refresh();
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -86,7 +189,7 @@ export default function DealsPage() {
     );
   }
 
-  const renderDealCard = (deal: Deal) => {
+  const renderDealCard = (deal: Deal, opts?: { grip?: boolean }) => {
     const score = calculateLeadScore(deal);
     const tier = scoreToTier(score);
     const action = getWorkflowAction(deal);
@@ -104,7 +207,10 @@ export default function DealsPage() {
       >
         <div className="flex items-center justify-between gap-2 mb-2">
           <span className={clsx('text-[10px] font-semibold px-2 py-0.5 rounded border', TIER_COLORS[tier])}>{TIER_LABELS[tier]}</span>
-          <span className="text-[10px] font-mono text-clay-muted">{score}/100</span>
+          <span className="flex items-center gap-1.5">
+            <span className="text-[10px] font-mono text-clay-muted">{score}/100</span>
+            {opts?.grip && <GripVertical className="w-3.5 h-3.5 text-clay-muted-soft" />}
+          </span>
         </div>
         <h3 className="text-sm font-semibold text-clay-ink truncate">{deal.client}</h3>
         <p className="text-xs text-clay-muted line-clamp-2 mt-0.5">{deal.title}</p>
@@ -175,8 +281,8 @@ export default function DealsPage() {
       {view === 'board' && (
         <>
           <div className="mb-3 rounded-xl border border-clay-hairline bg-clay-surface px-3 py-2 text-xs text-clay-muted flex items-start gap-2">
-            <CalendarDays className="w-4 h-4 mt-0.5 text-clay-ochre shrink-0" />
-            <span>Tap a deal, then choose its <strong className="text-clay-ink">Action lane</strong> in Edit. Reschedule requires a date and one nudge stage; parked deals require a revisit date.</span>
+            <CalendarDays className="w-4 h-4 mt-0.5 text-zams-violet shrink-0" />
+            <span>Drag a deal card into another lane. Each lane <strong className="text-clay-ink">gates the info it needs</strong> (dates, sample status, nudge level) before the move saves.</span>
           </div>
 
           {actionBoardDeals.length === 0 && (
@@ -231,7 +337,7 @@ export default function DealsPage() {
                     <span className="text-sm text-clay-muted bg-white/70 dark:bg-clay-card px-2 py-1 rounded-full">{laneDeals.length}</span>
                   </div>
                   <div className="space-y-2">
-                    {laneDeals.map(renderDealCard)}
+                    {laneDeals.map(d => renderDealCard(d))}
                     {laneDeals.length === 0 && <div className="border border-dashed border-clay-hairline rounded-xl px-3 py-8 text-center text-sm text-clay-muted-soft">No deals in this lane</div>}
                   </div>
                 </section>
@@ -239,23 +345,62 @@ export default function DealsPage() {
             })()}
           </div>
 
-          <div className="hidden md:flex gap-3 flex-1 overflow-x-auto pb-4">
-            {WORKFLOW_LANES.map(lane => (
-              <section key={lane.id} className={clsx('flex-1 min-w-[272px] rounded-2xl border p-3', lane.className)}>
-                <div className="flex items-start justify-between gap-2 mb-3">
-                  <div>
-                    <h2 className="text-sm font-semibold text-clay-ink">{lane.icon} {lane.shortLabel}</h2>
-                    <p className="text-xs text-clay-muted mt-0.5 leading-snug">{lane.description}</p>
+          <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+            <div className="hidden md:flex gap-3 flex-1 overflow-x-auto pb-4">
+              {WORKFLOW_LANES.map(lane => (
+                <DroppableLane key={lane.id} laneId={lane.id} className={lane.className}>
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <div>
+                      <h2 className="text-sm font-semibold text-clay-ink">{lane.icon} {lane.shortLabel}</h2>
+                      <p className="text-xs text-clay-muted mt-0.5 leading-snug">{lane.description}</p>
+                      <p className="zams-mono text-[9px] uppercase tracking-[0.14px] text-zams-fog mt-1">{LANE_CRITERIA[lane.id]}</p>
+                    </div>
+                    <span className="text-xs text-clay-muted bg-white/70 dark:bg-clay-card px-2 py-0.5 rounded-full shrink-0">{dealsByAction[lane.id].length}</span>
                   </div>
-                  <span className="text-xs text-clay-muted bg-white/70 dark:bg-clay-card px-2 py-0.5 rounded-full">{dealsByAction[lane.id].length}</span>
+                  <div className="space-y-2 flex-1">
+                    {dealsByAction[lane.id].map(deal => (
+                      <DraggableCard
+                        key={deal.id}
+                        deal={deal}
+                        landing={celebrate?.dealId === deal.id && celebrate?.laneId === lane.id}
+                        onClick={() => setSelectedDeal(deal.id)}
+                      >
+                        {renderDealCard(deal, { grip: true })}
+                      </DraggableCard>
+                    ))}
+                    {dealsByAction[lane.id].length === 0 && (
+                      <div className="text-center py-6 text-xs text-clay-muted-soft border-2 border-dashed border-clay-hairline rounded-lg">Drop here</div>
+                    )}
+                    {celebrate && celebrate.laneId === lane.id && (
+                      <div className="flex justify-center">
+                        <Image
+                          src="/assets/mascot-teardrop.png"
+                          alt="Mascot celebrating"
+                          width={1024}
+                          height={1024}
+                          className="mascot-pop w-10 h-10 object-contain"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </DroppableLane>
+              ))}
+            </div>
+            <DragOverlay>
+              {activeDragId ? (
+                <div className="relative w-[272px] rotate-2">
+                  {renderDealCard(deals.find(d => d.id === activeDragId)!)}
+                  <Image
+                    src="/assets/mascot-teardrop.png"
+                    alt="Mascot carrying the deal card"
+                    width={1024}
+                    height={1024}
+                    className="mascot-ride absolute -top-7 -right-4 w-12 h-12 object-contain"
+                  />
                 </div>
-                <div className="space-y-2">
-                  {dealsByAction[lane.id].map(renderDealCard)}
-                  {dealsByAction[lane.id].length === 0 && <div className="text-center py-6 text-xs text-clay-muted-soft border-2 border-dashed border-clay-hairline rounded-lg">No deals here</div>}
-                </div>
-              </section>
-            ))}
-          </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
         </>
       )}
 
@@ -265,7 +410,7 @@ export default function DealsPage() {
             <div className="bg-clay-mint/20 rounded-xl border border-clay-mint/30 p-4"><div className="flex items-center gap-2 text-clay-teal mb-1"><TrendingUp className="w-4 h-4" /><span className="text-xs font-medium">Won</span></div><p className="text-2xl font-bold text-clay-teal">{closedDeals.filter(deal => deal.stage === 'closed_won').length}</p></div>
             <div className="bg-clay-error/10 rounded-xl border border-clay-error/20 p-4"><div className="flex items-center gap-2 text-clay-error mb-1"><AlertCircle className="w-4 h-4" /><span className="text-xs font-medium">Lost</span></div><p className="text-2xl font-bold text-clay-error">{closedDeals.filter(deal => deal.stage === 'closed_lost').length}</p></div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">{closedDeals.map(renderDealCard)}</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">{closedDeals.map(d => renderDealCard(d))}</div>
         </div>
       )}
 
@@ -284,7 +429,69 @@ export default function DealsPage() {
       )}
 
       {activeDeal && <DealDetail deal={activeDeal} onClose={() => setSelectedDeal(null)} onSaved={refresh} />}
+
+      {gate && (
+        <LaneGateModal
+          deal={gate.deal}
+          targetLane={gate.target}
+          onCancel={() => setGate(null)}
+          onConfirm={handleGateConfirm}
+        />
+      )}
+
       <CreateModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={handleCreate} type="deal" companies={companies} contacts={contacts} />
     </div>
+  );
+}
+
+/* ─── Drag & drop primitives ─── */
+
+function DraggableCard({
+  deal, onClick, landing, children,
+}: {
+  deal: Deal;
+  onClick: () => void;
+  landing?: boolean;
+  children: React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: deal.id });
+  const style = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined;
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...listeners}
+      {...attributes}
+      onClick={onClick}
+      className={clsx(
+        'touch-none cursor-grab active:cursor-grabbing transition-opacity',
+        landing && 'clay-card-land',
+        isDragging && 'opacity-40'
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+function DroppableLane({
+  laneId, className, children,
+}: {
+  laneId: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: laneId });
+  return (
+    <section
+      ref={setNodeRef}
+      className={clsx(
+        'flex-1 min-w-[272px] rounded-2xl border p-3 flex flex-col transition-colors',
+        className,
+        isOver && 'lane-drop-over'
+      )}
+    >
+      {children}
+    </section>
   );
 }

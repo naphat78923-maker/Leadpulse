@@ -334,3 +334,47 @@ body {
   padding: 2px 8px;
   white-space: nowrap;
 }
+
+/* ─── Claymation lane animations ─── */
+
+/* Card lands in its new lane: squash-and-stretch bounce */
+@keyframes clay-card-land {
+  0% { transform: translateY(-14px) scale(1.08, 0.9); }
+  40% { transform: translateY(3px) scale(0.94, 1.07); }
+  70% { transform: translateY(-3px) scale(1.02, 0.98); }
+  100% { transform: translateY(0) scale(1, 1); }
+}
+.clay-card-land {
+  animation: clay-card-land 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Mascot rides the dragged card: gentle bob + wiggle */
+@keyframes mascot-ride {
+  0%, 100% { transform: translateY(0) rotate(-5deg); }
+  50% { transform: translateY(-6px) rotate(5deg); }
+}
+.mascot-ride {
+  animation: mascot-ride 0.55s ease-in-out infinite;
+}
+
+/* Mascot celebrates the landing: hop in and wave */
+@keyframes mascot-pop {
+  0% { transform: translateY(10px) scale(0.6) rotate(-8deg); opacity: 0; }
+  55% { transform: translateY(-4px) scale(1.12) rotate(3deg); opacity: 1; }
+  75% { transform: translateY(0) scale(0.96) rotate(-2deg); }
+  100% { transform: translateY(0) scale(1) rotate(0); }
+}
+.mascot-pop {
+  animation: mascot-pop 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Lane highlights when a card is dragged over it */
+@keyframes lane-drop-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(116, 81, 242, 0); }
+  50% { box-shadow: 0 0 0 4px rgba(116, 81, 242, 0.16); }
+}
+.lane-drop-over {
+  border-color: #7451f2 !important;
+  background-color: rgba(116, 81, 242, 0.04);
+  animation: lane-drop-pulse 0.9s ease-in-out infinite;
+}
