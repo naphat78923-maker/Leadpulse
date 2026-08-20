@@ -305,7 +305,7 @@ export default function DealsPage() {
   };
 
   return (
-    <div className="p-4 md:px-4 md:py-6 h-full flex flex-col pb-20 lg:pb-6">
+    <div className="p-4 md:px-4 md:py-6 pb-20 lg:pb-6 min-h-full">
       <div className="flex items-start justify-between gap-3 mb-4">
         <div>
           <p className="zams-eyebrow mb-1">Pipeline · Action board</p>
@@ -442,8 +442,8 @@ export default function DealsPage() {
           </div>
 
           <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-            <div className="hidden md:flex flex-col flex-1 min-h-0 relative">
-              <div ref={boardRef} className="flex gap-3 h-full overflow-x-auto overflow-y-hidden pb-3 pr-1">
+            <div className="hidden md:relative">
+              <div ref={boardRef} className="flex gap-3 items-stretch overflow-x-auto pb-3 pr-1">
                 {WORKFLOW_LANES.map(lane => (
                   <DroppableLane key={lane.id} laneId={lane.id} className={lane.className}>
                     <div className="flex items-start justify-between gap-2 mb-3 shrink-0">
@@ -454,7 +454,7 @@ export default function DealsPage() {
                       </div>
                       <span className="text-xs text-clay-muted bg-white/70 dark:bg-clay-card px-2 py-0.5 rounded-full shrink-0">{dealsByAction[lane.id].length}</span>
                     </div>
-                    <div className="space-y-2 flex-1 min-h-0 overflow-y-auto pr-0.5">
+                    <div className="space-y-2 flex-1 pr-0.5">
                       {dealsByAction[lane.id].map(deal => (
                         <DraggableCard
                           key={deal.id}
@@ -620,7 +620,7 @@ function DroppableLane({
     <section
       ref={setNodeRef}
       className={clsx(
-        'flex-1 min-w-[200px] h-full 2xl:min-w-[150px] rounded-2xl border p-3 flex flex-col transition-colors',
+        'flex-1 min-w-[200px] 2xl:min-w-[150px] rounded-2xl border p-3 flex flex-col transition-colors',
         className,
         isOver && 'lane-drop-over'
       )}
