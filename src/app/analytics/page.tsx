@@ -5,6 +5,7 @@ import { useCrm } from '@/components/CrmProvider';
 import { Deal, DealStage, STAGE_LABELS, STAGE_ORDER } from '@/types/crm';
 import { BarChart3, TrendingUp, Target, Clock, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
+import MascotSprite from '@/components/MascotSprite';
 
 // Probability each stage contributes to a weighted forecast.
 const STAGE_PROB: Record<DealStage, number> = {
@@ -138,11 +139,14 @@ export default function AnalyticsPage() {
 
   return (
     <div className="p-4 md:p-6 h-full overflow-y-auto">
-      <div className="mb-5 md:mb-6">
-        <h1 className="text-xl md:text-2xl font-semibold text-clay-ink tracking-tight flex items-center gap-2">
-          <BarChart3 className="w-6 h-6 text-clay-lavender" /> Analytics
-        </h1>
-        <p className="text-sm text-clay-muted mt-0.5">Pipeline health &amp; where deals come from</p>
+      <div className="mb-5 md:mb-6 flex items-center gap-3">
+        <MascotSprite src="/assets/mascots/mascot-followup.png" size={44} alt="Analytics reviewer mascot" />
+        <div>
+          <h1 className="text-xl md:text-2xl font-semibold text-clay-ink tracking-tight flex items-center gap-2">
+            <BarChart3 className="w-6 h-6 text-clay-lavender" /> Analytics
+          </h1>
+          <p className="text-sm text-clay-muted mt-0.5">Pipeline health &amp; where deals come from</p>
+        </div>
       </div>
 
       {/* KPI strip */}
