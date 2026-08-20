@@ -484,26 +484,33 @@ export default function ActivityPage() {
             icon={<Snowflake className="w-4 h-4" />}
             accent="text-clay-coral"
             count={radar.coldAccounts.length}
-            hint="No touch in 14+ days"
+            hint="No touch in 14+ days · amber = 14–30d · coral = 30d+ or never"
           >
             {radar.coldAccounts.length === 0 ? (
               <p className="text-xs text-clay-muted py-3 text-center">Every account is warm. 🔥</p>
             ) : (
-              radar.coldAccounts.map(({ company, lastTouch }) => (
-                <button
-                  key={company.id}
-                  onClick={() => setSelectedCompany(company.id)}
-                  className="w-full flex items-center justify-between gap-2 text-left px-2.5 py-2 rounded hover:bg-clay-surface transition-colors"
-                >
-                  <span className="text-xs font-medium text-clay-ink truncate flex items-center gap-1.5">
-                    <Building2 className="w-3.5 h-3.5 text-clay-muted-soft shrink-0" />
-                    {company.name}
-                  </span>
-                  <span className="text-[10px] font-semibold text-clay-coral bg-clay-coral/10 px-1.5 py-0.5 rounded shrink-0">
-                    {lastTouch === 0 ? 'Never' : `${daysSince(lastTouch)}d`}
-                  </span>
-                </button>
-              ))
+              radar.coldAccounts.map(({ company, lastTouch }) => {
+                const days = lastTouch === 0 ? null : daysSince(lastTouch);
+                const frozen = lastTouch === 0 || (days !== null && days > 30);
+                return (
+                  <button
+                    key={company.id}
+                    onClick={() => setSelectedCompany(company.id)}
+                    className="w-full flex items-center justify-between gap-2 text-left px-2.5 py-2 rounded hover:bg-clay-surface transition-colors"
+                  >
+                    <span className="text-xs font-medium text-clay-ink truncate flex items-center gap-1.5">
+                      <Building2 className="w-3.5 h-3.5 text-clay-muted-soft shrink-0" />
+                      {company.name}
+                    </span>
+                    <span className={clsx(
+                      'text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0',
+                      frozen ? 'text-clay-coral bg-clay-coral/10' : 'text-clay-ochre bg-clay-ochre/10'
+                    )}>
+                      {lastTouch === 0 ? 'Never' : `${days}d`}
+                    </span>
+                  </button>
+                );
+              })
             )}
           </RadarCard>
 
