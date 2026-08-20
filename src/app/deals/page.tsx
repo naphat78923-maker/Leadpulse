@@ -416,8 +416,8 @@ export default function DealsPage() {
                 <section className={clsx('rounded-2xl border p-3', lane.className)}>
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <div>
-                      <h2 className="text-base font-semibold text-clay-ink flex items-center gap-1.5">
-                        <MascotSprite src={LANE_MASCOT_PATHS[lane.id]} size={24} alt={lane.label} />
+                      <h2 className="text-base font-semibold text-clay-ink flex items-center gap-2">
+                        <MascotSprite src={LANE_MASCOT_PATHS[lane.id]} size={38} alt={lane.label} />
                         {lane.label}
                       </h2>
                       <p className="text-xs text-clay-muted mt-1">{lane.description}</p>
@@ -452,8 +452,8 @@ export default function DealsPage() {
                   <DroppableLane key={lane.id} laneId={lane.id} className={lane.className}>
                     <div className="flex items-start justify-between gap-2 mb-3 shrink-0">
                       <div>
-                        <h2 className="text-sm font-semibold text-clay-ink flex items-center gap-1.5">
-                          <MascotSprite src={LANE_MASCOT_PATHS[lane.id]} size={20} alt={lane.shortLabel} />
+                        <h2 className="text-sm font-semibold text-clay-ink flex items-center gap-2">
+                          <MascotSprite src={LANE_MASCOT_PATHS[lane.id]} size={38} alt={lane.shortLabel} />
                           {lane.shortLabel}
                         </h2>
                         <p className="text-xs text-clay-muted mt-0.5 leading-snug">{lane.description}</p>
