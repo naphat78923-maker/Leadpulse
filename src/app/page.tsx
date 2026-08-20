@@ -27,7 +27,7 @@ const ACTION_VERBS: Record<string, string> = {
 const PULSE_ITEMS = [
   { key: 'call', label: 'Calls', icon: <Phone className="w-3.5 h-3.5 text-clay-teal" /> },
   { key: 'email', label: 'Emails', icon: <Mail className="w-3.5 h-3.5 text-clay-pink" /> },
-  { key: 'dm', label: 'DMs', icon: <MessageCircle className="w-3.5 h-3.5 text-zams-violet" /> },
+  { key: 'dm', label: 'DMs', icon: <MessageCircle className="w-3.5 h-3.5 text-clay-lavender" /> },
   { key: 'meeting', label: 'Meetings', icon: <Users className="w-3.5 h-3.5 text-clay-lavender" /> },
   { key: 'sample_sent', label: 'Samples', icon: <Package className="w-3.5 h-3.5 text-clay-ochre" /> },
   { key: 'nudge', label: 'Nudges', icon: <Bell className="w-3.5 h-3.5 text-clay-coral" /> },
@@ -161,20 +161,20 @@ export default function TodayPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setIsModalOpen(true)}
-            className="sm:hidden flex items-center justify-center w-10 h-10 border border-zams-mist text-clay-ink rounded-md active:bg-clay-surface"
+            className="sm:hidden flex items-center justify-center w-10 h-10 border border-clay-hairline text-clay-ink rounded-md active:bg-clay-surface"
             aria-label="New deal"
           >
             <Plus className="w-4 h-4" />
           </button>
           <button
             onClick={() => setIsModalOpen(true)}
-            className="hidden sm:flex items-center gap-2 px-4 py-2.5 border border-zams-mist text-clay-ink text-sm font-medium rounded-md hover:border-zams-violet hover:text-zams-violet transition-colors"
+            className="hidden sm:flex items-center gap-2 px-4 py-2.5 border border-clay-hairline text-clay-ink text-sm font-medium rounded-md hover:border-clay-lavender hover:text-clay-lavender transition-colors"
           >
             <Plus className="w-4 h-4" /> New deal
           </button>
           <button
             onClick={() => setIsLogModalOpen(true)}
-            className="zams-btn-primary"
+            className="clay-btn-primary"
           >
             <MessageCircle className="w-4 h-4" /> <span className="hidden sm:inline">Log interaction</span>
           </button>
@@ -212,7 +212,7 @@ export default function TodayPage() {
           {startHere ? (
             <>
               <h2 className="zams-display text-xl md:text-2xl leading-tight mb-1">
-                Start with <span className="text-zams-violet">{startHere.client}</span>
+                Start with <span className="text-clay-lavender">{startHere.client}</span>
               </h2>
               <p className="text-sm text-clay-muted truncate">
                 {dealFollowUps.overdue.some(d => d.id === startHere.id) && startHere.followup_date ? (
@@ -234,16 +234,16 @@ export default function TodayPage() {
             <>
               <button
                 onClick={() => { setLogDealId(startHere.id); setIsLogModalOpen(true); }}
-                className="flex items-center gap-2 px-4 py-2.5 border border-zams-mist text-clay-ink text-sm font-medium rounded-md hover:border-zams-violet hover:text-zams-violet transition-colors"
+                className="flex items-center gap-2 px-4 py-2.5 border border-clay-hairline text-clay-ink text-sm font-medium rounded-md hover:border-clay-lavender hover:text-clay-lavender transition-colors"
               >
                 <MessageCircle className="w-4 h-4" /> Log touch
               </button>
-              <button onClick={() => router.push('/deals?deal=' + startHere.id)} className="zams-btn-primary">
+              <button onClick={() => router.push('/deals?deal=' + startHere.id)} className="clay-btn-primary">
                 Open lead <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </>
           ) : (
-            <button onClick={() => router.push('/companies')} className="zams-btn-primary">
+            <button onClick={() => router.push('/companies')} className="clay-btn-primary">
               Go prospecting <ChevronRight className="w-3.5 h-3.5" />
             </button>
           )}
@@ -254,14 +254,14 @@ export default function TodayPage() {
       <div className="mb-6 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-4 py-2.5 flex items-center gap-3 overflow-x-auto">
         <div className="flex items-center gap-2 shrink-0">
           <MascotSprite src="/assets/mascots/mascot-reply.png" size={20} alt="Listener mascot" />
-          <p className="zams-mono text-[10px] uppercase tracking-[0.16px] text-zams-fog">Today's pulse</p>
+          <p className="zams-mono text-[10px] uppercase tracking-[0.16px] text-clay-muted-soft">Today's pulse</p>
         </div>
         <div className="flex items-center gap-3 shrink-0">
           {PULSE_ITEMS.map(p => (
             <div key={p.key} className="flex items-center gap-1.5">
               {p.icon}
               <span className="text-sm font-semibold text-clay-ink leading-none">{todayCounts[p.key] ?? 0}</span>
-              <span className="zams-mono text-[9px] uppercase tracking-[0.1px] text-zams-fog">{p.label}</span>
+              <span className="zams-mono text-[9px] uppercase tracking-[0.1px] text-clay-muted-soft">{p.label}</span>
             </div>
           ))}
         </div>
@@ -328,7 +328,7 @@ export default function TodayPage() {
                     </div>
                     <button
                       onClick={() => { setLogDealId(item.deal.id); setIsLogModalOpen(true); }}
-                      className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zams-mist text-zams-deep text-xs font-medium hover:border-zams-violet hover:text-zams-violet transition-colors min-h-[44px]"
+                      className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-clay-hairline text-clay-ink text-xs font-medium hover:border-clay-lavender hover:text-clay-lavender transition-colors min-h-[44px]"
                       aria-label={`Log follow-up for ${item.deal.client}`}
                     >
                       <MessageCircle className="w-4 h-4" />
@@ -336,7 +336,7 @@ export default function TodayPage() {
                     </button>
                     <button
                       onClick={() => router.push('/deals?deal=' + item.deal.id)}
-                      className="shrink-0 w-9 h-9 rounded-lg bg-zams-violet text-white flex items-center justify-center hover:bg-[#6a4bc8] transition-colors"
+                      className="shrink-0 w-9 h-9 rounded-lg bg-clay-lavender text-white flex items-center justify-center hover:bg-[#6a4bc8] transition-colors"
                       aria-label={`Open ${item.deal.client}`}
                     >
                       <ChevronRight className="w-4 h-4" />

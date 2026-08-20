@@ -133,7 +133,7 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
                     onClick={() => setSampleStatus(opt.value)}
                     className={clsx(
                       'flex-1 px-3 py-2.5 rounded-lg border text-xs font-medium transition-colors',
-                      sampleStatus === opt.value ? 'border-zams-violet bg-zams-powder/50 text-zams-deep' : 'border-clay-hairline text-clay-muted hover:border-zams-mist'
+                      sampleStatus === opt.value ? 'border-clay-lavender bg-clay-lavender/20 text-clay-lavender' : 'border-clay-hairline text-clay-muted hover:border-clay-muted-soft'
                     )}
                   >
                     {opt.label}
@@ -150,7 +150,7 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
                 type="date"
                 value={followupDate}
                 onChange={(e) => setFollowupDate(e.target.value)}
-                className="w-full mt-2 px-3 py-3 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-zams-violet/40"
+                className="w-full mt-2 px-3 py-3 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-clay-lavender/40"
               />
             </div>
           )}
@@ -165,7 +165,7 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
                     onClick={() => setNudgeStage(opt.value)}
                     className={clsx(
                       'px-3 py-2.5 rounded-lg border text-xs font-medium transition-colors text-left',
-                      nudgeStage === opt.value ? 'border-zams-violet bg-zams-powder/50 text-zams-deep' : 'border-clay-hairline text-clay-muted hover:border-zams-mist'
+                      nudgeStage === opt.value ? 'border-clay-lavender bg-clay-lavender/20 text-clay-lavender' : 'border-clay-hairline text-clay-muted hover:border-clay-muted-soft'
                     )}
                   >
                     {opt.label}
@@ -188,7 +188,7 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
                       onClick={() => setChannel(opt.value)}
                       className={clsx(
                         'flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border text-xs font-medium transition-colors',
-                        channel === opt.value ? 'border-zams-violet bg-zams-powder/50 text-zams-deep' : 'border-clay-hairline text-clay-muted hover:border-zams-mist'
+                        channel === opt.value ? 'border-clay-lavender bg-clay-lavender/20 text-clay-lavender' : 'border-clay-hairline text-clay-muted hover:border-clay-muted-soft'
                       )}
                     >
                       {opt.icon} {opt.label}
@@ -205,7 +205,7 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
                       onClick={() => setReplyOutcome(opt.value)}
                       className={clsx(
                         'px-3 py-2.5 rounded-lg border text-xs font-medium transition-colors',
-                        replyOutcome === opt.value ? opt.cls : 'border-clay-hairline text-clay-muted hover:border-zams-mist'
+                        replyOutcome === opt.value ? opt.cls : 'border-clay-hairline text-clay-muted hover:border-clay-muted-soft'
                       )}
                     >
                       {opt.label}
@@ -220,7 +220,7 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
                   onChange={(e) => setReplySummary(e.target.value)}
                   rows={2}
                   placeholder="What did they say?"
-                  className="w-full mt-2 px-3 py-2.5 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-zams-violet/40 resize-none"
+                  className="w-full mt-2 px-3 py-2.5 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-clay-lavender/40 resize-none"
                 />
               </div>
             </>
@@ -238,7 +238,7 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
                       onClick={() => setChannel(opt.value)}
                       className={clsx(
                         'flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border text-xs font-medium transition-colors',
-                        channel === opt.value ? 'border-zams-violet bg-zams-powder/50 text-zams-deep' : 'border-clay-hairline text-clay-muted hover:border-zams-mist'
+                        channel === opt.value ? 'border-clay-lavender bg-clay-lavender/20 text-clay-lavender' : 'border-clay-hairline text-clay-muted hover:border-clay-muted-soft'
                       )}
                     >
                       {opt.icon} {opt.label}
@@ -253,7 +253,7 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
                   value={nextAction}
                   onChange={(e) => setNextAction(e.target.value)}
                   placeholder="e.g. Call K. Oil about the 10kg trial"
-                  className="w-full mt-2 px-3 py-3 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-zams-violet/40"
+                  className="w-full mt-2 px-3 py-3 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-clay-lavender/40"
                 />
               </div>
             </>
@@ -282,11 +282,11 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
 
         {/* Footer */}
         <div className="sticky bottom-0 bg-white dark:bg-clay-card border-t border-clay-hairline px-5 py-3 flex items-center justify-end gap-2 z-10">
-          <button onClick={onCancel} className="zams-btn-outline">Cancel</button>
+          <button onClick={onCancel} className="clay-btn-outline">Cancel</button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="zams-btn-primary min-w-[110px]"
+            className="clay-btn-primary min-w-[110px]"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Move deal'}
           </button>

@@ -342,7 +342,7 @@ export default function DealsPage() {
         </div>
         <button
           onClick={() => setIsModalOpen(true)}
-          className="zams-btn-primary shrink-0"
+          className="clay-btn-primary shrink-0"
         >
           <Plus className="w-4 h-4" /> <span className="hidden sm:inline">New deal</span>
         </button>
@@ -383,14 +383,14 @@ export default function DealsPage() {
         <>
           <div className="mb-3 rounded-xl border border-clay-hairline bg-clay-surface px-3 py-2 flex items-center justify-between gap-3">
             <div className="flex items-start gap-2 text-xs text-clay-muted min-w-0">
-              <CalendarDays className="w-4 h-4 mt-0.5 text-zams-violet shrink-0" />
+              <CalendarDays className="w-4 h-4 mt-0.5 text-clay-lavender shrink-0" />
               <span>Drag a deal card into another lane. Each lane <strong className="text-clay-ink">gates the info it needs</strong> (dates, sample status, nudge level) before the move saves.</span>
             </div>
             <button
               onClick={() => setCompact(!compact)}
               className={clsx(
                 'shrink-0 zams-mono text-[10px] uppercase tracking-[0.16px] px-2.5 py-1.5 rounded-lg border transition-colors',
-                compact ? 'border-zams-violet bg-zams-powder/50 text-zams-deep' : 'border-clay-hairline text-clay-muted hover:border-zams-mist'
+                compact ? 'border-clay-lavender bg-clay-lavender/20 text-clay-lavender' : 'border-clay-hairline text-clay-muted hover:border-clay-muted-soft'
               )}
             >
               {compact ? 'Full cards' : 'Compact'}
@@ -457,7 +457,7 @@ export default function DealsPage() {
                         <div className="flex-1 min-w-0">{renderDealCard(d, { compact })}</div>
                         <button
                           onClick={() => setPickerDeal(d)}
-                          className="w-11 shrink-0 flex flex-col items-center justify-center gap-0.5 rounded-xl border border-zams-mist bg-white dark:bg-clay-card text-zams-deep active:bg-zams-powder/60"
+                          className="w-11 shrink-0 flex flex-col items-center justify-center gap-0.5 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card text-clay-ink active:bg-clay-lavender/20"
                           aria-label={`Move ${d.client} to another lane`}
                         >
                           <ArrowRight className="w-4 h-4" />
@@ -484,7 +484,7 @@ export default function DealsPage() {
                           {lane.shortLabel}
                         </h2>
                         <p className="text-xs text-clay-muted mt-0.5 leading-snug">{lane.description}</p>
-                        <p className="zams-mono text-[9px] uppercase tracking-[0.14px] text-zams-fog mt-1">{LANE_CRITERIA[lane.id]}</p>
+                        <p className="zams-mono text-[9px] uppercase tracking-[0.14px] text-clay-muted-soft mt-1">{LANE_CRITERIA[lane.id]}</p>
                       </div>
                       <span className="text-xs text-clay-muted bg-white/70 dark:bg-clay-card px-2 py-0.5 rounded-full shrink-0">{dealsByAction[lane.id].length}</span>
                     </div>
@@ -530,7 +530,7 @@ export default function DealsPage() {
                   <div className="absolute right-0 top-0 bottom-3 w-14 bg-gradient-to-l from-clay-canvas to-transparent pointer-events-none rounded-r-xl" />
                   <button
                     onClick={() => scrollBoard(1)}
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 z-20 w-9 h-9 rounded-full bg-white dark:bg-clay-card border border-clay-hairline shadow-sm flex items-center justify-center text-clay-ink hover:border-zams-violet hover:text-zams-violet transition-colors"
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 z-20 w-9 h-9 rounded-full bg-white dark:bg-clay-card border border-clay-hairline shadow-sm flex items-center justify-center text-clay-ink hover:border-clay-lavender hover:text-clay-lavender transition-colors"
                     aria-label="Scroll to more lanes"
                   >
                     <ArrowRight className="w-4 h-4" />
@@ -540,7 +540,7 @@ export default function DealsPage() {
               {boardScroll.canScrollLeft && (
                 <button
                   onClick={() => scrollBoard(-1)}
-                  className="absolute left-1.5 top-1/2 -translate-y-1/2 z-20 w-9 h-9 rounded-full bg-white dark:bg-clay-card border border-clay-hairline shadow-sm flex items-center justify-center text-clay-ink hover:border-zams-violet hover:text-zams-violet transition-colors"
+                  className="absolute left-1.5 top-1/2 -translate-y-1/2 z-20 w-9 h-9 rounded-full bg-white dark:bg-clay-card border border-clay-hairline shadow-sm flex items-center justify-center text-clay-ink hover:border-clay-lavender hover:text-clay-lavender transition-colors"
                   aria-label="Scroll back"
                 >
                   <ArrowRight className="w-4 h-4 rotate-180" />
@@ -702,14 +702,14 @@ function LanePickerSheet({
               className={clsx(
                 'w-full flex items-center gap-3 px-3 py-3 rounded-lg border text-left transition-colors',
                 currentLane === lane.id
-                  ? 'border-zams-violet bg-zams-powder/40'
+                  ? 'border-clay-lavender bg-clay-lavender/20'
                   : 'border-clay-hairline bg-white dark:bg-clay-card active:bg-clay-surface'
               )}
             >
               <span className="text-lg shrink-0">{lane.icon}</span>
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-medium text-clay-ink truncate">{lane.label}</span>
-                <span className="block zams-mono text-[9px] uppercase tracking-[0.14px] text-zams-fog mt-0.5">{LANE_CRITERIA[lane.id]}</span>
+                <span className="block zams-mono text-[9px] uppercase tracking-[0.14px] text-clay-muted-soft mt-0.5">{LANE_CRITERIA[lane.id]}</span>
               </span>
               <span className="text-xs text-clay-muted-soft shrink-0">{counts[lane.id]?.length ?? 0}</span>
             </button>

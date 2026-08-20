@@ -58,7 +58,7 @@ export default function MeetingsPage() {
       case 'meeting': return 'bg-clay-lavender/20 text-clay-lavender';
       case 'email': return 'bg-clay-pink/20 text-clay-pink';
       case 'call': return 'bg-clay-mint/20 text-clay-teal';
-      case 'dm': return 'bg-zams-powder/50 text-zams-deep';
+      case 'dm': return 'bg-clay-lavender/20 text-clay-lavender';
       case 'sample_sent': return 'bg-clay-ochre/20 text-clay-ochre';
       case 'nudge': return 'bg-clay-coral/20 text-clay-coral';
       default: return 'bg-clay-card text-clay-muted';
