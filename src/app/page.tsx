@@ -40,6 +40,13 @@ function daysOverdue(dateStr: string): number {
   return Math.max(0, Math.round((now.getTime() - d.getTime()) / 86400000));
 }
 
+function daysUntil(dateStr: string): number {
+  const d = new Date(dateStr + 'T00:00:00');
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.round((d.getTime() - now.getTime()) / 86400000));
+}
+
 export default function TodayPage() {
   const router = useRouter();
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -62,19 +69,28 @@ export default function TodayPage() {
     const dueToday: Deal[] = [];
     const thisWeek: Deal[] = [];
 
+    const todayMid = new Date();
+    todayMid.setHours(0, 0, 0, 0);
+    const todayMs = todayMid.getTime();
+
     deals.forEach((deal: Deal) => {
       if (deal.stage === 'closed_won' || deal.stage === 'closed_lost') return;
       if (!deal.followup_date) {
         needsAttention.push(deal);
-      } else {
-        const date = new Date(deal.followup_date);
-        const todayStr = today.toISOString().split('T')[0];
-        const dateStr = date.toISOString().split('T')[0];
-        if (dateStr === todayStr) dueToday.push(deal);
-        else if (date < today) overdue.push(deal);
-        else if (date.getTime() - today.getTime() <= 7 * 86400000) thisWeek.push(deal);
+        return;
       }
+      // Date-only diff so the week window doesn't drift with time-of-day.
+      const d = new Date(deal.followup_date + 'T00:00:00');
+      const diffDays = Math.round((d.getTime() - todayMs) / 86400000);
+      if (diffDays < 0) overdue.push(deal);
+      else if (diffDays === 0) dueToday.push(deal);
+      else if (diffDays <= 7) thisWeek.push(deal);
     });
+
+    // Soonest first within each bucket.
+    const byDate = (a: Deal, b: Deal) => (a.followup_date || '').localeCompare(b.followup_date || '');
+    dueToday.sort(byDate);
+    thisWeek.sort(byDate);
 
     return { needsAttention, overdue, dueToday, thisWeek };
   }, [deals]);
@@ -250,7 +266,89 @@ export default function TodayPage() {
         </div>
       </div>
 
-      {/* Today's pulse */}
+      {/* Due today / this week — the day's commitments at a glance */}
+      <section className="mb-6">
+        <div className="grid gap-4 sm:grid-cols-2">
+          {/* Due today */}
+          <div className="rounded-2xl border border-clay-ochre/30 bg-clay-ochre/5 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="w-1.5 h-1.5 rounded-full bg-clay-ochre" aria-hidden />
+              <h2 className="zams-display text-base leading-tight">Due today</h2>
+              <span className="ml-auto text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-clay-ochre/15 text-clay-ochre">
+                {dealFollowUps.dueToday.length}
+              </span>
+            </div>
+            {dealFollowUps.dueToday.length === 0 ? (
+              <p className="text-xs text-clay-muted flex items-center gap-1.5">
+                <MascotSprite src="/assets/mascots/mascot-parked.png" size={18} alt="Sleepy mascot" />
+                Nothing scheduled for today.
+              </p>
+            ) : (
+              <ul className="space-y-1.5">
+                {dealFollowUps.dueToday.map(d => {
+                  const verb = ACTION_VERBS[getWorkflowAction(d)] || 'Follow up';
+                  return (
+                    <li key={d.id}>
+                      <button
+                        onClick={() => router.push('/deals?deal=' + d.id)}
+                        className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-clay-card border border-clay-hairline hover:border-clay-ochre/40 transition-colors min-h-[44px]"
+                      >
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-clay-ochre/15 text-clay-ochre shrink-0">Today</span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-sm font-medium text-clay-ink truncate">{d.client}</span>
+                          <span className="block text-xs text-clay-muted truncate">{verb}{d.next_action ? ` — ${d.next_action}` : ''}</span>
+                        </span>
+                        <ChevronRight className="w-4 h-4 text-clay-muted-soft shrink-0" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+
+          {/* This week */}
+          <div className="rounded-2xl border border-clay-lavender/30 bg-clay-lavender/5 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="w-1.5 h-1.5 rounded-full bg-clay-lavender" aria-hidden />
+              <h2 className="zams-display text-base leading-tight">This week</h2>
+              <span className="ml-auto text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-clay-lavender/20 text-clay-lavender">
+                {dealFollowUps.thisWeek.length}
+              </span>
+            </div>
+            {dealFollowUps.thisWeek.length === 0 ? (
+              <p className="text-xs text-clay-muted flex items-center gap-1.5">
+                <MascotSprite src="/assets/mascots/mascot-parked.png" size={18} alt="Sleepy mascot" />
+                Light week ahead.
+              </p>
+            ) : (
+              <ul className="space-y-1.5">
+                {dealFollowUps.thisWeek.map(d => {
+                  const verb = ACTION_VERBS[getWorkflowAction(d)] || 'Follow up';
+                  const inDays = d.followup_date ? daysUntil(d.followup_date) : 0;
+                  return (
+                    <li key={d.id}>
+                      <button
+                        onClick={() => router.push('/deals?deal=' + d.id)}
+                        className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-clay-card border border-clay-hairline hover:border-clay-lavender/40 transition-colors min-h-[44px]"
+                      >
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-clay-lavender/20 text-clay-lavender shrink-0">
+                          {inDays === 1 ? 'Tomorrow' : `in ${inDays}d`}
+                        </span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-sm font-medium text-clay-ink truncate">{d.client}</span>
+                          <span className="block text-xs text-clay-muted truncate">{verb}{d.next_action ? ` — ${d.next_action}` : ''}</span>
+                        </span>
+                        <ChevronRight className="w-4 h-4 text-clay-muted-soft shrink-0" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
+      </section>
       <div className="mb-6 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-4 py-2.5 flex items-center gap-3 overflow-x-auto">
         <div className="flex items-center gap-2 shrink-0">
           <MascotSprite src="/assets/mascots/mascot-reply.png" size={20} alt="Listener mascot" />
