@@ -8,9 +8,7 @@ import { useToast } from '@/components/ToastProvider';
 import { useCrm } from '@/components/CrmProvider';
 import { dealClientName, dealLabel } from '@/utils/dealLabel';
 import * as crm from '@/lib/crm';
-import { NUDGE_OPTIONS, SAMPLE_STATUS_OPTIONS, WORKFLOW_BY_ID, WORKFLOW_LANES, getWorkflowAction, nudgeLabel } from '@/utils/deal-workflow';
-
-const stageOptions: DealStage[] = ['research', 'contacted', 'proposal', 'negotiation', 'closed_won', 'closed_lost'];
+import { NUDGE_OPTIONS, SAMPLE_STATUS_OPTIONS, WORKFLOW_BY_ID, WORKFLOW_LANES, getWorkflowAction, nudgeLabel, canNudge } from '@/utils/deal-workflow';
 
 interface DealDetailProps {
   deal: Deal;
@@ -167,7 +165,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
         entity: 'deal',
         entityId: deal.id,
         label: workflowChanged ? `${workflow.icon} ${workflow.label}` : `Updated ${dealClientName(deal, companies, contacts)}`,
-        description: workflowChanged ? `${dealClientName(deal, companies, contacts)} moved to the ${workflow.shortLabel} lane` : `Pipeline stage: ${STAGE_LABELS[updated.stage as DealStage]}`,
+        description: workflowChanged ? `${dealClientName(deal, companies, contacts)} moved to the ${workflow.shortLabel} lane` : `Action lane: ${WORKFLOW_BY_ID[updated.workflow_action as DealWorkflowAction].label}`,
         undoPayload: before,
       });
       onSaved();
@@ -342,20 +340,19 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
             <p className="text-[10px] font-semibold tracking-wider text-clay-muted mb-2">ACTION LANE — WHAT HAPPENS NEXT</p>
             {editing ? (
               <>
-                <select value={editData.workflow_action} onChange={event => setEditData(prev => ({ ...prev, workflow_action: event.target.value as DealWorkflowAction, nudge_stage: event.target.value === 'reschedule' ? prev.nudge_stage : '', sample_status: event.target.value === 'sample' ? prev.sample_status : '' }))} className="w-full px-3 py-2.5 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card">
-                  {WORKFLOW_LANES.map(lane => <option key={lane.id} value={lane.id}>{lane.icon} {lane.label}</option>)}
+                <select value={editData.workflow_action} onChange={event => setEditData(prev => ({ ...prev, workflow_action: event.target.value as DealWorkflowAction, nudge_stage: canNudge(event.target.value as DealWorkflowAction) ? prev.nudge_stage : '', sample_status: event.target.value === 'sample' ? prev.sample_status : '' }))} className="w-full px-3 py-2.5 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card">
+                  {WORKFLOW_LANES.filter(lane => canNudge(currentWorkflow) || (lane.id !== 'reschedule' && lane.id !== 'parked')).map(lane => <option key={lane.id} value={lane.id}>{lane.icon} {lane.label}</option>)}
                 </select>
                 <p className="text-xs text-clay-muted mt-2">{WORKFLOW_BY_ID[editData.workflow_action].description}</p>
                 {editData.workflow_action === 'sample' && <label className="block mt-3 text-xs text-clay-body">Sample status<select value={editData.sample_status} onChange={event => setEditData(prev => ({ ...prev, sample_status: event.target.value as SampleStatus }))} className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card"><option value="">Choose status</option>{SAMPLE_STATUS_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>}
-                {editData.workflow_action === 'reschedule' && <label className="block mt-3 text-xs text-clay-body">Nudge stage<select value={editData.nudge_stage} onChange={event => setEditData(prev => ({ ...prev, nudge_stage: event.target.value as NudgeStage }))} className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card"><option value="">Choose nudge</option>{NUDGE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label} · {option.days} days</option>)}</select></label>}
+                {canNudge(editData.workflow_action) && <label className="block mt-3 text-xs text-clay-body">Nudge stage<select value={editData.nudge_stage} onChange={event => setEditData(prev => ({ ...prev, nudge_stage: event.target.value as NudgeStage }))} className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card"><option value="">Choose nudge</option>{NUDGE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label} · {option.days} days</option>)}</select></label>}
               </>
             ) : (
-              <div className="flex items-start gap-3"><span className="text-2xl">{workflow.icon}</span><div><p className="font-semibold text-clay-ink">{workflow.label}</p><p className="text-xs text-clay-muted mt-0.5">{workflow.description}</p>{deal.nudge_stage && <p className="text-xs text-clay-ochre mt-1">{nudgeLabel(deal.nudge_stage)}</p>}{deal.sample_status && <p className="text-xs text-clay-ochre mt-1">Sample {deal.sample_status}</p>}</div></div>
+              <div className="flex items-start gap-3"><span className="text-2xl">{workflow.icon}</span><div><p className="font-semibold text-clay-ink">{workflow.label}</p><p className="text-xs text-clay-muted mt-0.5">{workflow.description}</p>{deal.nudge_stage && <p className="text-xs text-clay-ochre mt-1">🔔 {nudgeLabel(deal.nudge_stage)}</p>}{deal.sample_status && <p className="text-xs text-clay-ochre mt-1">Sample {deal.sample_status}</p>}{!deal.nudge_stage && !canNudge(currentWorkflow) && <p className="text-xs text-clay-muted-soft mt-1">🔔 Nudge unlocks after sample is sent</p>}</div></div>
             )}
           </section>
 
           <div className="grid grid-cols-2 gap-3">
-            <label className="text-clay-body">Pipeline stage{editing ? <select value={editData.stage} onChange={event => setEditData(prev => ({ ...prev, stage: event.target.value as DealStage }))} className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card">{stageOptions.map(stage => <option key={stage} value={stage}>{STAGE_LABELS[stage]}</option>)}</select> : <span className="block mt-1 px-2 py-1.5 bg-clay-card rounded text-xs">{STAGE_LABELS[deal.stage]}</span>}</label>
             <label className="text-clay-body">Priority{editing ? <select value={editData.priority} onChange={event => setEditData(prev => ({ ...prev, priority: event.target.value as Deal['priority'] }))} className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select> : <span className="block mt-1 px-2 py-1.5 bg-clay-card rounded text-xs capitalize">{deal.priority}</span>}</label>
           </div>
 

@@ -115,6 +115,49 @@ export function nudgeLabel(nudgeStage?: NudgeStage | null) {
 }
 
 /**
+ * Interaction log is the single source of truth. Logging an interaction against a
+ * deal advances its workflow lane AND its derived pipeline stage in the same save.
+ * These mappings keep stage in sync with workflow_action so both boards agree.
+ */
+export const STAGE_FROM_WORKFLOW: Record<DealWorkflowAction, Deal['stage']> = {
+  outreach: 'research',
+  reply: 'contacted',
+  sample: 'proposal',
+  testing: 'negotiation',
+  reschedule: 'contacted', // cadence touch — assume still in conversation
+  parked: 'research', // shelved
+  success: 'closed_won',
+};
+
+export function stageFromWorkflow(action: DealWorkflowAction, current?: Deal['stage']): Deal['stage'] {
+  // reschedule / parked are cadence-only: keep the deal's current stage.
+  if (action === 'reschedule' || action === 'parked') return current || STAGE_FROM_WORKFLOW[action];
+  return STAGE_FROM_WORKFLOW[action];
+}
+
+/**
+ * Nudge stage only applies at/after the sample-sent step. Earlier lanes
+ * (outreach, reply) must NOT offer a nudge — per Pat's rule.
+ */
+export function canNudge(workflow: DealWorkflowAction): boolean {
+  return ['sample', 'testing', 'reschedule', 'success'].includes(workflow);
+}
+
+/**
+ * Next workflow lane when logging an interaction against a deal (the forward path).
+ * Used by the consolidated Log modal so one save = one interaction + one advance.
+ */
+export const NEXT_WORKFLOW: Partial<Record<DealWorkflowAction, DealWorkflowAction>> = {
+  outreach: 'reply',
+  reply: 'sample',
+  sample: 'testing',
+  testing: 'success',
+  reschedule: 'reschedule',
+  parked: 'parked',
+  success: 'success',
+};
+
+/**
  * Coherent nudge-stage colors — one hue per stage, used everywhere
  * (chips, LaneGate, DealDetail, Nudges legend).
  *   warm    → butter/ochre  (gentle first tap)

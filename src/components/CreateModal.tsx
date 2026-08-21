@@ -159,8 +159,8 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
                 Deal name &amp; client auto-fill from Product + Company below.
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Select label="Stage" name="stage" value={form.stage} onChange={handleChange} options={Object.entries(STAGE_LABELS).map(([v, l]) => ({ value: v, label: l }))} />
                 <Select label="Product" name="product" value={form.product} onChange={handleChange} options={PRODUCT_OPTIONS.map(p => ({ value: p, label: p }))} />
+                <Select label="Priority" name="priority" value={form.priority} onChange={handleChange} options={[{ value: 'high', label: 'High' }, { value: 'medium', label: 'Medium' }, { value: 'low', label: 'Low' }]} />
               </div>
               <Select label="Company" name="company_id" value={form.company_id} onChange={handleChange} options={[{ value: '', label: '— None —' }, ...companies.map(c => ({ value: c.id, label: c.name }))]} />
               <div className="grid grid-cols-2 gap-3">
