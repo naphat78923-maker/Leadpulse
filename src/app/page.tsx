@@ -271,80 +271,106 @@ export default function TodayPage() {
         <div className="grid gap-4 sm:grid-cols-2">
           {/* Due today */}
           <div className="rounded-2xl border border-clay-ochre/30 bg-clay-ochre/5 p-4">
-            <div className="flex items-center gap-2 mb-3">
+            <button
+              onClick={() => router.push('/deals')}
+              className="w-full flex items-center gap-2 mb-3 text-left group"
+            >
               <span className="w-1.5 h-1.5 rounded-full bg-clay-ochre" aria-hidden />
-              <h2 className="zams-display text-base leading-tight">Due today</h2>
+              <h2 className="zams-display text-base leading-tight group-hover:text-clay-ochre transition-colors">Due today</h2>
               <span className="ml-auto text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-clay-ochre/15 text-clay-ochre">
                 {dealFollowUps.dueToday.length}
               </span>
-            </div>
+            </button>
             {dealFollowUps.dueToday.length === 0 ? (
               <p className="text-xs text-clay-muted flex items-center gap-1.5">
                 <MascotSprite src="/assets/mascots/mascot-parked.png" size={18} alt="Sleepy mascot" />
                 Nothing scheduled for today.
               </p>
             ) : (
-              <ul className="space-y-1.5">
-                {dealFollowUps.dueToday.map(d => {
-                  const verb = ACTION_VERBS[getWorkflowAction(d)] || 'Follow up';
-                  return (
-                    <li key={d.id}>
-                      <button
-                        onClick={() => router.push('/deals?deal=' + d.id)}
-                        className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-clay-card border border-clay-hairline hover:border-clay-ochre/40 transition-colors min-h-[44px]"
-                      >
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-clay-ochre/15 text-clay-ochre shrink-0">Today</span>
-                        <span className="flex-1 min-w-0">
-                          <span className="block text-sm font-medium text-clay-ink truncate">{d.client}</span>
-                          <span className="block text-xs text-clay-muted truncate">{verb}{d.next_action ? ` — ${d.next_action}` : ''}</span>
-                        </span>
-                        <ChevronRight className="w-4 h-4 text-clay-muted-soft shrink-0" />
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
+              <>
+                <ul className="space-y-1.5">
+                  {dealFollowUps.dueToday.slice(0, 4).map(d => {
+                    const verb = ACTION_VERBS[getWorkflowAction(d)] || 'Follow up';
+                    return (
+                      <li key={d.id}>
+                        <button
+                          onClick={() => router.push('/deals?deal=' + d.id)}
+                          className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-clay-card border border-clay-hairline hover:border-clay-ochre/40 transition-colors min-h-[44px]"
+                        >
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-clay-ochre/15 text-clay-ochre shrink-0">Today</span>
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-sm font-medium text-clay-ink truncate">{d.client}</span>
+                            <span className="block text-xs text-clay-muted truncate">{verb}{d.next_action ? ` — ${d.next_action}` : ''}</span>
+                          </span>
+                          <ChevronRight className="w-4 h-4 text-clay-muted-soft shrink-0" />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {dealFollowUps.dueToday.length > 4 && (
+                  <button
+                    onClick={() => router.push('/deals')}
+                    className="mt-2 w-full text-[11px] font-semibold text-clay-ochre hover:text-clay-ink transition-colors flex items-center justify-center gap-1"
+                  >
+                    View all {dealFollowUps.dueToday.length} <ChevronRight className="w-3 h-3" />
+                  </button>
+                )}
+              </>
             )}
           </div>
 
           {/* This week */}
           <div className="rounded-2xl border border-clay-lavender/30 bg-clay-lavender/5 p-4">
-            <div className="flex items-center gap-2 mb-3">
+            <button
+              onClick={() => router.push('/deals')}
+              className="w-full flex items-center gap-2 mb-3 text-left group"
+            >
               <span className="w-1.5 h-1.5 rounded-full bg-clay-lavender" aria-hidden />
-              <h2 className="zams-display text-base leading-tight">This week</h2>
+              <h2 className="zams-display text-base leading-tight group-hover:text-clay-lavender transition-colors">This week</h2>
               <span className="ml-auto text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-clay-lavender/20 text-clay-lavender">
                 {dealFollowUps.thisWeek.length}
               </span>
-            </div>
+            </button>
             {dealFollowUps.thisWeek.length === 0 ? (
               <p className="text-xs text-clay-muted flex items-center gap-1.5">
                 <MascotSprite src="/assets/mascots/mascot-parked.png" size={18} alt="Sleepy mascot" />
                 Light week ahead.
               </p>
             ) : (
-              <ul className="space-y-1.5">
-                {dealFollowUps.thisWeek.map(d => {
-                  const verb = ACTION_VERBS[getWorkflowAction(d)] || 'Follow up';
-                  const inDays = d.followup_date ? daysUntil(d.followup_date) : 0;
-                  return (
-                    <li key={d.id}>
-                      <button
-                        onClick={() => router.push('/deals?deal=' + d.id)}
-                        className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-clay-card border border-clay-hairline hover:border-clay-lavender/40 transition-colors min-h-[44px]"
-                      >
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-clay-lavender/20 text-clay-lavender shrink-0">
-                          {inDays === 1 ? 'Tomorrow' : `in ${inDays}d`}
-                        </span>
-                        <span className="flex-1 min-w-0">
-                          <span className="block text-sm font-medium text-clay-ink truncate">{d.client}</span>
-                          <span className="block text-xs text-clay-muted truncate">{verb}{d.next_action ? ` — ${d.next_action}` : ''}</span>
-                        </span>
-                        <ChevronRight className="w-4 h-4 text-clay-muted-soft shrink-0" />
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
+              <>
+                <ul className="space-y-1.5">
+                  {dealFollowUps.thisWeek.slice(0, 4).map(d => {
+                    const verb = ACTION_VERBS[getWorkflowAction(d)] || 'Follow up';
+                    const inDays = d.followup_date ? daysUntil(d.followup_date) : 0;
+                    return (
+                      <li key={d.id}>
+                        <button
+                          onClick={() => router.push('/deals?deal=' + d.id)}
+                          className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-clay-card border border-clay-hairline hover:border-clay-lavender/40 transition-colors min-h-[44px]"
+                        >
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-clay-lavender/20 text-clay-lavender shrink-0">
+                            {inDays === 1 ? 'Tomorrow' : `in ${inDays}d`}
+                          </span>
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-sm font-medium text-clay-ink truncate">{d.client}</span>
+                            <span className="block text-xs text-clay-muted truncate">{verb}{d.next_action ? ` — ${d.next_action}` : ''}</span>
+                          </span>
+                          <ChevronRight className="w-4 h-4 text-clay-muted-soft shrink-0" />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {dealFollowUps.thisWeek.length > 4 && (
+                  <button
+                    onClick={() => router.push('/deals')}
+                    className="mt-2 w-full text-[11px] font-semibold text-clay-lavender hover:text-clay-ink transition-colors flex items-center justify-center gap-1"
+                  >
+                    View all {dealFollowUps.thisWeek.length} <ChevronRight className="w-3 h-3" />
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>
