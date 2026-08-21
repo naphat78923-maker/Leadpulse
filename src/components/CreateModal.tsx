@@ -5,6 +5,7 @@ import { Company, CompanyStatus, Contact, ContactStatus, Deal, DealStage, DealWo
 import { X, Save, Building2, Users, Kanban, Calendar } from 'lucide-react';
 import ContactPicker from '@/components/ContactPicker';
 import { NUDGE_OPTIONS, SAMPLE_STATUS_OPTIONS, WORKFLOW_BY_ID, WORKFLOW_LANES } from '@/utils/deal-workflow';
+import { deriveDealIdentity } from '@/utils/dealLabel';
 
 type ModalType = 'company' | 'contact' | 'deal' | 'meeting';
 
@@ -35,7 +36,8 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
     switch (t) {
       case 'company': return { name: '', status: 'prospect', lead_source: '', account_owner: 'Pat', tags: '', industry: '', size: 'B', address: '', website: '', notes: '' };
       case 'contact': return { name: '', email: '', phone: '', phone_second: '', line: '', job_title: '', company_id: '', status: 'active', notes: '' };
-      case 'deal': return { title: '', stage: 'research', product: 'Butter', client: '', company_id: '', contact_ids: [] as string[], value: '', priority: 'medium', next_action: '', followup_date: '', workflow_action: 'outreach', nudge_stage: '', sample_status: '', notes: '' };
+      // title + client are auto-derived from Product + Company on submit (no manual entry)
+      case 'deal': return { stage: 'research', product: 'Butter', company_id: '', contact_ids: [] as string[], value: '', priority: 'medium', next_action: '', followup_date: '', workflow_action: 'outreach', nudge_stage: '', sample_status: '', notes: '' };
       case 'meeting': return { description: '', type: 'call', date: new Date().toISOString().split('T')[0], company_id: '', contact_ids: [] as string[], deal_id: '', product: 'Butter', summary: '', outcome: '', followup_date: '' };
     }
   }
@@ -60,6 +62,12 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
     if (type === 'deal') {
       cleaned.value = cleaned.value === '' || cleaned.value == null ? null : parseFloat(cleaned.value) || null;
       delete cleaned.notes;
+      // Auto-derive title + client from Product + Company (or Contact) — no manual text entry.
+      const co = companies.find((c) => c.id === cleaned.company_id);
+      const ct = contacts.find((c) => (cleaned.contact_ids || [])[0] === c.id);
+      const derived = deriveDealIdentity(cleaned.product, co?.name || '', ct?.name || '');
+      cleaned.title = derived.title;
+      cleaned.client = derived.client;
     }
     try {
       await onSave(cleaned);
@@ -147,12 +155,13 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
 
           {type === 'deal' && (
             <>
-              <Field label="Deal Title *" name="title" value={form.title} onChange={handleChange} required placeholder="e.g., April's Bakery — Butter Trial" />
+              <div className="rounded-lg bg-clay-surface px-3 py-2 text-xs text-clay-muted">
+                Deal name &amp; client auto-fill from Product + Company below.
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <Select label="Stage" name="stage" value={form.stage} onChange={handleChange} options={Object.entries(STAGE_LABELS).map(([v, l]) => ({ value: v, label: l }))} />
                 <Select label="Product" name="product" value={form.product} onChange={handleChange} options={PRODUCT_OPTIONS.map(p => ({ value: p, label: p }))} />
               </div>
-              <Field label="Client Name *" name="client" value={form.client} onChange={handleChange} required placeholder="e.g., April's Bakery" />
               <Select label="Company" name="company_id" value={form.company_id} onChange={handleChange} options={[{ value: '', label: '— None —' }, ...companies.map(c => ({ value: c.id, label: c.name }))]} />
               <div className="grid grid-cols-2 gap-3">
                 <Select label="Priority" name="priority" value={form.priority} onChange={handleChange} options={[{ value: 'high', label: 'High' }, { value: 'medium', label: 'Medium' }, { value: 'low', label: 'Low' }]} />

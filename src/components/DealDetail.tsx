@@ -6,6 +6,7 @@ import clsx from 'clsx';
 import { Deal, DealStage, DealWorkflowAction, NudgeStage, SampleStatus, STAGE_LABELS } from '@/types/crm';
 import { useToast } from '@/components/ToastProvider';
 import { useCrm } from '@/components/CrmProvider';
+import { dealClientName, dealLabel } from '@/utils/dealLabel';
 import * as crm from '@/lib/crm';
 import { NUDGE_OPTIONS, SAMPLE_STATUS_OPTIONS, WORKFLOW_BY_ID, WORKFLOW_LANES, getWorkflowAction, nudgeLabel } from '@/utils/deal-workflow';
 
@@ -35,7 +36,7 @@ function appendOutcome(existing: string, entry?: string) {
 
 export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) {
   const { addToast } = useToast();
-  const { logActivity, deleteEntity } = useCrm();
+  const { logActivity, deleteEntity, companies, contacts } = useCrm();
   const currentWorkflow = getWorkflowAction(deal);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -49,8 +50,6 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
   const isLost = deal.stage === 'closed_lost';
   const dealStatus: 'open' | 'won' | 'lost' = isWon ? 'won' : isLost ? 'lost' : 'open';
   const [editData, setEditData] = useState({
-    title: deal.title,
-    client: deal.client,
     stage: deal.stage,
     product: deal.product,
     priority: deal.priority,
@@ -65,8 +64,6 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
   });
 
   const beforeSnapshot = (): Partial<Deal> => ({
-    title: deal.title,
-    client: deal.client,
     stage: deal.stage,
     product: deal.product,
     priority: deal.priority,
@@ -137,8 +134,6 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
     try {
       const parsedValue = parseFloat(editData.value);
       const updated = await crm.updateDeal(deal.id, {
-        title: editData.title,
-        client: editData.client,
         stage: newStage,
         product: editData.product,
         priority: editData.priority,
@@ -153,8 +148,6 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
 
       setEditData(prev => ({
         ...prev,
-        title: updated.title,
-        client: updated.client,
         stage: updated.stage,
         product: updated.product,
         priority: updated.priority,
@@ -173,8 +166,8 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
         type: 'edit',
         entity: 'deal',
         entityId: deal.id,
-        label: workflowChanged ? `${workflow.icon} ${workflow.label}` : `Updated ${updated.client || deal.client}`,
-        description: workflowChanged ? `${deal.client} moved to the ${workflow.shortLabel} lane` : `Pipeline stage: ${STAGE_LABELS[updated.stage as DealStage]}`,
+        label: workflowChanged ? `${workflow.icon} ${workflow.label}` : `Updated ${dealClientName(deal, companies, contacts)}`,
+        description: workflowChanged ? `${dealClientName(deal, companies, contacts)} moved to the ${workflow.shortLabel} lane` : `Pipeline stage: ${STAGE_LABELS[updated.stage as DealStage]}`,
         undoPayload: before,
       });
       onSaved();
@@ -225,8 +218,8 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
             type: 'edit',
             entity: 'deal',
             entityId: deal.id,
-            label: `Reopened ${deal.client}`,
-            description: `${deal.client} moved back to open pipeline`,
+            label: `Reopened ${dealClientName(deal, companies, contacts)}`,
+            description: `${dealClientName(deal, companies, contacts)} moved back to open pipeline`,
             undoPayload: before,
           });
           onSaved();
@@ -254,7 +247,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
         entity: 'deal',
         entityId: deal.id,
         label: `📉 Marked lost`,
-        description: `${deal.client} closed as lost`,
+        description: `${dealClientName(deal, companies, contacts)} closed as lost`,
         undoPayload: before,
       });
       onSaved();
@@ -274,8 +267,6 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
       await crm.updateDeal(deal.id, undoSnapshot);
       setEditData(prev => ({
         ...prev,
-        title: undoSnapshot.title || prev.title,
-        client: undoSnapshot.client || prev.client,
         stage: (undoSnapshot.stage as DealStage) || prev.stage,
         product: undoSnapshot.product || prev.product,
         priority: undoSnapshot.priority || prev.priority,
@@ -307,7 +298,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
         <div className="flex items-center justify-between gap-3 mb-4">
           <div className="min-w-0">
             <p className="text-[10px] text-clay-muted font-medium tracking-wider">DEAL</p>
-            {editing ? <input value={editData.client} onChange={event => setEditData(prev => ({ ...prev, client: event.target.value }))} className="w-full text-lg font-semibold text-clay-ink bg-transparent border-b border-clay-ink outline-none" /> : <h2 className="text-lg font-semibold text-clay-ink truncate">{deal.client}</h2>}
+            <h2 className="text-lg font-semibold text-clay-ink truncate">{dealClientName(deal, companies, contacts)}</h2>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             {editing && <button onClick={handleSave} disabled={saving} className="p-2 text-clay-success active:opacity-70 disabled:opacity-50" aria-label="Save deal">{saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}</button>}
@@ -368,7 +359,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
             <label className="text-clay-body">Priority{editing ? <select value={editData.priority} onChange={event => setEditData(prev => ({ ...prev, priority: event.target.value as Deal['priority'] }))} className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select> : <span className="block mt-1 px-2 py-1.5 bg-clay-card rounded text-xs capitalize">{deal.priority}</span>}</label>
           </div>
 
-          <label className="block text-clay-body">Deal title{editing ? <input value={editData.title} onChange={event => setEditData(prev => ({ ...prev, title: event.target.value }))} className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card" /> : <p className="mt-1 font-medium text-clay-ink">{deal.title}</p>}</label>
+          <label className="block text-clay-body">Deal name<span className="ml-1 text-xs text-clay-muted">(auto: Product · Company)</span><p className="mt-1 font-medium text-clay-ink">{dealLabel(deal, companies, contacts)}</p></label>
           <div className="grid grid-cols-2 gap-3">
             <label className="text-clay-body">Product{editing ? <input value={editData.product} onChange={event => setEditData(prev => ({ ...prev, product: event.target.value }))} className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card" /> : <p className="mt-1 text-clay-ink">{deal.product}</p>}</label>
             <label className="text-clay-body">Value (THB){editing ? <input type="text" inputMode="decimal" value={editData.value} onChange={event => setEditData(prev => ({ ...prev, value: event.target.value }))} placeholder="e.g., 50000" className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card" /> : <p className="mt-1 font-medium text-clay-ink">{deal.value != null ? Number(deal.value).toLocaleString('en-US') : '—'}</p>}</label>
@@ -401,8 +392,8 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
 
         {confirmArchive && (
           <div className="mt-4 rounded-xl border border-clay-hairline bg-clay-surface p-4">
-            <div className="flex gap-3"><span className="text-2xl">🗑️</span><div><p className="font-semibold text-clay-ink">Archive this deal?</p><p className="text-xs text-clay-muted mt-1">{deal.client} will be hidden from the board and lists. You can undo this from the Activity feed.</p></div></div>
-            <div className="grid grid-cols-2 gap-2 mt-3"><button onClick={() => { setConfirmArchive(false); setSaving(true); deleteEntity('deal', deal.id, deal.client).then(() => { setSaving(false); addToast('Deal archived', 'success', { label: 'Undo', onClick: () => { /* undo handled via activity feed */ } }); onClose(); }).catch(err => { setSaving(false); setError('Could not archive: ' + (err.message || 'Unknown error')); }); }} className="px-3 py-2.5 bg-clay-error text-white text-sm font-medium rounded-lg">Archive</button><button onClick={() => setConfirmArchive(false)} className="px-3 py-2.5 bg-clay-card text-clay-ink text-sm font-medium rounded-lg">Cancel</button></div>
+            <div className="flex gap-3"><span className="text-2xl">🗑️</span><div><p className="font-semibold text-clay-ink">Archive this deal?</p><p className="text-xs text-clay-muted mt-1">{dealClientName(deal, companies, contacts)} will be hidden from the board and lists. You can undo this from the Activity feed.</p></div></div>
+            <div className="grid grid-cols-2 gap-2 mt-3"><button onClick={() => { setConfirmArchive(false); setSaving(true); deleteEntity('deal', deal.id, dealClientName(deal, companies, contacts)).then(() => { setSaving(false); addToast('Deal archived', 'success', { label: 'Undo', onClick: () => { /* undo handled via activity feed */ } }); onClose(); }).catch(err => { setSaving(false); setError('Could not archive: ' + (err.message || 'Unknown error')); }); }} className="px-3 py-2.5 bg-clay-error text-white text-sm font-medium rounded-lg">Archive</button><button onClick={() => setConfirmArchive(false)} className="px-3 py-2.5 bg-clay-card text-clay-ink text-sm font-medium rounded-lg">Cancel</button></div>
           </div>
         )}
       </div>
