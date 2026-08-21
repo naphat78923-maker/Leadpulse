@@ -60,18 +60,19 @@ export default function NudgesPage() {
     const overdue: Deal[] = [];
     const soon: Deal[] = [];   // due today + next 2 days
     const week: Deal[] = [];   // 3–7 days out
+
+    const todayMid = new Date();
+    todayMid.setHours(0, 0, 0, 0);
+    const todayMs = todayMid.getTime();
+
     deals.forEach((deal: Deal) => {
       if (deal.stage === 'closed_won' || deal.stage === 'closed_lost') return;
       if (!deal.followup_date) return; // Needs-attention lives on Today, not here
-      const date = new Date(deal.followup_date);
-      const todayStr = today.toISOString().split('T')[0];
-      const dateStr = date.toISOString().split('T')[0];
-      if (dateStr === todayStr || date < today) overdue.push(deal);
-      else {
-        const until = daysUntil(deal.followup_date);
-        if (until <= 2) soon.push(deal);
-        else if (until <= 7) week.push(deal);
-      }
+      // Date-only diff so the windows don't drift with time-of-day.
+      const diffDays = Math.round((new Date(deal.followup_date + 'T00:00:00').getTime() - todayMs) / 86400000);
+      if (diffDays < 0) overdue.push(deal);             // past = overdue
+      else if (diffDays <= 2) soon.push(deal);          // today (0) + 1–2 days = due soon
+      else if (diffDays <= 7) week.push(deal);          // 3–7 days = this week
     });
     const byDate = (a: Deal, b: Deal) => (a.followup_date || '').localeCompare(b.followup_date || '');
     overdue.sort(byDate);
@@ -110,6 +111,40 @@ export default function NudgesPage() {
           </h1>
           <p className="text-sm text-clay-muted mt-0.5">Follow-ups that need your attention</p>
         </div>
+      </div>
+
+      {/* At-a-glance — day & week commitments before picking a segment */}
+      <div className="mb-4 grid grid-cols-3 gap-2">
+        <button
+          onClick={() => setSeg('overdue')}
+          className={clsx(
+            'rounded-xl border px-3 py-3 text-left transition-colors min-h-[64px] flex flex-col justify-center',
+            seg === 'overdue' ? 'bg-clay-error/10 border-clay-error/30' : 'bg-white dark:bg-clay-card border-clay-hairline'
+          )}
+        >
+          <span className="text-lg font-semibold leading-none text-clay-error">{segCounts.overdue}</span>
+          <span className="text-[11px] text-clay-muted mt-1">Overdue</span>
+        </button>
+        <button
+          onClick={() => setSeg('soon')}
+          className={clsx(
+            'rounded-xl border px-3 py-3 text-left transition-colors min-h-[64px] flex flex-col justify-center',
+            seg === 'soon' ? 'bg-clay-ochre/10 border-clay-ochre/30' : 'bg-white dark:bg-clay-card border-clay-hairline'
+          )}
+        >
+          <span className="text-lg font-semibold leading-none text-clay-ochre">{segCounts.soon}</span>
+          <span className="text-[11px] text-clay-muted mt-1">Due in 2 days</span>
+        </button>
+        <button
+          onClick={() => setSeg('week')}
+          className={clsx(
+            'rounded-xl border px-3 py-3 text-left transition-colors min-h-[64px] flex flex-col justify-center',
+            seg === 'week' ? 'bg-clay-lavender/10 border-clay-lavender/40' : 'bg-white dark:bg-clay-card border-clay-hairline'
+          )}
+        >
+          <span className="text-lg font-semibold leading-none text-clay-lavender">{segCounts.week}</span>
+          <span className="text-[11px] text-clay-muted mt-1">This week</span>
+        </button>
       </div>
 
       {/* Segment tabs — mobile-first: one list at a time */}
