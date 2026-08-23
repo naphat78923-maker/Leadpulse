@@ -86,6 +86,21 @@ export function getReorderSignals(
   deals: Deal[],
   dismissed: Record<string, number>,
 ): ReorderSignal[] {
+  return rankSignals(rows, meetings, deals, dismissed).slice(0, 5); // hard cap — never overwhelm
+}
+
+/**
+ * Filter + map the raw view rows into display-ready signals, UNCAPPED.
+ * Capping is the caller's job (Home teaser caps at 5; /signals shows all).
+ * @param dismissed map of customerId -> epoch ms until which it's hidden
+ *                  (Number.MAX_SAFE_INTEGER = permanent dismiss).
+ */
+export function rankSignals(
+  rows: ReorderSignalRow[],
+  meetings: Meeting[],
+  deals: Deal[],
+  dismissed: Record<string, number>,
+): ReorderSignal[] {
   const now = Date.now();
   return rows
     // Phase 1 gate: only buyers with a confirmed CRM link may reach Home.
@@ -111,10 +126,12 @@ export function getReorderSignals(
       typicalValue: Math.round(r.median_value),
       crmCompanyId: r.crm_company_id,
       inCrm: !!r.crm_company_id,
-      evidence: `Usually reorders every ~${Math.round(r.median_gap_days)} days. Last order was ${r.days_since_last} days ago. Typical order value ${fmtBaht(r.median_value)}.`,
+      evidence:
+        Math.round(r.median_gap_days) === 0
+          ? `Orders arrive in bursts — no clear cycle. Last order was ${r.days_since_last} days ago. Typical order value ${fmtBaht(r.median_value)}.`
+          : `Usually reorders every ~${Math.round(r.median_gap_days)} days. Last order was ${r.days_since_last} days ago. Typical order value ${fmtBaht(r.median_value)}.`,
       suggestedAction: r.crm_company_id
         ? 'Check current stock and ask about the next delivery.'
         : 'Not yet in CRM — add as a company to track.',
-    }))
-    .slice(0, 5); // hard cap — never overwhelm
+    }));
 }
