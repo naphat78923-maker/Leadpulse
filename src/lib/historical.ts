@@ -108,8 +108,10 @@ export function rankSignals(
     // no "add as a company" prompts competing with today's work.
     .filter((r) => !!r.crm_company_id)
     .filter((r) => {
+      // dismissed maps customerId -> epoch ms UNTIL WHICH the signal is hidden,
+      // so the row stays hidden while `until` is in the future.
       const until = dismissed[r.customer_id];
-      return !until || until > now;
+      return !until || until <= now;
     })
     .filter((r) => !isSuppressed(r, meetings, deals))
     // Deterministic commercial-weight ranking (severity × typical value),
