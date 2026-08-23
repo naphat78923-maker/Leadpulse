@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS deals (
 CREATE TABLE IF NOT EXISTS meetings (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   description TEXT NOT NULL,
-  type TEXT NOT NULL CHECK (type IN ('call', 'email', 'meeting', 'sample_sent', 'nudge', 'note')),
+  type TEXT NOT NULL CHECK (type IN ('call', 'email', 'meeting', 'sample_sent', 'nudge', 'note', 'dm', 'reward')),
   date DATE NOT NULL,
   company_id UUID REFERENCES companies(id) ON DELETE SET NULL,
   contact_ids UUID[] DEFAULT '{}',
