@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Company, COMPANY_STATUS_LABELS, CompanyStatus, Contact } from '@/types/crm';
-import { Building2, Tag, X, Edit2, Loader2, Check, UserPlus, Trash2 } from 'lucide-react';
+import { Building2, Tag, X, Edit2, Loader2, Check, UserPlus, Trash2, Gift } from 'lucide-react';
 import clsx from 'clsx';
 import { useToast } from '@/components/ToastProvider';
 import { useCrm } from '@/components/CrmProvider';
@@ -20,7 +20,7 @@ interface CompanyDetailProps {
 
 export default function CompanyDetail({ company, onClose, onSaved, contacts, companyContacts }: CompanyDetailProps) {
   const { addToast } = useToast();
-  const { createContact, refresh, deleteEntity } = useCrm();
+  const { createContact, refresh, deleteEntity, meetings } = useCrm();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -253,6 +253,29 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
                 {company.notes || 'No notes yet'}
               </div>
             )}
+          </div>
+
+          {/* Rewards history (retention, read-only) */}
+          <div className="mt-4 pt-4 border-t border-clay-hairline">
+            <h3 className="text-sm font-semibold text-clay-ink flex items-center gap-1.5">
+              <Gift className="w-4 h-4 text-clay-ochre" /> Rewards given
+            </h3>
+            {(() => {
+              const rewards = meetings.filter((m) => m.company_id === company.id && m.type === 'reward');
+              if (rewards.length === 0) {
+                return <p className="text-xs text-clay-muted-soft mt-1.5">No surprise rewards logged yet.</p>;
+              }
+              return (
+                <div className="mt-2 space-y-1.5">
+                  {rewards.map((m) => (
+                    <div key={m.id} className="bg-clay-surface rounded-lg p-2.5 text-xs text-clay-body">
+                      <span className="font-medium text-clay-ink">{m.date}</span>
+                      <span className="text-clay-muted"> · {m.description}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
 
           {/* Contacts Section */}

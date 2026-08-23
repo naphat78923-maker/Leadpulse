@@ -19,6 +19,9 @@ export interface Company {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  /** Retention cadence (Slice 5, Phase 2): last logged human touch + derived next due. */
+  last_human_touch?: string | null;
+  next_touch_due?: string | null;
 }
 
 // ─── Contacts ───
@@ -85,7 +88,7 @@ export interface Deal {
 }
 
 // ─── Meetings ───
-export type MeetingType = 'call' | 'email' | 'dm' | 'meeting' | 'sample_sent' | 'note' | 'nudge';
+export type MeetingType = 'call' | 'email' | 'dm' | 'meeting' | 'sample_sent' | 'note' | 'nudge' | 'reward';
 
 export interface Meeting {
   id: string;
@@ -143,6 +146,7 @@ export const MEETING_TYPE_LABELS: Record<MeetingType, string> = {
   sample_sent: 'Sample Sent',
   note: 'Note',
   nudge: 'Nudge',
+  reward: 'Reward',
 };
 
 export const PRODUCT_OPTIONS = [

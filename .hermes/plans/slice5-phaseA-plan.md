@@ -69,3 +69,39 @@ the pipeline's large history doesn't slow per-request scoring.
   Earthling 23.7, healthy 94.1) via a temporary test run (not committed unless wanted).
 - No new DB tables, no `package.json` change, no route change.
 - Build green. (Deploy only if Pat wants; Phase A is logic, not UI.)
+
+---
+
+## F. Phase D — Account-Watch UI + pipeline wiring (built 2026-08-22)
+
+**UI: `src/app/retention/page.tsx`** (new route `/retention`)
+- Consumes the verified `accountHealthScore()` (interim weights R/F/O; M=0
+  until `account_events` is piped).
+- KPI strip: Needs Action (watch+at-risk+dormant), Watch, Healthy, Monitored.
+- Per-company **health ring** (score 0–100, SVG, tier-colored) + tier pill.
+- Card rows: last touch date, days-silent, R/F/O sub-scores, "M pending"
+  badge when on interim weights, and **why-flagged** chips (Silent 290d,
+  No reorder yet, Revenue not logged, etc.).
+- Filter pills (All/Healthy/Watch/At-risk/Dormant) + search; action-needed
+  accounts sorted to the top.
+- **Win-back loop:** "Log touch" button → existing `LogInteractionModal`
+  pre-linked to the company (and an open deal if any). Saving logs the
+  interaction AND updates `companies.last_contact_date` (via CrmProvider),
+  which raises R on next refresh. Retention action closes the loop.
+- Tapping the name opens the existing `CompanyDetail` for context.
+- Added `HeartPulse` nav entry in `Sidebar.tsx`. Follows analytics-page
+  patterns (loading spinner, mock-data fallback, clay tokens, 44px touch).
+
+**Pipeline prep (ready; NOT run):**
+- `supabase/migrations/20260822_add_account_events.sql` — creates
+  `account_events` (+ `order_id`, `standing_order_flag`), RLS off. Run this
+  in the Supabase dashboard SQL editor before importing.
+- `scripts/import-account-events.py` (already existed) — dry-run SAL_EXC
+  importer with NAME_MAP + fuzzy match; `--apply` gated. When Pat's full
+  years-of-sales CSV arrives: drop it in, fill NAME_MAP, run dry-run,
+  review UNMATCHED, run the SQL migration, then `--apply`.
+
+**Acceptance met:** `npx tsc --noEmit` clean; `npm run build` green;
+route `/retention` live at `leadpulse-one-ashen.vercel.app/retention`;
+nav entry present; no DB or package.json change in this step (DB migration
+is a separate, explicitly-gated step Pat runs).

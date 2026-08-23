@@ -9,9 +9,11 @@ import { deals as dataDeals, contacts as dataContacts, companies as dataCompanie
 import CreateModal from '@/components/CreateModal';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import MascotSprite from '@/components/MascotSprite';
+import ReorderSignalsCard from '@/components/ReorderSignalsCard';
 import { Plus, TrendingUp, AlertCircle, ChevronRight, Loader2, MessageCircle, Phone, Mail, Users, Package, Bell } from 'lucide-react';
 import { calculateLeadScore, scoreToTier, TIER_LABELS, TIER_COLORS, TIER_BG, PRIORITY_CLASSES, PRIORITY_LABELS } from '@/utils/lead-scoring';
 import { WORKFLOW_LANES, getWorkflowAction, nudgeLabel } from '@/utils/deal-workflow';
+import { dealClientName } from '@/utils/dealLabel';
 
 // One-line action verbs for the queue (brief item 5: "Call, DM, Send sample, Find buyer")
 const ACTION_VERBS: Record<string, string> = {
@@ -130,8 +132,13 @@ export default function TodayPage() {
 
   const todayLocal = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   const todayMeetings = meetings.filter((m: any) => m.date === todayLocal);
+  // Pulse counts: calls/emails/dms/meetings/notes come from today's meeting logs.
+  // Samples + Nudges are now workflow-lane STATE (not meeting types), so derive them
+  // from deals: a deal at sample/testing lane = sample in flight; a deal with a nudge_stage = nudged.
   const todayCounts: Record<string, number> = { call: 0, email: 0, dm: 0, meeting: 0, sample_sent: 0, nudge: 0, note: 0 };
   todayMeetings.forEach((m: any) => { if (todayCounts[m.type] !== undefined) todayCounts[m.type]++; });
+  todayCounts.sample_sent = deals.filter(d => (d.workflow_action === 'sample' || d.workflow_action === 'testing') && d.stage !== 'closed_won' && d.stage !== 'closed_lost').length;
+  todayCounts.nudge = deals.filter(d => d.nudge_stage && d.stage !== 'closed_won' && d.stage !== 'closed_lost').length;
 
   const handleCreate = async (data: any) => {
     // Let errors bubble to the modal so failures are visible.
@@ -228,7 +235,7 @@ export default function TodayPage() {
           {startHere ? (
             <>
               <h2 className="zams-display text-xl md:text-2xl leading-tight mb-1">
-                Start with <span className="text-clay-lavender">{startHere.client}</span>
+                Start with <span className="text-clay-lavender">{dealClientName(startHere, companies, contacts)}</span>
               </h2>
               <p className="text-sm text-clay-muted truncate">
                 {dealFollowUps.overdue.some(d => d.id === startHere.id) && startHere.followup_date ? (
@@ -299,7 +306,7 @@ export default function TodayPage() {
                         >
                           <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-clay-ochre/15 text-clay-ochre shrink-0">Today</span>
                           <span className="flex-1 min-w-0">
-                            <span className="block text-sm font-medium text-clay-ink truncate">{d.client}</span>
+                            <span className="block text-sm font-medium text-clay-ink truncate">{dealClientName(d, companies, contacts)}</span>
                             <span className="block text-xs text-clay-muted truncate">{verb}{d.next_action ? ` — ${d.next_action}` : ''}</span>
                           </span>
                           <ChevronRight className="w-4 h-4 text-clay-muted-soft shrink-0" />
@@ -353,7 +360,7 @@ export default function TodayPage() {
                             {inDays === 1 ? 'Tomorrow' : `in ${inDays}d`}
                           </span>
                           <span className="flex-1 min-w-0">
-                            <span className="block text-sm font-medium text-clay-ink truncate">{d.client}</span>
+                            <span className="block text-sm font-medium text-clay-ink truncate">{dealClientName(d, companies, contacts)}</span>
                             <span className="block text-xs text-clay-muted truncate">{verb}{d.next_action ? ` — ${d.next_action}` : ''}</span>
                           </span>
                           <ChevronRight className="w-4 h-4 text-clay-muted-soft shrink-0" />
@@ -428,7 +435,7 @@ export default function TodayPage() {
                     )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <p className="text-sm font-medium text-clay-ink truncate">{item.deal.client}</p>
+                        <p className="text-sm font-medium text-clay-ink truncate">{dealClientName(item.deal, companies, contacts)}</p>
                         {item.kind === 'overdue' && (
                           <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-clay-error/10 text-clay-error shrink-0">
                             {days}d late
@@ -453,7 +460,7 @@ export default function TodayPage() {
                     <button
                       onClick={() => { setLogDealId(item.deal.id); setIsLogModalOpen(true); }}
                       className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-clay-hairline text-clay-ink text-xs font-medium hover:border-clay-lavender hover:text-clay-lavender transition-colors min-h-[44px]"
-                      aria-label={`Log follow-up for ${item.deal.client}`}
+                      aria-label={`Log follow-up for ${dealClientName(item.deal, companies, contacts)}`}
                     >
                       <MessageCircle className="w-4 h-4" />
                       <span className="hidden sm:inline">Log follow-up</span>
@@ -461,7 +468,7 @@ export default function TodayPage() {
                     <button
                       onClick={() => router.push('/deals?deal=' + item.deal.id)}
                       className="shrink-0 w-9 h-9 rounded-lg bg-clay-lavender text-white flex items-center justify-center hover:bg-[#6a4bc8] transition-colors"
-                      aria-label={`Open ${item.deal.client}`}
+                      aria-label={`Open ${dealClientName(item.deal, companies, contacts)}`}
                     >
                       <ChevronRight className="w-4 h-4" />
                     </button>
@@ -504,6 +511,10 @@ export default function TodayPage() {
           </div>
         )}
       </section>
+
+      {/* Buying signals — historical reorder overdue, collapsed, max 5.
+          Quiet layer: never adds rows to the Action queue above. */}
+      <ReorderSignalsCard />
 
       {/* Recent Activity */}
       <section>
