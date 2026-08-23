@@ -14,19 +14,24 @@ import {
   rankSignals,
   type ReorderSignal,
 } from '@/lib/historical';
+import {
+  fetchSignalDismissals,
+  saveSignalDismissal,
+  restoreSignalDismissal,
+  PERMANENT_DISMISS,
+  type DismissalMap,
+} from '@/lib/signal-dismissals';
 import type { Contact } from '@/types/crm';
 
+// Legacy key from the pre-Supabase era — read once for migration, then removed.
 const DISMISS_KEY = 'lp_reorder_signal_dismiss';
 
-function loadDismissed(): Record<string, number> {
+function loadDismissed(): DismissalMap {
   try {
     return JSON.parse(localStorage.getItem(DISMISS_KEY) || '{}');
   } catch {
     return {};
   }
-}
-function saveDismissed(d: Record<string, number>) {
-  localStorage.setItem(DISMISS_KEY, JSON.stringify(d));
 }
 
 const SNOOZE_MS = 30 * 86400000;
@@ -38,14 +43,43 @@ export default function SignalsPage() {
   const { meetings, deals, companies, contacts } = useCrm();
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  // SSR-safe: localStorage unavailable during server render — hydrate in effect.
-  const [dismissed, setDismissed] = useState<Record<string, number>>({});
+  // SSR-safe: seed empty, then hydrate from Supabase in an effect.
+  const [dismissed, setDismissed] = useState<DismissalMap>({});
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ signal: ReorderSignal; snooze: boolean } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    setDismissed(loadDismissed());
+    let active = true;
+    (async () => {
+      const remote = await fetchSignalDismissals();
+      if (!active) return;
+      // One-time migration: pull any pre-Supabase localStorage entries up.
+      // Only fills gaps — never clobbers a newer server value. Removes the
+      // legacy key afterwards so this runs once per browser.
+      const legacy = loadDismissed();
+      const legacyKeys = Object.keys(legacy);
+      if (legacyKeys.length > 0) {
+        let merged = { ...remote };
+        for (const id of legacyKeys) {
+          if (!(id in merged)) merged[id] = legacy[id];
+        }
+        setDismissed(merged);
+        await Promise.all(
+          legacyKeys
+            .filter((id) => !(id in remote))
+            .map((id) => saveSignalDismissal(id, legacy[id])),
+        );
+        try {
+          localStorage.removeItem(DISMISS_KEY);
+        } catch {}
+      } else {
+        setDismissed(remote);
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -82,26 +116,30 @@ export default function SignalsPage() {
   );
 
   function hideSignal(signal: ReorderSignal, snooze: boolean) {
-    // Snapshot for undo: drop this signal's entry on undo, not the whole map.
+    // Optimistic update first (UI reacts instantly), then persist.
     const prevEntry = dismissed[signal.customerId];
     const next = {
       ...dismissed,
-      [signal.customerId]: snooze ? Date.now() + SNOOZE_MS : Number.MAX_SAFE_INTEGER,
+      [signal.customerId]: snooze ? Date.now() + SNOOZE_MS : PERMANENT_DISMISS,
     };
     setDismissed(next);
-    saveDismissed(next);
+    saveSignalDismissal(signal.customerId, next[signal.customerId]);
 
     if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast({ signal, snooze });
     toastTimer.current = setTimeout(() => setToast(null), UNDO_WINDOW_MS);
 
-    return () => {
-      // undo closure
-      const restored = { ...next };
-      if (prevEntry === undefined) delete restored[signal.customerId];
-      else restored[signal.customerId] = prevEntry;
-      setDismissed(restored);
-      saveDismissed(restored);
+    return async () => {
+      // undo closure — restore previous value (or delete the row if none)
+      await restoreSignalDismissal(signal.customerId, prevEntry);
+      setDismissed((current) => {
+        // Drop our entry only if nothing newer replaced it meanwhile.
+        if (current[signal.customerId] !== next[signal.customerId]) return current;
+        const restored = { ...current };
+        if (prevEntry === undefined) delete restored[signal.customerId];
+        else restored[signal.customerId] = prevEntry;
+        return restored;
+      });
       if (toastTimer.current) clearTimeout(toastTimer.current);
       setToast(null);
     };

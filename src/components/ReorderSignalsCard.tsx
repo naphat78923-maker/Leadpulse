@@ -5,7 +5,8 @@
 // no dismiss buttons on Home (that was the invisible-refill trap: the pool is
 // deeper than the cap, so acting on a card row just pulled the next one up).
 //
-// Persisted via localStorage so Dismiss/Snooze made on /signals survive reloads.
+// Persisted via Supabase (signal_dismissals) so Dismiss/Snooze made on /signals
+// survive reloads AND sync across devices.
 
 'use client';
 
@@ -19,27 +20,23 @@ import {
   getReorderSignals,
   type ReorderSignal,
 } from '@/lib/historical';
-
-const DISMISS_KEY = 'lp_reorder_signal_dismiss';
-
-function loadDismissed(): Record<string, number> {
-  try {
-    return JSON.parse(localStorage.getItem(DISMISS_KEY) || '{}');
-  } catch {
-    return {};
-  }
-}
+import { fetchSignalDismissals, type DismissalMap } from '@/lib/signal-dismissals';
 
 export default function ReorderSignalsCard() {
   const { meetings, deals } = useCrm();
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  // SSR-safe: localStorage is unavailable during server render, so seed empty
-  // and hydrate from the browser in an effect.
-  const [dismissed, setDismissed] = useState<Record<string, number>>({});
+  // SSR-safe: seed empty, then hydrate from Supabase in an effect.
+  const [dismissed, setDismissed] = useState<DismissalMap>({});
 
   useEffect(() => {
-    setDismissed(loadDismissed());
+    let active = true;
+    fetchSignalDismissals().then((map) => {
+      if (active) setDismissed(map);
+    });
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
