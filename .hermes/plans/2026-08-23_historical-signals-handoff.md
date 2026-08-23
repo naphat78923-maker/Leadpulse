@@ -54,17 +54,28 @@ flag when silent > max(21, 1.5×median gap), cap 5, evidence lines,
 collapsed Home card, never duplicate current activity.
 
 ## Still open
-- Veganerie auto-link still unreviewed (reviewed=false).
 - Same-day invoice dedupe in view SQL (Tantraphan median_gap=0 artifact).
 - customer_link anon-write policy for any future in-app mapping UI.
 - Dismiss/Snooze localStorage-only per device (accepted trade-off).
 - Recommend git remote + Vercel git integration to end CLI deploys (repo
   currently has NO remote — commits are local-only until that lands).
-- Nutra Regenerative Protein was soft-deleted 2026-08-23 but keeps 17
-  account_events rows (฿15,429) via its reviewed link. Correct-by-design:
-  archived company is filtered app-side; restoring it re-lights the history.
-  If Pat wants its events excluded from any global revenue rollups later,
-  filter on companies.deleted_at at query time.
-- Signals slice was already committed earlier today (b059205, b5cbda0,
-  01cac16, a6a62c8) — this handoff's uncommitted diff is retention-rework
-  only: scorer wiring + provider fetch + migration file + this doc.
+- Nutra Regenerative Protein soft-deleted 2026-08-23 but keeps 17
+  account_events rows (฿15,429). Correct-by-design; restoring re-lights them.
+- MILLION FOODS STATUS FLAG (raised 2026-08-23, Pat undecided): CRM status is
+  `prospect` but ledger shows 7 invoices ฿65,783 (2024→2025-03). Prospect
+  status excludes it from Retention entirely. Needs Pat's call: promote to
+  active_customer (enters scoring) or leave as prospect.
+
+## Link-completion session (2026-08-23 evening, data-only — NO deploy needed)
+Pat approved + executed via REST: Veganerie auto-link CONFIRMED (manual/
+reviewed). Sweep found ฿1.3M unlinked revenue; Pat ruled: Vistro Co., Ltd.
+linked to Vistro (31 inv ฿131,787); Veganerie Corporation = SEPARATE business;
+created + linked + backfilled CP Axtra Public Co., Ltd. (inactive, ฿416,513,
+last buy 2024-10), Healthy Lux Head Office (active, 72 inv ฿147,898 thru
+2026-08-11), The Mall Group (active, ฿109,743 single-day burst 2026-06-11),
+Veganerie Corporation (active, 35 inv ฿92,835 thru 2026-08-08).
+account_events now 369 rows across 21 company ids. All customer_link rows
+manual/reviewed except none outstanding. Expected /retention after refresh:
+Vistro ~69, Healthy Lux ~69, Veganerie Corp ~67, Veganerie ~60 (Watch);
+Mall Group ~45 At-risk (single order — correct caution). ±few pts by
+industry-derived reorder interval.
