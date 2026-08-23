@@ -35,8 +35,22 @@ function deriveAccountType(c: Company): AccountType {
   return 'other';
 }
 
+/** True order count: distinct orders from sales history, falling back to won deals. */
+function distinctOrderCountOf(
+  evts: { order_id: string | null; event_date: string; product_line?: string | null }[],
+  wonDeals: unknown[]
+): number {
+  if (evts.length > 0) {
+    const ids = new Set(
+      evts.map((e) => e.order_id || `${e.event_date}:${e.product_line ?? ''}`)
+    );
+    return ids.size;
+  }
+  return wonDeals.length;
+}
+
 export default function RetentionPage() {
-  const { companies: dbCompanies, contacts: dbContacts, deals: dbDeals, meetings: dbMeetings, loading, refresh, addMeeting } = useCrm();
+  const { companies: dbCompanies, contacts: dbContacts, deals: dbDeals, meetings: dbMeetings, accountEvents, loading, refresh, addMeeting } = useCrm();
 
   const companies: Company[] = dbCompanies.length > 0 ? dbCompanies : (dataCompanies as any);
   const contacts: Contact[] = dbContacts.length > 0 ? dbContacts : (dataContacts as any);
@@ -58,6 +72,11 @@ export default function RetentionPage() {
       const coMeetings = meetings.filter((m) => m.company_id === c.id);
       const coDeals = deals.filter((d) => d.company_id === c.id);
       const wonDeals = coDeals.filter((d) => d.stage === 'closed_won');
+      // Real sales history for this company (account_events; empty until the
+      // table is provisioned + backfilled — then it drives R/F/M honestly).
+      const evts = accountEvents.filter((e) => e.company_id === c.id);
+
+      const lastOrderDate = evts.length ? evts.map((e) => e.event_date).sort().slice(-1)[0] : null;
 
       const res = accountHealthScore({
         companyId: c.id,
@@ -65,6 +84,8 @@ export default function RetentionPage() {
         createdAt: c.created_at?.slice(0, 10) || today,
         meetings: coMeetings.map((m) => ({ date: m.date, outcome: m.outcome })),
         deals: coDeals.map((d) => ({ stage: d.stage, last_outcome: d.last_outcome, value: d.value })),
+        events: evts.map((e) => ({ date: e.event_date, amount: e.amount, product_line: e.product_line ?? undefined, order_id: e.order_id ?? undefined })),
+        lastOrderDate,
         accountType: deriveAccountType(c),
         today,
       });
@@ -78,9 +99,10 @@ export default function RetentionPage() {
       // RETENTION SYSTEM = WON CUSTOMERS ONLY (Pat scope rule).
       const inRetention = inRetentionSystem(c.status);
 
-      const lastTouch = coMeetings.length
-        ? coMeetings.map((m) => m.date).sort().slice(-1)[0]
-        : null;
+      const lastTouch = [
+        ...(coMeetings.length ? [coMeetings.map((m) => m.date).sort().slice(-1)[0]] : []),
+        ...(c.last_human_touch ? [c.last_human_touch.slice(0, 10)] : []),
+      ].sort().slice(-1)[0] || null;
       const daysSilent = lastTouch
         ? Math.max(0, Math.round((new Date(today + 'T00:00:00').getTime() - new Date(lastTouch + 'T00:00:00').getTime()) / 86400000))
         : null;
@@ -104,9 +126,16 @@ export default function RetentionPage() {
       if (res.O < 0.5) reasons.push('No positive outcome logged');
       if (res.missing.includes('monetary (no account_events yet)')) reasons.push('Revenue not logged');
 
-      return { company: c, res, hasSignal, inRetention, lastTouch, daysSilent, reasons, wonDeals, orderCount: wonDeals.length, touch };
+      const lifetimeNet = evts.reduce((s, e) => s + (e.amount || 0), 0);
+
+      return {
+        company: c, res, hasSignal, inRetention, lastTouch, daysSilent, reasons, wonDeals,
+        orderCount: distinctOrderCountOf(evts, wonDeals),
+        lifetimeNet,
+        touch,
+      };
     });
-  }, [companies, deals, meetings]);
+  }, [companies, deals, meetings, accountEvents]);
 
   const monitored = scored.filter((s) => s.hasSignal && s.inRetention);
 
@@ -307,7 +336,7 @@ export default function RetentionPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {visible.map(({ company, res, lastTouch, daysSilent, reasons, touch }) => {
+          {visible.map(({ company, res, lastTouch, daysSilent, reasons, touch, lifetimeNet, orderCount }) => {
             const t = TIER_STYLE[res.tier];
             return (
               <div key={company.id} className="bg-white dark:bg-clay-card border border-clay-hairline rounded-xl p-3.5 clay-card">
@@ -365,7 +394,13 @@ export default function RetentionPage() {
                 <div className="mt-3 flex items-center gap-3">
                   <SubScore label="R" value={res.R} />
                   <SubScore label="F" value={res.F} />
+                  {res.weightsUsed === 'full' && <SubScore label="M" value={res.M} />}
                   <SubScore label="O" value={res.O} />
+                  {lifetimeNet > 0 && (
+                    <span className="text-[10px] text-clay-muted-soft tabular-nums">
+                      ฿{Math.round(lifetimeNet).toLocaleString()} · {orderCount} orders
+                    </span>
+                  )}
                   {res.weightsUsed === 'interim' && (
                     <span className="text-[10px] text-clay-muted-soft flex items-center gap-1" title="M (revenue) unlocks when sales history is imported">
                       <AlertTriangle className="w-3 h-3" /> M pending

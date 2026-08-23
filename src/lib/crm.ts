@@ -230,3 +230,23 @@ export async function updateActivityEvent(id: string, patch: Partial<ActivityEve
   if (error) throw error;
   return data;
 }
+
+// ─── Account Events (per-company sales history → retention scoring) ───
+// Feeds the Monetary (M) sub-score, reorder cadence (F) and true last-order
+// recency (R). Read-only in the app: rows arrive via CSV/backfill imports.
+export interface AccountEvent {
+  company_id: string;
+  event_date: string; // 'YYYY-MM-DD'
+  amount: number;
+  product_line: string | null;
+  order_id: string | null;
+}
+
+export async function getAccountEvents(): Promise<AccountEvent[]> {
+  const { data, error } = await supabase
+    .from('account_events')
+    .select('company_id,event_date,amount,product_line,order_id')
+    .order('event_date', { ascending: true });
+  if (error) throw error;
+  return (data || []) as AccountEvent[];
+}
