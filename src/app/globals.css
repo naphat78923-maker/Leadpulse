@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Tailwind v4: bind the dark: variant to the .dark class that ThemeProvider
+   toggles on <html> (was implicit darkMode:'class' in v3). Without this,
+   dark: utilities follow the OS color-scheme instead of the in-app toggle. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @keyframes slide-up {
   from { transform: translateY(100%); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
