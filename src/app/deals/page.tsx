@@ -238,6 +238,24 @@ export default function DealsPage() {
     if (meetingToLog) {
       await addMeeting(meetingToLog as any);
     }
+    // Record the sale: app-side closed-won events feed unified_sales →
+    // reorder_signals, so every sale typed here advances that buyer's
+    // cycle + typical value immediately. Zero-value deals still record an
+    // event (flagged, excluded from math) to keep last_order accurate.
+    // Non-fatal: a failed write must never block closing the deal.
+    if (target === 'success' && deal.company_id) {
+      try {
+        await crm.createAccountEvent({
+          company_id: deal.company_id,
+          event_date: new Date().toISOString().split('T')[0],
+          amount: Number(deal.value) > 0 ? Number(deal.value) : 0,
+          product_line: deal.product || null,
+          order_id: `deal_${deal.id}`,
+        });
+      } catch (eventErr) {
+        console.error('Sale recorded for pipeline but not for signals:', eventErr);
+      }
+    }
     setGate(null);
     const celebrationSprite = target === 'success'
       ? (Math.random() < 0.5 ? '/assets/mascots/mascot-won-trophy.png' : '/assets/mascots/mascot-won-confetti.png')

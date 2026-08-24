@@ -250,3 +250,24 @@ export async function getAccountEvents(): Promise<AccountEvent[]> {
   if (error) throw error;
   return (data || []) as AccountEvent[];
 }
+
+// App-recorded order: written when a deal is moved to the Success lane
+// (closed won). Feeds unified_sales → reorder_signals so every sale the user
+// types immediately advances that buyer's reorder cycle + typical value.
+// source='app_closed_won' marks app-origin rows (imports never write here,
+// so there is no double-count path).
+export async function createAccountEvent(event: AccountEvent) {
+  const payload: any = {
+    ...event,
+    amount: event.amount > 0 ? event.amount : 0, // zero = flagged, excluded from cycle math
+    source: 'app_closed_won',
+  };
+  if (payload.company_id === '' || payload.company_id == null) return null; // no company link → nothing to attribute
+  const { data, error } = await supabase
+    .from('account_events')
+    .insert(payload)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
