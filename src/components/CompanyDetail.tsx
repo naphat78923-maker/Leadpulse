@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Company, COMPANY_STATUS_LABELS, CompanyStatus, Contact } from '@/types/crm';
-import { Building2, Tag, X, Edit2, Loader2, Check, UserPlus, Trash2, Gift } from 'lucide-react';
+import { Building2, Tag, X, Edit2, Loader2, Check, UserPlus, Trash2, Gift, ShoppingCart } from 'lucide-react';
 import clsx from 'clsx';
 import { useToast } from '@/components/ToastProvider';
 import { useCrm } from '@/components/CrmProvider';
@@ -27,6 +27,46 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
   const [error, setError] = useState<string | null>(null);
   const [showAddContact, setShowAddContact] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
+  const [showLogSale, setShowLogSale] = useState(false);
+  const [saleSaving, setSaleSaving] = useState(false);
+  const [saleError, setSaleError] = useState<string | null>(null);
+  const [newSale, setNewSale] = useState({ amount: '', date: new Date().toISOString().split('T')[0], product: '' });
+
+  const handleLogSale = async () => {
+    const amountNum = parseFloat(newSale.amount.replace(/,/g, ''));
+    if (!Number.isFinite(amountNum) || amountNum <= 0) {
+      setSaleError('Enter the order amount in baht.');
+      return;
+    }
+    if (!newSale.date) {
+      setSaleError('Pick the order date.');
+      return;
+    }
+    setSaleSaving(true);
+    setSaleError(null);
+    try {
+      await crm.createAccountEvent(
+        {
+          company_id: company.id,
+          event_date: newSale.date,
+          amount: amountNum,
+          product_line: newSale.product.trim() || null,
+          order_id: null,
+        },
+        'app_manual',
+      );
+      setShowLogSale(false);
+      setNewSale({ amount: '', date: new Date().toISOString().split('T')[0], product: '' });
+      addToast('🛒 Sale logged — signals updated');
+      onSaved();
+    } catch (err: any) {
+      console.error('Failed to log sale:', err);
+      setSaleError('Could not save: ' + (err.message || 'Unknown error'));
+    } finally {
+      setSaleSaving(false);
+    }
+  };
+
   const [newContact, setNewContact] = useState<any>({ name: '', email: '', phone: '', phone_second: '', line: '', job_title: '' });
   const [editData, setEditData] = useState({
     name: company.name,
@@ -276,6 +316,60 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
                 </div>
               );
             })()}
+          </div>
+
+          {/* Sales Section — log repeat orders without touching the deal board */}
+          <div className="mt-4 pt-4 border-t border-clay-hairline">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-clay-ink">🛒 Sales</h3>
+              <button
+                onClick={() => setShowLogSale(!showLogSale)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-clay-hairline bg-clay-surface text-xs font-medium text-clay-ink active:bg-clay-card transition-colors"
+              >
+                <ShoppingCart className="w-3.5 h-3.5" />
+                {showLogSale ? 'Cancel' : 'Log sale'}
+              </button>
+            </div>
+            <p className="text-[11px] text-clay-muted mb-1">
+              Repeat order from an existing customer? Log it here — Buying signals pick it up instantly.
+            </p>
+
+            {showLogSale && (
+              <div className="bg-clay-surface rounded-xl p-3 mb-3 space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={newSale.amount}
+                    onChange={e => setNewSale(prev => ({ ...prev, amount: e.target.value }))}
+                    placeholder="Amount ฿ *"
+                    className="px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card"
+                  />
+                  <input
+                    type="date"
+                    value={newSale.date}
+                    onChange={e => setNewSale(prev => ({ ...prev, date: e.target.value }))}
+                    className="px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card"
+                  />
+                </div>
+                <input
+                  type="text"
+                  value={newSale.product}
+                  onChange={e => setNewSale(prev => ({ ...prev, product: e.target.value }))}
+                  placeholder="Product (optional)"
+                  className="w-full px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card"
+                />
+                {saleError && <p className="text-xs text-clay-error">{saleError}</p>}
+                <button
+                  onClick={handleLogSale}
+                  disabled={saleSaving}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-clay-ink text-clay-canvas text-sm font-medium rounded-lg active:opacity-85 min-h-[48px] disabled:opacity-60"
+                >
+                  {saleSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShoppingCart className="w-4 h-4" />}
+                  {saleSaving ? 'Logging…' : 'Log sale'}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Contacts Section */}
