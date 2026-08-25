@@ -79,10 +79,14 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [activities, setActivities] = useState<ActivityEntry[]>([]);
   const initialized = useRef(false);
+  const hasCompletedInitialLoad = useRef(false);
 
   const refresh = useCallback(async () => {
+    // Only the first load blocks the page. Background refreshes must keep open
+    // drawers/modals mounted so save errors and retry state are not destroyed.
+    const showBlockingLoader = !hasCompletedInitialLoad.current;
     try {
-      setLoading(true);
+      if (showBlockingLoader) setLoading(true);
       const [companiesRes, contactsRes, dealsRes, meetingsRes, eventsRes, acctEventsRes] = await Promise.all([
         crm.getCompanies(),
         crm.getContacts(),
@@ -193,7 +197,8 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
     } catch (err: any) {
       setError(err.message || 'Failed to load CRM data');
     } finally {
-      setLoading(false);
+      hasCompletedInitialLoad.current = true;
+      if (showBlockingLoader) setLoading(false);
     }
   }, []);
 

@@ -115,7 +115,7 @@ export async function updateDealStage(id: string, stage: Deal['stage']) {
   return data;
 }
 
-export async function updateDeal(id: string, updates: Partial<Deal>) {
+function normalizeDealUpdate(updates: Partial<Deal>) {
   const payload: any = { ...updates, updated_at: new Date().toISOString() };
   // Convert empty date and workflow option strings to null
   if (payload.followup_date === '') payload.followup_date = null;
@@ -123,6 +123,11 @@ export async function updateDeal(id: string, updates: Partial<Deal>) {
   if (payload.sample_status === '') payload.sample_status = null;
   // Only touch value when the caller sent it — undo snapshots may omit the key.
   if ('value' in payload) payload.value = normalizeDealValue(payload.value);
+  return payload;
+}
+
+export async function updateDeal(id: string, updates: Partial<Deal>) {
+  const payload = normalizeDealUpdate(updates);
   const { data, error } = await supabase
     .from('deals')
     .update(payload)
@@ -131,6 +136,38 @@ export async function updateDeal(id: string, updates: Partial<Deal>) {
     .single();
   if (error) throw error;
   return data;
+}
+
+/**
+ * Applies an interaction-driven transition only if the deal is still the row
+ * the user reviewed. A lost response is safe to retry: if the requested fields
+ * already match, the current row is returned instead of writing again.
+ */
+export async function updateDealIfUnchanged(id: string, expectedUpdatedAt: string, updates: Partial<Deal>) {
+  const payload = normalizeDealUpdate(updates);
+  const { data, error } = await supabase
+    .from('deals')
+    .update(payload)
+    .eq('id', id)
+    .eq('updated_at', expectedUpdatedAt)
+    .select()
+    .maybeSingle();
+  if (error) throw error;
+  if (data) return data;
+
+  const { data: current, error: currentError } = await supabase
+    .from('deals')
+    .select('*')
+    .eq('id', id)
+    .single();
+  if (currentError) throw currentError;
+
+  const requestedEntries = Object.entries(payload).filter(([key]) => key !== 'updated_at');
+  const currentRecord = current as Record<string, unknown>;
+  const alreadyApplied = requestedEntries.every(([key, value]) => Object.is(currentRecord[key], value));
+  if (alreadyApplied) return current;
+
+  throw new Error('This deal changed while the interaction was saving. Review its current lane before trying again.');
 }
 
 // ─── Meetings ───

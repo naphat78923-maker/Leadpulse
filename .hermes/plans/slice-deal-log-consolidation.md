@@ -1,5 +1,7 @@
 # LeadPulse — Deal Log & Stage Consolidation Plan
 
+> **Superseded on 2026-08-25:** interaction logs now keep the current action lane by default. A forward lane is applied only after an explicit, validated choice; no-response/outbound touches never imply a client reply. See `.hermes/plans/2026-08-25_190822-safe-interactions-do-now.md`.
+
 **Goal (from Pat, 2026-08-21):** (1) deals should NOT have a separate manual pipeline stage —
 it must be driven by logged interactions; (2) Log Interaction is bloated and double-logs data;
 (3) nudge stage only applies at/after the sample-sent stage.

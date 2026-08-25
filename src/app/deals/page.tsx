@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
-import { Deal, DealWorkflowAction, STAGE_LABELS } from '@/types/crm';
+import { Deal, DealWorkflowAction, PRODUCT_OPTIONS, STAGE_LABELS } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
 import { deals as dataDeals, contacts as dataContacts, companies as dataCompanies } from '@/data/crmData';
 import CreateModal from '@/components/CreateModal';
@@ -23,7 +23,7 @@ import {
   DragStartEvent,
   DragEndEvent,
 } from '@dnd-kit/core';
-import { Plus, TrendingUp, AlertCircle, Loader2, CalendarDays, GripVertical, ArrowRight } from 'lucide-react';
+import { Plus, TrendingUp, AlertCircle, Loader2, CalendarDays, GripVertical, ArrowRight, Search, X } from 'lucide-react';
 import clsx from 'clsx';
 import {
   calculateLeadScore,
@@ -35,6 +35,7 @@ import {
   PRIORITY_LABELS,
 } from '@/utils/lead-scoring';
 import { WORKFLOW_LANES, WORKFLOW_BY_ID, LANE_MASCOT_PATHS, getWorkflowAction, nudgeLabel } from '@/utils/deal-workflow';
+import { BoardAttentionFilter, filterAndSortBoardDeals, getDoNowCounts, localDateKey } from '@/utils/deal-board';
 
 type ViewMode = 'board' | 'closed' | 'table';
 
@@ -81,6 +82,10 @@ export default function DealsPage() {
   const [gate, setGate] = useState<{ deal: Deal; target: DealWorkflowAction } | null>(null);
   const [celebrate, setCelebrate] = useState<{ dealId: string; laneId: DealWorkflowAction; sprite?: string } | null>(null);
   const [pickerDeal, setPickerDeal] = useState<Deal | null>(null);
+  const [attentionFilter, setAttentionFilter] = useState<BoardAttentionFilter>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [productFilter, setProductFilter] = useState<string>('all');
+  const [priorityFilter, setPriorityFilter] = useState<Deal['priority'] | 'all'>('all');
 
   const { deals: dbDeals, contacts: dbContacts, companies: dbCompanies, loading, refresh, createDeal, logActivity, addMeeting } = useCrm();
   const { addToast } = useToast();
@@ -96,7 +101,7 @@ export default function DealsPage() {
   const boardRef = useRef<HTMLDivElement>(null);
   const [compact, setCompact] = useState(false);
   const [boardScroll, setBoardScroll] = useState({ canScrollRight: false, canScrollLeft: false });
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localDateKey();
 
   useEffect(() => {
     const el = boardRef.current;
@@ -132,13 +137,34 @@ export default function DealsPage() {
     [deals]
   );
 
+  const doNowCounts = useMemo(
+    () => getDoNowCounts(actionBoardDeals, todayStr),
+    [actionBoardDeals, todayStr]
+  );
+
+  const visibleActionBoardDeals = useMemo(
+    () => filterAndSortBoardDeals(actionBoardDeals, {
+      attention: attentionFilter,
+      search: searchQuery,
+      product: productFilter,
+      priority: priorityFilter,
+      today: todayStr,
+    }),
+    [actionBoardDeals, attentionFilter, searchQuery, productFilter, priorityFilter, todayStr]
+  );
+
+  const productOptions = useMemo(
+    () => Array.from(new Set([...PRODUCT_OPTIONS, ...actionBoardDeals.map(deal => deal.product)].filter(Boolean))).sort(),
+    [actionBoardDeals]
+  );
+
   const dealsByAction = useMemo(() => {
     const groups = Object.fromEntries(WORKFLOW_LANES.map(lane => [lane.id, [] as Deal[]])) as Record<string, Deal[]>;
-    actionBoardDeals.forEach(deal => {
+    visibleActionBoardDeals.forEach(deal => {
       groups[getWorkflowAction(deal)].push(deal);
     });
     return groups;
-  }, [actionBoardDeals]);
+  }, [visibleActionBoardDeals]);
 
   const closedDeals = useMemo(
     () => deals.filter(deal => deal.stage === 'closed_won' || deal.stage === 'closed_lost'),
@@ -148,11 +174,23 @@ export default function DealsPage() {
   const stats = useMemo(() => {
     const active = deals.filter(deal => !['closed_won', 'closed_lost'].includes(deal.stage));
     const parked = actionBoardDeals.filter(deal => getWorkflowAction(deal) === 'parked');
-    const dueToday = active.filter(deal => deal.followup_date === new Date().toISOString().slice(0, 10));
-    return { active: active.length, parked: parked.length, dueToday: dueToday.length, won: deals.filter(deal => deal.stage === 'closed_won').length };
-  }, [actionBoardDeals, deals]);
+    return { active: active.length, parked: parked.length, dueToday: doNowCounts.today, won: deals.filter(deal => deal.stage === 'closed_won').length };
+  }, [actionBoardDeals, deals, doNowCounts.today]);
 
   const activeDeal = selectedDeal ? deals.find(deal => deal.id === selectedDeal) : null;
+
+  const filtersActive = attentionFilter !== 'all' || searchQuery.trim() !== '' || productFilter !== 'all' || priorityFilter !== 'all';
+  const clearDoNowFilters = () => {
+    setAttentionFilter('all');
+    setSearchQuery('');
+    setProductFilter('all');
+    setPriorityFilter('all');
+  };
+
+  const focusAttention = (filter: BoardAttentionFilter) => {
+    setView('board');
+    setAttentionFilter(filter);
+  };
 
   const handleCreate = async (data: any) => {
     // Let errors bubble to the modal so failures are visible.
@@ -386,7 +424,7 @@ export default function DealsPage() {
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
         <div className="bg-white dark:bg-clay-card border border-clay-hairline rounded-xl p-3"><p className="text-xs text-clay-muted">Active</p><p className="text-xl font-semibold text-clay-ink">{stats.active}</p></div>
-        <div className="bg-clay-ochre/10 border border-clay-ochre/20 rounded-xl p-3"><p className="text-xs text-clay-ochre">Due today</p><p className="text-xl font-semibold text-clay-ochre">{stats.dueToday}</p></div>
+        <button onClick={() => focusAttention('today')} className="bg-clay-ochre/10 border border-clay-ochre/20 rounded-xl p-3 text-left active:scale-[0.98] transition-transform"><p className="text-xs text-clay-ochre">Due today</p><p className="text-xl font-semibold text-clay-ochre">{stats.dueToday}</p></button>
         <div className="bg-clay-card border border-clay-hairline rounded-xl p-3"><p className="text-xs text-clay-muted">Parked</p><p className="text-xl font-semibold text-clay-ink">{stats.parked}</p></div>
         <div className="bg-clay-mint/20 border border-clay-mint/30 rounded-xl p-3"><p className="text-xs text-clay-teal">Won</p><p className="text-xl font-semibold text-clay-teal">{stats.won}</p></div>
       </div>
@@ -399,6 +437,91 @@ export default function DealsPage() {
 
       {view === 'board' && (
         <>
+          <section className="mb-3 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card p-3 md:p-4" aria-label="Do now filters">
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div>
+                <p className="zams-eyebrow mb-0.5">Do now</p>
+                <p className="text-sm font-semibold text-clay-ink">Find the next deal in seconds</p>
+                <p className="text-[11px] text-clay-muted mt-0.5">Showing {visibleActionBoardDeals.length} of {actionBoardDeals.length} deals</p>
+              </div>
+              {filtersActive && (
+                <button
+                  onClick={clearDoNowFilters}
+                  className="inline-flex items-center gap-1.5 min-h-[36px] rounded-lg border border-clay-hairline px-2.5 text-xs font-medium text-clay-muted active:bg-clay-surface"
+                >
+                  <X className="w-3.5 h-3.5" /> Clear
+                </button>
+              )}
+            </div>
+
+            <div className="-mx-3 px-3 md:mx-0 md:px-0 flex gap-2 overflow-x-auto pb-2" role="group" aria-label="Attention filter">
+              {([
+                ['all', 'All', doNowCounts.all],
+                ['overdue', 'Overdue', doNowCounts.overdue],
+                ['today', 'Due today', doNowCounts.today],
+                ['needs-review', 'Needs review', doNowCounts.needsReview],
+              ] as Array<[BoardAttentionFilter, string, number]>).map(([value, label, count]) => (
+                <button
+                  key={value}
+                  onClick={() => setAttentionFilter(value)}
+                  aria-pressed={attentionFilter === value}
+                  className={clsx(
+                    'shrink-0 min-h-[44px] rounded-xl border px-3 text-sm font-medium transition-colors',
+                    attentionFilter === value
+                      ? value === 'overdue'
+                        ? 'border-clay-error bg-clay-error/10 text-clay-error'
+                        : value === 'today'
+                          ? 'border-clay-ochre bg-clay-ochre/10 text-clay-ochre'
+                          : 'border-clay-lavender bg-clay-lavender/20 text-clay-ink'
+                      : 'border-clay-hairline bg-clay-card text-clay-muted'
+                  )}
+                >
+                  {label} <span className="ml-1 font-mono text-[11px] opacity-75">{count}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-[minmax(240px,1fr)_180px_150px] gap-2 mt-1">
+              <label className="relative col-span-2 md:col-span-1">
+                <span className="sr-only">Search by client or deal name</span>
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-clay-muted pointer-events-none" />
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={event => setSearchQuery(event.target.value)}
+                  placeholder="Search client or deal"
+                  className="w-full min-h-[44px] rounded-lg border border-clay-hairline bg-white dark:bg-clay-card pl-9 pr-3 text-base md:text-sm text-clay-ink placeholder:text-clay-muted-soft focus:outline-none focus:ring-2 focus:ring-clay-lavender"
+                />
+              </label>
+
+              <label>
+                <span className="sr-only">Filter by product</span>
+                <select
+                  value={productFilter}
+                  onChange={event => setProductFilter(event.target.value)}
+                  className="w-full min-h-[44px] rounded-lg border border-clay-hairline bg-white dark:bg-clay-card px-3 text-base md:text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-clay-lavender"
+                >
+                  <option value="all">All products</option>
+                  {productOptions.map(product => <option key={product} value={product}>{product}</option>)}
+                </select>
+              </label>
+
+              <label>
+                <span className="sr-only">Filter by priority</span>
+                <select
+                  value={priorityFilter}
+                  onChange={event => setPriorityFilter(event.target.value as Deal['priority'] | 'all')}
+                  className="w-full min-h-[44px] rounded-lg border border-clay-hairline bg-white dark:bg-clay-card px-3 text-base md:text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-clay-lavender"
+                >
+                  <option value="all">All priorities</option>
+                  <option value="high">High priority</option>
+                  <option value="medium">Medium priority</option>
+                  <option value="low">Low priority</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
           <div className="mb-3 rounded-xl border border-clay-hairline bg-clay-surface px-3 py-2 flex items-center justify-between gap-3">
             <div className="flex items-start gap-2 text-xs text-clay-muted min-w-0">
               <CalendarDays className="w-4 h-4 mt-0.5 text-clay-lavender shrink-0" />
@@ -433,6 +556,17 @@ export default function DealsPage() {
                 className="shrink-0 inline-flex items-center gap-2 px-4 py-2 bg-clay-ink text-clay-canvas text-sm font-medium rounded-lg active:opacity-85"
               >
                 <Plus className="w-4 h-4" /> New deal
+              </button>
+            </div>
+          )}
+          {actionBoardDeals.length > 0 && visibleActionBoardDeals.length === 0 && (
+            <div className="mb-4 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-5 py-6 flex flex-col sm:flex-row items-center justify-center gap-3 text-center sm:text-left">
+              <div className="flex-1">
+                <p className="text-sm font-medium text-clay-ink">No deals match this Do now view</p>
+                <p className="text-xs text-clay-muted mt-1">Clear a filter or search for another client.</p>
+              </div>
+              <button onClick={clearDoNowFilters} className="min-h-[44px] rounded-lg bg-clay-ink px-4 text-sm font-medium text-clay-canvas active:opacity-85">
+                Show all deals
               </button>
             </div>
           )}

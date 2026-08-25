@@ -1,17 +1,20 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { MeetingType, Meeting, Deal, Contact, Company, NudgeStage, MEETING_TYPE_LABELS, PRODUCT_OPTIONS, DealWorkflowAction } from '@/types/crm';
-import { X, Calendar, MessageCircle, Phone, Mail, Users, FileText, ArrowRight } from 'lucide-react';
+import { MeetingType, Meeting, Deal, Contact, Company, NudgeStage, SampleStatus, DealWorkflowAction } from '@/types/crm';
+import { X, MessageCircle, Phone, Mail, Users, FileText, ArrowRight, AlertTriangle, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
 import ContactPicker from '@/components/ContactPicker';
 import * as crm from '@/lib/crm';
-import { NUDGE_OPTIONS, nudgeColorClass, NEXT_WORKFLOW, WORKFLOW_BY_ID, canNudge, stageFromWorkflow } from '@/utils/deal-workflow';
+import { useCrm } from '@/components/CrmProvider';
+import { NUDGE_OPTIONS, SAMPLE_STATUS_OPTIONS, nudgeColorClass, NEXT_WORKFLOW, WORKFLOW_BY_ID, canNudge, getWorkflowAction } from '@/utils/deal-workflow';
+import { buildInteractionWorkflowUpdate } from '@/utils/interaction-workflow';
+import { localDateKey } from '@/utils/deal-board';
 
 interface LogInteractionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (meeting: Omit<Meeting, 'id' | 'created_at'>) => void;
+  onSave: (meeting: Omit<Meeting, 'id' | 'created_at'>) => Promise<void>;
   deals: Deal[];
   contacts: Contact[];
   companies: Company[];
@@ -47,91 +50,192 @@ export default function LogInteractionModal({
   initialContactIds,
   initialCompanyId,
 }: LogInteractionModalProps) {
+  const { refresh, logActivity } = useCrm();
   const [type, setType] = useState<MeetingType>('call');
   const [description, setDescription] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(localDateKey());
   const [selectedDeal, setSelectedDeal] = useState(selectedDealId || '');
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>(initialContactIds || []);
   const [summary, setSummary] = useState('');
   const [outcome, setOutcome] = useState<Meeting['outcome']>(null);
   const [followupDate, setFollowupDate] = useState('');
+  const [nextWorkflowAction, setNextWorkflowAction] = useState<DealWorkflowAction | ''>('');
+  const [sampleStatus, setSampleStatus] = useState<SampleStatus | ''>('');
   const [nudgeStage, setNudgeStage] = useState<NudgeStage | ''>('');
+  const [confirmSuccess, setConfirmSuccess] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [pendingDealUpdate, setPendingDealUpdate] = useState<{
+    dealId: string;
+    dealLabel: string;
+    expectedUpdatedAt: string;
+    targetAction: DealWorkflowAction;
+    updates: Partial<Deal>;
+    before: Partial<Deal>;
+  } | null>(null);
 
   useEffect(() => {
     if (isOpen) {
+      const initialDeal = deals.find(item => item.id === selectedDealId);
+      // Reset the form only on the closed → open transition.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedContactIds(initialContactIds || []);
       setSelectedDeal(selectedDealId || '');
+      setNextWorkflowAction(initialDeal ? getWorkflowAction(initialDeal) : '');
+      setSampleStatus('');
       setNudgeStage('');
+      setConfirmSuccess(false);
       setType('call');
       setDescription('');
+      setDate(localDateKey());
       setSummary('');
       setOutcome(null);
       setFollowupDate('');
+      setSaving(false);
+      setSaveError(null);
+      setPendingDealUpdate(null);
     }
+    // Only reset when the modal opens. Data refreshes while open must not erase the form.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const deal = deals.find(d => d.id === selectedDeal);
-  const dealAction = (deal?.workflow_action || 'outreach') as DealWorkflowAction;
-  const nextAction: DealWorkflowAction | undefined = deal ? NEXT_WORKFLOW[dealAction] : undefined;
-  const showNudge = !!deal && !!nextAction && canNudge(nextAction);
+  const deal = deals.find(item => item.id === selectedDeal);
+  const dealAction = deal ? getWorkflowAction(deal) : undefined;
+  const nextAction = dealAction ? NEXT_WORKFLOW[dealAction] : undefined;
+  const selectedAction = deal ? (nextWorkflowAction || dealAction) : undefined;
+  const isChangingLane = !!dealAction && !!selectedAction && selectedAction !== dealAction;
+  const showNudge = !!selectedAction && isChangingLane && canNudge(selectedAction);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!description) return;
-
-    const selectedContacts = contacts.filter(c => selectedContactIds.includes(c.id));
-    const companyId = selectedContacts[0]?.company_id || deal?.company_id || initialCompanyId || null;
-
-    onSave({
-      description,
-      type,
-      date,
-      company_id: companyId,
-      contact_ids: selectedContactIds,
-      deal_id: selectedDeal || null,
-      product: deal?.product || 'Butter',
-      summary: summary || null,
-      outcome,
-      followup_date: followupDate || null,
-    });
-
-    // One save = one interaction + one state advance. No double logging.
-    if (selectedDeal && nextAction) {
-      const newStage = stageFromWorkflow(nextAction, deal!.stage);
-      crm.updateDeal(selectedDeal, {
-        workflow_action: nextAction,
-        stage: newStage,
-        nudge_stage: showNudge && nudgeStage ? (nudgeStage as NudgeStage) : null,
-      }).catch((err: any) => console.error('Failed to advance deal:', err));
-    }
-
+  const resetAndClose = () => {
     setDescription('');
     setSummary('');
     setFollowupDate('');
     setOutcome(null);
     setSelectedDeal('');
     setSelectedContactIds([]);
+    setNextWorkflowAction('');
+    setSampleStatus('');
     setNudgeStage('');
+    setConfirmSuccess(false);
+    setSaveError(null);
+    setPendingDealUpdate(null);
     onClose();
   };
 
+  const handleDealChange = (dealId: string) => {
+    const nextDeal = deals.find(item => item.id === dealId);
+    setSelectedDeal(dealId);
+    setNextWorkflowAction(nextDeal ? getWorkflowAction(nextDeal) : '');
+    setSampleStatus('');
+    setNudgeStage('');
+    setConfirmSuccess(false);
+    setSaveError(null);
+  };
+
+  const persistDealUpdate = async (request: NonNullable<typeof pendingDealUpdate>) => {
+    await crm.updateDealIfUnchanged(request.dealId, request.expectedUpdatedAt, request.updates);
+    await refresh();
+    logActivity({
+      type: 'edit',
+      entity: 'deal',
+      entityId: request.dealId,
+      label: `Interaction → ${WORKFLOW_BY_ID[request.targetAction].shortLabel}`,
+      description: `${request.dealLabel} moved after a confirmed interaction`,
+      undoPayload: request.before,
+    });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!description.trim() || saving) return;
+
+    setSaving(true);
+    setSaveError(null);
+    let interactionSavedThisAttempt = false;
+
+    try {
+      if (pendingDealUpdate) {
+        await persistDealUpdate(pendingDealUpdate);
+        resetAndClose();
+        return;
+      }
+
+      const workflowUpdates = deal && selectedAction
+        ? buildInteractionWorkflowUpdate(deal, selectedAction, {
+            outcome,
+            interactionDescription: summary.trim() || description.trim(),
+            sampleStatus: sampleStatus || null,
+            testingDate: followupDate || null,
+            nudgeStage: nudgeStage || null,
+            confirmSuccess,
+          })
+        : null;
+
+      const selectedContacts = contacts.filter(contact => selectedContactIds.includes(contact.id));
+      const companyId = selectedContacts[0]?.company_id || deal?.company_id || initialCompanyId || null;
+
+      await onSave({
+        description: description.trim(),
+        type,
+        date,
+        company_id: companyId,
+        contact_ids: selectedContactIds,
+        deal_id: selectedDeal || null,
+        product: deal?.product || 'Butter',
+        summary: summary.trim() || null,
+        outcome,
+        followup_date: followupDate || null,
+      });
+      interactionSavedThisAttempt = true;
+
+      if (deal && selectedAction && workflowUpdates) {
+        const request = {
+          dealId: deal.id,
+          dealLabel: deal.client,
+          expectedUpdatedAt: deal.updated_at,
+          targetAction: selectedAction,
+          updates: workflowUpdates,
+          before: {
+            workflow_action: dealAction,
+            stage: deal.stage,
+            sample_status: deal.sample_status || null,
+            nudge_stage: deal.nudge_stage || null,
+            followup_date: deal.followup_date,
+            last_outcome: deal.last_outcome,
+          },
+        };
+        setPendingDealUpdate(request);
+        await persistDealUpdate(request);
+      }
+
+      resetAndClose();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'The interaction could not be saved.';
+      setSaveError(interactionSavedThisAttempt
+        ? `Interaction saved, but the deal update was not confirmed. Retry the deal update. ${message}`
+        : message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50 p-0 md:p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50 p-0 md:p-4" onClick={saving ? undefined : onClose}>
       <div
         className="bg-white dark:bg-clay-card w-full md:max-w-lg md:rounded-2xl rounded-t-2xl shadow-2xl max-h-[90vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         <div className="sticky top-0 bg-white dark:bg-clay-card flex items-center justify-between p-4 border-b border-clay-hairline z-10">
           <h2 className="text-lg font-semibold text-clay-ink">Log Interaction</h2>
-          <button onClick={onClose} className="text-clay-muted hover:text-clay-ink p-2 -mr-2">
+          <button onClick={onClose} disabled={saving} className="text-clay-muted hover:text-clay-ink p-2 -mr-2 disabled:opacity-40">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          <fieldset disabled={saving || !!pendingDealUpdate} className="space-y-4 disabled:opacity-70">
           {/* Type */}
           <div>
             <label className="block text-sm font-medium text-clay-body mb-2">Type</label>
@@ -184,7 +288,7 @@ export default function LogInteractionModal({
             <label className="block text-sm font-medium text-clay-body mb-1">Linked Deal</label>
             <select
               value={selectedDeal}
-              onChange={e => setSelectedDeal(e.target.value)}
+              onChange={e => handleDealChange(e.target.value)}
               className="w-full px-3 py-3 border border-clay-hairline rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-clay-ink bg-white dark:bg-clay-card text-clay-ink"
             >
               <option value="">— None (just log a note) —</option>
@@ -194,32 +298,124 @@ export default function LogInteractionModal({
             </select>
           </div>
 
-          {/* Advance deal lane — shown only when a deal is linked (single source of truth) */}
-          {deal && nextAction && (
-            <div className="bg-clay-surface rounded-xl p-3 border border-clay-hairline">
-              <p className="flex items-center gap-2 text-xs font-medium text-clay-body mb-2">
-                Advance deal to <ArrowRight className="w-3.5 h-3.5" />
-                <span className="font-semibold text-clay-ink">{nextAction ? WORKFLOW_BY_ID[nextAction].label : ''}</span>
-              </p>
-              {showNudge ? (
-                <div className="grid grid-cols-2 gap-2">
-                  {NUDGE_OPTIONS.map(opt => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => setNudgeStage(nudgeStage === opt.value ? '' : opt.value)}
-                      className={clsx(
-                        'px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors min-h-[44px] flex items-center justify-center gap-1.5',
-                        nudgeStage === opt.value ? nudgeColorClass(opt.value) : 'bg-white dark:bg-clay-card text-clay-muted border-clay-hairline active:bg-clay-surface'
-                      )}
-                    >
-                      {opt.label}
-                      <span className="text-[10px] opacity-70">{opt.days}d</span>
-                    </button>
-                  ))}
+          {/* Explicit post-interaction action. The safe default is always the current lane. */}
+          {deal && dealAction && (
+            <div className="bg-clay-surface rounded-xl p-3 border border-clay-hairline space-y-3">
+              <div>
+                <p className="text-sm font-medium text-clay-ink">Next action after this interaction</p>
+                <p className="text-[11px] text-clay-muted mt-0.5">Nothing moves unless you choose it.</p>
+              </div>
+
+              <div className="grid gap-2" role="radiogroup" aria-label="Next action after this interaction">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={selectedAction === dealAction}
+                  onClick={() => {
+                    setNextWorkflowAction(dealAction);
+                    setSaveError(null);
+                  }}
+                  className={clsx(
+                    'min-h-[48px] rounded-lg border px-3 py-2.5 text-left transition-colors',
+                    selectedAction === dealAction
+                      ? 'border-clay-lavender bg-clay-lavender/20 text-clay-ink'
+                      : 'border-clay-hairline bg-white dark:bg-clay-card text-clay-muted'
+                  )}
+                >
+                  <span className="block text-sm font-semibold">Keep current · {WORKFLOW_BY_ID[dealAction].shortLabel}</span>
+                  <span className="block text-[10px] mt-0.5 opacity-75">Recommended for outbound messages, notes, and no response.</span>
+                </button>
+
+                {nextAction && nextAction !== dealAction && (
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={selectedAction === nextAction}
+                    onClick={() => {
+                      setNextWorkflowAction(nextAction);
+                      setSaveError(null);
+                    }}
+                    className={clsx(
+                      'min-h-[48px] rounded-lg border px-3 py-2.5 text-left transition-colors',
+                      selectedAction === nextAction
+                        ? 'border-clay-mint bg-clay-mint/15 text-clay-ink'
+                        : 'border-clay-hairline bg-white dark:bg-clay-card text-clay-muted'
+                    )}
+                  >
+                    <span className="flex items-center gap-2 text-sm font-semibold">
+                      Move forward <ArrowRight className="w-3.5 h-3.5" /> {WORKFLOW_BY_ID[nextAction].shortLabel}
+                    </span>
+                    <span className="block text-[10px] mt-0.5 opacity-75">Choose only when this interaction justifies the move.</span>
+                  </button>
+                )}
+              </div>
+
+              {selectedAction === 'reply' && isChangingLane && (
+                <p className="text-[11px] text-clay-muted">Client reply requires Positive, Neutral, or Negative below. No Response keeps the deal in Outreach.</p>
+              )}
+
+              {selectedAction === 'sample' && isChangingLane && (
+                <div>
+                  <p className="text-xs font-medium text-clay-body mb-2">Sample status *</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {SAMPLE_STATUS_OPTIONS.map(option => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setSampleStatus(option.value)}
+                        className={clsx(
+                          'min-h-[44px] rounded-lg border px-3 py-2 text-sm font-medium',
+                          sampleStatus === option.value
+                            ? 'border-clay-ochre bg-clay-ochre/15 text-clay-ochre'
+                            : 'border-clay-hairline bg-white dark:bg-clay-card text-clay-muted'
+                        )}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              ) : (
-                <p className="text-[11px] text-clay-muted">Nudge available once sample is sent.</p>
+              )}
+
+              {selectedAction === 'testing' && isChangingLane && (
+                <p className="text-[11px] text-clay-muted">Set the required testing date in the date field below.</p>
+              )}
+
+              {selectedAction === 'success' && isChangingLane && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmSuccess(value => !value)}
+                  className={clsx(
+                    'w-full min-h-[44px] rounded-lg border px-3 py-2.5 text-left text-sm font-medium',
+                    confirmSuccess
+                      ? 'border-clay-mint bg-clay-mint/15 text-clay-teal'
+                      : 'border-clay-hairline bg-white dark:bg-clay-card text-clay-muted'
+                  )}
+                >
+                  {confirmSuccess ? '✓ Confirmed: this deal is won' : 'Confirm this deal is won'}
+                </button>
+              )}
+
+              {showNudge && (
+                <div>
+                  <p className="text-xs font-medium text-clay-body mb-2">Nudge level <span className="font-normal text-clay-muted">(optional)</span></p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {NUDGE_OPTIONS.map(option => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setNudgeStage(nudgeStage === option.value ? '' : option.value)}
+                        className={clsx(
+                          'px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors min-h-[44px] flex items-center justify-center gap-1.5',
+                          nudgeStage === option.value ? nudgeColorClass(option.value) : 'bg-white dark:bg-clay-card text-clay-muted border-clay-hairline active:bg-clay-surface'
+                        )}
+                      >
+                        {option.label}
+                        <span className="text-[10px] opacity-70">{option.days}d</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           )}
@@ -265,9 +461,11 @@ export default function LogInteractionModal({
             </div>
           </div>
 
-          {/* Follow-up */}
+          {/* Follow-up / testing date */}
           <div>
-            <label className="block text-sm font-medium text-clay-body mb-1">Schedule Follow-up</label>
+            <label className="block text-sm font-medium text-clay-body mb-1">
+              {selectedAction === 'testing' && isChangingLane ? 'Testing date *' : 'Schedule Follow-up'}
+            </label>
             <input
               type="date"
               value={followupDate}
@@ -275,18 +473,36 @@ export default function LogInteractionModal({
               className="w-full px-3 py-3 border border-clay-hairline rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-clay-ink bg-white dark:bg-clay-card text-clay-ink"
             />
           </div>
+          </fieldset>
+
+          {pendingDealUpdate && !saveError && (
+            <div className="flex items-start gap-2 rounded-lg border border-clay-ochre/30 bg-clay-ochre/10 px-3 py-2.5 text-xs text-clay-ochre" role="status">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>The interaction is saved. Finish the deal update before closing.</span>
+            </div>
+          )}
+
+          {saveError && (
+            <div className="flex items-start gap-2 rounded-lg border border-clay-error/30 bg-clay-error/10 px-3 py-2.5 text-xs text-clay-error" role="alert">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{saveError}</span>
+            </div>
+          )}
 
           <div className="flex items-center gap-3 pt-2 pb-4">
             <button
               type="submit"
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-clay-ink text-clay-canvas text-sm font-medium rounded-lg active:opacity-85 transition-opacity min-h-[48px]"
+              disabled={saving}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-clay-ink text-clay-canvas text-sm font-medium rounded-lg active:opacity-85 transition-opacity min-h-[48px] disabled:opacity-60"
             >
-              Save Interaction
+              {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+              {saving ? 'Saving…' : pendingDealUpdate ? 'Retry deal update' : 'Save Interaction'}
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-3 bg-clay-card text-clay-ink text-sm font-medium rounded-lg active:bg-clay-surface transition-colors min-h-[48px]"
+              disabled={saving}
+              className="px-4 py-3 bg-clay-card text-clay-ink text-sm font-medium rounded-lg active:bg-clay-surface transition-colors min-h-[48px] disabled:opacity-40"
             >
               Cancel
             </button>

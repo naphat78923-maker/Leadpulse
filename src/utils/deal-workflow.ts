@@ -144,8 +144,8 @@ export function canNudge(workflow: DealWorkflowAction): boolean {
 }
 
 /**
- * Next workflow lane when logging an interaction against a deal (the forward path).
- * Used by the consolidated Log modal so one save = one interaction + one advance.
+ * Normal forward workflow lane. Logging an interaction never applies this
+ * automatically; the Log modal may offer it as an explicit, validated choice.
  */
 export const NEXT_WORKFLOW: Partial<Record<DealWorkflowAction, DealWorkflowAction>> = {
   outreach: 'reply',

@@ -207,19 +207,25 @@ export default function RetentionPage() {
     } as any).catch((err: any) => console.error('Failed to persist touch dates:', err));
 
     // Log the granted reward as an auditable meeting (only when one is drawn).
+    // The primary interaction is already durable, so an auxiliary reward-log
+    // failure must not reject the modal save and invite a duplicate interaction.
     if (option) {
-      await addMeeting({
-        description: `Surprise reward (${trigger}): ${option.label}`,
-        type: 'reward',
-        date: today,
-        company_id: sc.company.id,
-        contact_ids: [],
-        deal_id: logDealId || null,
-        product: 'Butter',
-        summary: option.note,
-        outcome: 'positive',
-        followup_date: null,
-      });
+      try {
+        await addMeeting({
+          description: `Surprise reward (${trigger}): ${option.label}`,
+          type: 'reward',
+          date: today,
+          company_id: sc.company.id,
+          contact_ids: [],
+          deal_id: logDealId || null,
+          product: 'Butter',
+          summary: option.note,
+          outcome: 'positive',
+          followup_date: null,
+        });
+      } catch (rewardErr) {
+        console.error('Primary interaction saved, but reward audit logging failed:', rewardErr);
+      }
     }
     await refresh();
   };
