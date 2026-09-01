@@ -16,6 +16,7 @@ export interface Company {
   size: string | null;
   address: string | null;
   website: string | null;
+  logo_url?: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -26,6 +27,7 @@ export interface Company {
 
 // ─── Contacts ───
 export type ContactStatus = 'active' | 'replied' | 'not_interested' | 'no_response' | 'parked';
+export type ContactIdentityQuality = 'named' | 'role_only' | 'company_route' | 'unknown';
 
 export interface Contact {
   id: string;
@@ -37,6 +39,7 @@ export interface Contact {
   job_title: string | null;
   company_id: string | null;
   status: ContactStatus;
+  identity_quality?: ContactIdentityQuality | null;
   last_contacted_date: string | null;
   notes: string | null;
   created_at: string;
@@ -77,6 +80,7 @@ export interface Deal {
   value: number | null;
   priority: 'high' | 'medium' | 'low';
   next_action: string | null;
+  draft_primary_ask?: string | null;
   followup_date: string | null;
   last_outcome: string | null;
   nudge_count: number;

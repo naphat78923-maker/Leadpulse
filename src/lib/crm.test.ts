@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const from = vi.hoisted(() => vi.fn());
 vi.mock('./supabase', () => ({ supabase: { from } }));
 
-import { updateDealIfUnchanged } from './crm';
+import { updateDeal, updateDealIfUnchanged } from './crm';
 
 function mockVersionConflict(current: Record<string, unknown>) {
   const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
@@ -62,5 +62,21 @@ describe('updateDealIfUnchanged', () => {
         last_outcome: 'Customer reply (positive): Asked for pricing',
       },
     )).resolves.toEqual(current);
+  });
+});
+
+describe('updateDeal explicit outbound fields', () => {
+  beforeEach(() => from.mockReset());
+
+  it('stores a cleared primary client ask as null', async () => {
+    const single = vi.fn().mockResolvedValue({ data: { id: 'deal-1', draft_primary_ask: null }, error: null });
+    const select = vi.fn(() => ({ single }));
+    const eq = vi.fn(() => ({ select }));
+    const update = vi.fn(() => ({ eq }));
+    from.mockReturnValueOnce({ update });
+
+    await updateDeal('deal-1', { draft_primary_ask: '   ' });
+
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({ draft_primary_ask: null }));
   });
 });

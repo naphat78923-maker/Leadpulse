@@ -1,13 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Company, CompanyStatus, Contact, ContactStatus, Deal, DealStage, DealWorkflowAction, Meeting, MeetingType, PRODUCT_OPTIONS, STAGE_LABELS, COMPANY_STATUS_LABELS, CONTACT_STATUS_LABELS, MEETING_TYPE_LABELS } from '@/types/crm';
+import { Company, Contact, Deal, DealWorkflowAction, PRODUCT_OPTIONS, COMPANY_STATUS_LABELS, CONTACT_STATUS_LABELS, MEETING_TYPE_LABELS } from '@/types/crm';
 import { X, Save, Building2, Users, Kanban, Calendar } from 'lucide-react';
 import ContactPicker from '@/components/ContactPicker';
 import { NUDGE_OPTIONS, SAMPLE_STATUS_OPTIONS, WORKFLOW_BY_ID, WORKFLOW_LANES } from '@/utils/deal-workflow';
 import { deriveDealIdentity } from '@/utils/dealLabel';
+import { CONTACT_IDENTITY_OPTIONS, contactNameFieldCopy } from '@/utils/contact-identity';
 
 type ModalType = 'company' | 'contact' | 'deal' | 'meeting';
+const DRAFTING_WORKFLOWS = new Set<DealWorkflowAction>(['outreach', 'reply', 'reschedule']);
 
 interface CreateModalProps {
   isOpen: boolean;
@@ -35,9 +37,9 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
   function getInitialState(t: ModalType) {
     switch (t) {
       case 'company': return { name: '', status: 'prospect', lead_source: '', account_owner: 'Pat', tags: '', industry: '', size: 'B', address: '', website: '', notes: '' };
-      case 'contact': return { name: '', email: '', phone: '', phone_second: '', line: '', job_title: '', company_id: '', status: 'active', notes: '' };
+      case 'contact': return { name: '', identity_quality: 'unknown', email: '', phone: '', phone_second: '', line: '', job_title: '', company_id: '', status: 'active', notes: '' };
       // title + client are auto-derived from Product + Company on submit (no manual entry)
-      case 'deal': return { stage: 'research', product: 'Butter', company_id: '', contact_ids: [] as string[], value: '', priority: 'medium', next_action: '', followup_date: '', workflow_action: 'outreach', nudge_stage: '', sample_status: '', notes: '' };
+      case 'deal': return { stage: 'research', product: 'Butter', company_id: '', contact_ids: [] as string[], value: '', priority: 'medium', next_action: '', draft_primary_ask: '', followup_date: '', workflow_action: 'outreach', nudge_stage: '', sample_status: '', notes: '' };
       case 'meeting': return { description: '', type: 'call', date: new Date().toISOString().split('T')[0], company_id: '', contact_ids: [] as string[], deal_id: '', product: 'Butter', summary: '', outcome: '', followup_date: '' };
     }
   }
@@ -95,6 +97,8 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
 
   const titles: Record<ModalType, string> = { company: 'New Company', contact: 'New Contact', deal: 'New Deal', meeting: 'Log Interaction' };
   const icons: Record<ModalType, React.ReactNode> = { company: <Building2 className="w-5 h-5" />, contact: <Users className="w-5 h-5" />, deal: <Kanban className="w-5 h-5" />, meeting: <Calendar className="w-5 h-5" /> };
+  const contactNameCopy = contactNameFieldCopy(form.identity_quality ?? 'unknown');
+  const showDraftingBrief = type === 'deal' && (DRAFTING_WORKFLOWS.has(form.workflow_action) || Boolean(form.draft_primary_ask?.trim()));
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50 p-0 md:p-4" onClick={onClose}>
@@ -137,12 +141,13 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
 
           {type === 'contact' && (
             <>
-              <Field label="Full Name *" name="name" value={form.name} onChange={handleChange} required placeholder="e.g., John Smith" />
+              <Select label="Contact quality" name="identity_quality" value={form.identity_quality} onChange={handleChange} options={CONTACT_IDENTITY_OPTIONS} />
+              <Field label={contactNameCopy.label} name="name" value={form.name} onChange={handleChange} required placeholder={contactNameCopy.placeholder} />
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Email" name="email" value={form.email} onChange={handleChange} placeholder="email@example.com" />
                 <Field label="Phone" name="phone" value={form.phone} onChange={handleChange} placeholder="Phone number" />
               </div>
-              <Field label="Second Phone" name="phone_second" value={form.phone_second} onChange={handleChange} placeholder="Optional second number" />
+              <Field label="Alternate phone" name="phone_second" value={form.phone_second} onChange={handleChange} placeholder="Optional alternate number" />
               <div className="grid grid-cols-2 gap-3">
                 <Field label="LINE ID" name="line" value={form.line} onChange={handleChange} placeholder="@lineid" />
                 <Field label="Job Title" name="job_title" value={form.job_title} onChange={handleChange} placeholder="e.g., Owner, Purchasing" />
@@ -163,10 +168,7 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
                 <Select label="Priority" name="priority" value={form.priority} onChange={handleChange} options={[{ value: 'high', label: 'High' }, { value: 'medium', label: 'Medium' }, { value: 'low', label: 'Low' }]} />
               </div>
               <Select label="Company" name="company_id" value={form.company_id} onChange={handleChange} options={[{ value: '', label: '— None —' }, ...companies.map(c => ({ value: c.id, label: c.name }))]} />
-              <div className="grid grid-cols-2 gap-3">
-                <Select label="Priority" name="priority" value={form.priority} onChange={handleChange} options={[{ value: 'high', label: 'High' }, { value: 'medium', label: 'Medium' }, { value: 'low', label: 'Low' }]} />
-                <Field label="Value (THB)" name="value" value={form.value} onChange={handleChange} placeholder="e.g., 50000" />
-              </div>
+              <Field label="Value (THB)" name="value" value={form.value} onChange={handleChange} placeholder="e.g., 50000" />
               <div>
                 <Select label="Action Lane" name="workflow_action" value={form.workflow_action} onChange={handleWorkflowChange} options={WORKFLOW_LANES.map(lane => ({ value: lane.id, label: `${lane.icon} ${lane.label}` }))} />
                 <p className="text-xs text-clay-muted mt-1">{WORKFLOW_BY_ID[form.workflow_action as DealWorkflowAction]?.description}</p>
@@ -177,7 +179,14 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
               {form.workflow_action === 'reschedule' && (
                 <Select label="Nudge Stage" name="nudge_stage" value={form.nudge_stage} onChange={handleChange} options={[{ value: '', label: '— Choose nudge —' }, ...NUDGE_OPTIONS.map(option => ({ value: option.value, label: `${option.label} · ${option.days} days` }))]} />
               )}
-              <Field label="Next Action" name="next_action" value={form.next_action} onChange={handleChange} placeholder="What needs to happen next?" />
+              <Field label="CRM next action" name="next_action" value={form.next_action} onChange={handleChange} placeholder="What needs to happen internally?" />
+              {showDraftingBrief && (
+                <section className="rounded-xl border border-clay-lavender/30 bg-clay-lavender/10 p-3">
+                  <p className="text-[10px] font-semibold tracking-wider text-clay-muted">EBIMARU DRAFTING BRIEF</p>
+                  <p className="mt-1 mb-3 text-xs text-clay-muted">One client question only. This is drafting guidance, not a send instruction.</p>
+                  <Field label="Primary client ask" name="draft_primary_ask" value={form.draft_primary_ask} onChange={handleChange} placeholder="What one thing should the client answer?" />
+                </section>
+              )}
               <Field label="Follow-up Date" name="followup_date" type="date" value={form.followup_date} onChange={handleChange} />
               <ContactPicker contacts={contacts} companies={companies} selectedCompanyId={form.company_id} selectedIds={form.contact_ids || []} onChange={ids => setForm(prev => ({ ...prev, contact_ids: ids }))} />
             </>

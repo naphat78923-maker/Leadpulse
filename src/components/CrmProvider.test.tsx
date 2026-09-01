@@ -37,6 +37,17 @@ function RefreshProbe() {
   return <button onClick={() => void addMeeting(meeting)}>Save interaction</button>;
 }
 
+function OutboundFieldProbe() {
+  const { contacts, deals, loading } = useCrm();
+  if (loading) return <p>Loading data</p>;
+  return (
+    <>
+      <p>Contact quality: {String(contacts[0]?.identity_quality)}</p>
+      <p>Primary ask: {String(deals[0]?.draft_primary_ask)}</p>
+    </>
+  );
+}
+
 describe('CrmProvider refresh lifecycle', () => {
   beforeEach(() => {
     Object.values(crmMocks).forEach(mock => mock.mockReset());
@@ -70,5 +81,26 @@ describe('CrmProvider refresh lifecycle', () => {
 
     finishRefresh([]);
     await waitFor(() => expect(crmMocks.getMeetings).toHaveBeenCalledTimes(2));
+  });
+
+  it('maps legacy rows to safe explicit outbound defaults', async () => {
+    crmMocks.getContacts.mockResolvedValueOnce([{
+      id: 'contact-1',
+      name: 'Head Chef',
+      status: 'active',
+    }]);
+    crmMocks.getDeals.mockResolvedValueOnce([{
+      id: 'deal-1',
+      title: 'Butter · Bakery',
+      client: 'Bakery',
+      product: 'Butter',
+      stage: 'research',
+      priority: 'medium',
+    }]);
+
+    render(<CrmProvider><OutboundFieldProbe /></CrmProvider>);
+
+    expect(await screen.findByText('Contact quality: unknown')).toBeTruthy();
+    expect(screen.getByText('Primary ask: null')).toBeTruthy();
   });
 });

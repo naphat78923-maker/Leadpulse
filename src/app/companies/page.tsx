@@ -6,7 +6,8 @@ import { useCrm } from '@/components/CrmProvider';
 import { companies as dataCompanies, contacts as dataContacts } from '@/data/crmData';
 import CreateModal from '@/components/CreateModal';
 import CompanyDetail from '@/components/CompanyDetail';
-import { Search, Plus, Building2, Tag, Loader2 } from 'lucide-react';
+import CompanyLogo from '@/components/CompanyLogo';
+import { Search, Plus, Tag, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
 
 type ViewMode = 'all' | 'by_status';
@@ -103,15 +104,18 @@ export default function CompaniesPage() {
                   <div
                     key={company.id}
                     onClick={() => setSelectedCompany(company.id)}
-                    className="bg-white dark:bg-clay-card border border-clay-hairline rounded-lg p-3 cursor-pointer active:bg-clay-surface"
+                    className="flex items-center gap-3 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg p-3 cursor-pointer active:bg-clay-surface"
                   >
-                    <h4 className="text-sm font-medium text-clay-ink">{company.name}</h4>
-                    <p className="text-xs text-clay-muted mt-0.5">
-                      {company.tags.join(', ') || '—'}
-                    </p>
-                    <span className="inline-block mt-1 text-[10px] font-medium text-clay-muted bg-clay-card px-1.5 py-0.5 rounded">
-                      {COMPANY_STATUS_LABELS[company.status]}
-                    </span>
+                    <CompanyLogo src={company.logo_url} name={company.name} size={40} />
+                    <div className="min-w-0 flex-1">
+                      <h4 className="text-sm font-medium text-clay-ink truncate">{company.name}</h4>
+                      <p className="text-xs text-clay-muted mt-0.5">
+                        {company.tags.join(', ') || '—'}
+                      </p>
+                      <span className="inline-block mt-1 text-[10px] font-medium text-clay-muted bg-clay-card px-1.5 py-0.5 rounded">
+                        {COMPANY_STATUS_LABELS[company.status]}
+                      </span>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -124,24 +128,24 @@ export default function CompaniesPage() {
             <div
               key={company.id}
               onClick={() => setSelectedCompany(company.id)}
-              className="bg-white dark:bg-clay-card border border-clay-hairline rounded-lg p-3 cursor-pointer active:bg-clay-surface"
+              className="flex items-center gap-3 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg p-3 cursor-pointer active:bg-clay-surface"
             >
-              <h4 className="text-sm font-medium text-clay-ink">{company.name}</h4>
-              <p className="text-xs text-clay-muted mt-0.5">
-                {company.tags.join(', ') || '—'}
-              </p>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="inline-flex items-center gap-1 text-xs text-clay-muted-soft">
-                  <Building2 className="w-3 h-3" />
-                </span>
-                <span className="inline-block text-[10px] font-medium text-clay-muted bg-clay-card px-1.5 py-0.5 rounded">
-                  {contacts.filter((c: Contact) => c.company_id === company.id).length} contacts
-                </span>
-                {company.tags.map(tag => (
-                  <span key={tag} className="inline-block text-[10px] font-medium text-clay-muted bg-clay-card px-1.5 py-0.5 rounded">
-                    {tag}
+              <CompanyLogo src={company.logo_url} name={company.name} size={40} />
+              <div className="min-w-0 flex-1">
+                <h4 className="text-sm font-medium text-clay-ink truncate">{company.name}</h4>
+                <p className="text-xs text-clay-muted mt-0.5">
+                  {company.tags.join(', ') || '—'}
+                </p>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="inline-block text-[10px] font-medium text-clay-muted bg-clay-card px-1.5 py-0.5 rounded">
+                    {contacts.filter((c: Contact) => c.company_id === company.id).length} contacts
                   </span>
-                ))}
+                  {company.tags.map(tag => (
+                    <span key={tag} className="inline-block text-[10px] font-medium text-clay-muted bg-clay-card px-1.5 py-0.5 rounded">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
           ))}

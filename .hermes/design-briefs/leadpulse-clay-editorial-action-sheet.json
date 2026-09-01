@@ -1,0 +1,202 @@
+{
+  "name": "LeadPulse Clay Editorial Action Sheet",
+  "version": "0.1.0",
+  "status": "proposed_for_review",
+  "scope": "A mobile-first, intent-led illustrated action sheet for LeadPulse. Design reference only: no app code, data, mascot, or production changes are authorized.",
+  "design_intent": {
+    "pattern": "Illustrated action-selector sheet",
+    "not": "A celebratory landing page, dense infographic, or a mascot-heavy CRM reskin",
+    "goal": "Let Pat choose a sales task through three calm, understandable actions while retaining the familiar LeadPulse claymation identity.",
+    "core_rule": "Clay is the illustration layer, not the interface chrome. The UI stays quiet, paper-like, and operational."
+  },
+  "why_the_current_direction_can_feel_jarring": {
+    "working_assumption": "The clay style feels too present when large mascots, saturated lane colors, card motion, and operational data compete on the same screen.",
+    "correction": [
+      "Reserve a mascot for one focused entry sheet, milestone, or empty state.",
+      "Use one fixed mascot per choice, not a cast scattered across every card.",
+      "Put clay art on a neutral or softly tinted shelf, never inside a loud multicolor panel.",
+      "Use short, practical copy and one task per card."
+    ]
+  },
+  "screen": {
+    "name": "Choose your next sales action",
+    "recommended_entry_points": [
+      "An explicit ‘Start a task’ control on Today",
+      "A first-run prompt after a deliberate user tap",
+      "An empty-state recovery action when there is no active work"
+    ],
+    "do_not_auto_open": [
+      "Every app launch",
+      "When overdue work exists",
+      "During editing, saving, or a destructive confirmation"
+    ],
+    "structure": [
+      "Dimmed but recognizable CRM backdrop",
+      "Single white or warm-paper bottom sheet",
+      "Editorial prompt and one-sentence explanation",
+      "Three illustrated action cards",
+      "Close control and natural swipe/back dismissal"
+    ]
+  },
+  "content_model": {
+    "eyebrow": "START HERE",
+    "headline": "What do you want to do?",
+    "supporting_copy": "Choose one task and LeadPulse will take you straight there.",
+    "actions": [
+      {
+        "id": "follow_up",
+        "title": "Follow up with someone",
+        "description": "See who needs a touch today.",
+        "destination": "Today action queue or filtered Deals board",
+        "mascot": "/assets/mascots/mascot-followup.png",
+        "accent": "mint"
+      },
+      {
+        "id": "new_lead",
+        "title": "Add a new lead",
+        "description": "Capture a company or contact before you forget.",
+        "destination": "Existing New Contact or New Company flow",
+        "mascot": "/assets/mascots/mascot-outreach.png",
+        "accent": "lavender"
+      },
+      {
+        "id": "log_touch",
+        "title": "Log a touch",
+        "description": "Save a call, email, DM, or meeting.",
+        "destination": "Existing Log Interaction flow",
+        "mascot": "/assets/mascots/mascot-reply.png",
+        "accent": "ochre"
+      }
+    ],
+    "copy_rules": {
+      "title": "Verb-first, 2 to 6 words",
+      "description": "One plain-language sentence, 42 characters preferred and 70 characters maximum",
+      "action_count": "Exactly three on mobile. Add a separate ‘More actions’ route rather than a fourth crowded card.",
+      "avoid": [
+        "Generic labels such as ‘Get started’ or ‘Continue’",
+        "Sales jargon such as ‘advance deal’ or ‘engage account’",
+        "Multiple metrics, instructions, or a second CTA inside one choice"
+      ]
+    }
+  },
+  "layout": {
+    "sheet_position": "Bottom sheet on mobile; centered dialog with a visible underlying page on desktop",
+    "sheet_max_width_desktop": "520px",
+    "sheet_radius": "28px 28px 0 0 on mobile; 28px on desktop",
+    "sheet_padding": "24px mobile, 32px desktop",
+    "content_gap": {
+      "eyebrow_to_headline": "12px",
+      "headline_to_support": "12px",
+      "support_to_actions": "28px",
+      "between_actions": "12px",
+      "bottom_safe_area": "max(20px, env(safe-area-inset-bottom))"
+    },
+    "action_card": {
+      "min_height": "104px",
+      "radius": "18px",
+      "border": "1px solid var(--color-clay-hairline)",
+      "background": "var(--color-clay-surface) or white, never a saturated full-card fill",
+      "text_column": "68%",
+      "illustration_column": "32%",
+      "illustration_alignment": "Right-aligned, slightly cropped at the card edge, with one small softly tinted abstract shape behind it",
+      "interaction": "Entire card is one button. No nested buttons, pills, or surprise secondary action."
+    },
+    "responsive_rule": "Cards remain stacked on phones. Do not turn the three choices into a carousel or a three-column desktop grid."
+  },
+  "visual_language": {
+    "ui_surface": "Warm paper and quiet white surfaces, crisp enough to feel editorial but still compatible with LeadPulse's clay desk.",
+    "illustration": "Existing LeadPulse claymation PNGs become composed still-life objects. They should feel curated and static, not like a mascot reacting to every CRM event.",
+    "color_discipline": {
+      "base": [
+        "--color-clay-canvas: #FDF6E9",
+        "--color-clay-surface: #FAF5E8",
+        "--color-clay-ink: #2B211A",
+        "--color-clay-body: #3F382F"
+      ],
+      "choice_accents": {
+        "lavender": "--color-clay-lavender",
+        "mint": "--color-clay-mint",
+        "ochre": "--color-clay-ochre"
+      },
+      "rule": "Each card gets one pale accent at 10% to 18% opacity. Coral and pink can appear only as minor art details. Tomato red remains danger-only."
+    },
+    "type": {
+      "headline": {
+        "font": "Lustria, Georgia, serif",
+        "size_mobile": "32px",
+        "line_height": "1.15",
+        "weight": 400,
+        "use": "Only the action-sheet question"
+      },
+      "card_title": {
+        "font": "DM Sans, system-ui, sans-serif",
+        "size": "16px",
+        "line_height": "1.25",
+        "weight": 700
+      },
+      "card_description": {
+        "font": "DM Sans, system-ui, sans-serif",
+        "size": "14px",
+        "line_height": "1.35",
+        "weight": 400
+      },
+      "eyebrow": {
+        "font": "Martian Mono, ui-monospace, monospace",
+        "size": "10px",
+        "tracking": "0.12em",
+        "weight": 600
+      }
+    },
+    "mascot_treatment": {
+      "source": "Reuse fixed PNG assets under /public/assets/mascots via MascotSprite.",
+      "max_size_in_card": "92px square",
+      "max_mascots_per_sheet": 3,
+      "rules": [
+        "No new AI-generated mascot, clay avatar, clay lettering, or human illustration.",
+        "No mascot frame, label, or job description inside the card.",
+        "The text must remain meaningful if the illustration fails to load.",
+        "Keep one consistent image scale and visual crop across all three cards."
+      ]
+    }
+  },
+  "motion": {
+    "tone": "Calm and physical, not bouncy or game-like.",
+    "sheet": "Backdrop opacity transition 160ms; sheet translateY(16px) plus opacity transition 220ms ease-out.",
+    "cards": "No autonomous bounce. On press, scale to 0.985 for 110ms and slightly deepen the border.",
+    "mascots": "Static by default. A single 160ms fade/scale-in is permitted when the sheet opens.",
+    "reduced_motion": "Instant state changes with no transforms or staggered entrances."
+  },
+  "accessibility": {
+    "dialog": "Use a correctly labelled modal dialog with focus trapped inside, Escape dismissal, close button, and focus restored to the trigger.",
+    "targets": "Each action card is at least 48px tall and has a visible keyboard focus treatment.",
+    "contrast": "Card title/body text must meet WCAG AA against the actual paper surface. Accent colors must not be the only way choices differ.",
+    "screen_reader_names": [
+      "Follow up with someone. See who needs a touch today.",
+      "Add a new lead. Capture a company or contact before you forget.",
+      "Log a touch. Save a call, email, DM, or meeting."
+    ]
+  },
+  "implementation_boundaries": {
+    "preserve": [
+      "Action-first Deal board and its lane logic",
+      "Existing explicit Save, spinner, toast, success ring, and undo patterns",
+      "Existing approved LeadPulse mascot files",
+      "Warm light mode and midnight-cocoa dark-mode contrast rules"
+    ],
+    "avoid": [
+      "Adding mascot art to every list row or deal lane",
+      "Replacing operational DM Sans with editorial serif typography",
+      "Making the selector a second dashboard",
+      "Copying the reference screen's figures or exact illustrations",
+      "Auto-saving or changing CRM state just because a user chooses an entry action"
+    ]
+  },
+  "acceptance_criteria": [
+    "A user can understand all three choices without reading a tooltip.",
+    "Each choice opens an existing, explicit LeadPulse workflow and makes no write until the user confirms Save.",
+    "The sheet feels calmer than the current mascot-heavy treatment because the UI remains mostly neutral and each card uses one contained image.",
+    "On mobile, all three cards and their full labels are reachable without horizontal scrolling.",
+    "Dark mode uses existing night-desk tokens rather than a bright white pasted surface.",
+    "No Deal board action, lane rule, or mascot asset is changed by this pattern alone."
+  ]
+}

@@ -7,7 +7,9 @@ import { useCrm } from '@/components/CrmProvider';
 import { deals as dataDeals, contacts as dataContacts, companies as dataCompanies } from '@/data/crmData';
 import CreateModal from '@/components/CreateModal';
 import DealDetail from '@/components/DealDetail';
+import DealCardContent from '@/components/DealCardContent';
 import LaneGateModal, { LaneGatePayload } from '@/components/LaneGateModal';
+import ReviewFixModal, { ReviewFixPayload } from '@/components/ReviewFixModal';
 import MascotSprite from '@/components/MascotSprite';
 import { useToast } from '@/components/ToastProvider';
 import * as crm from '@/lib/crm';
@@ -23,19 +25,13 @@ import {
   DragStartEvent,
   DragEndEvent,
 } from '@dnd-kit/core';
-import { Plus, TrendingUp, AlertCircle, Loader2, CalendarDays, GripVertical, ArrowRight, Search, X } from 'lucide-react';
+import { Plus, TrendingUp, AlertCircle, Loader2, CalendarDays, ArrowRight, Search, X } from 'lucide-react';
 import clsx from 'clsx';
-import {
-  calculateLeadScore,
-  scoreToTier,
-  TIER_LABELS,
-  TIER_COLORS,
-  TIER_BG,
-  PRIORITY_CLASSES,
-  PRIORITY_LABELS,
-} from '@/utils/lead-scoring';
+import { PRIORITY_CLASSES, PRIORITY_LABELS } from '@/utils/lead-scoring';
+import { formatBaht, sumLaneValues } from '@/utils/format';
 import { WORKFLOW_LANES, WORKFLOW_BY_ID, LANE_MASCOT_PATHS, getWorkflowAction, nudgeLabel } from '@/utils/deal-workflow';
-import { BoardAttentionFilter, filterAndSortBoardDeals, getDoNowCounts, localDateKey } from '@/utils/deal-board';
+import { BoardAttentionFilter, dealNeedsReview, reviewReasons, REVIEW_LABEL, buildReviewReport, buildReviewFix, filterAndSortBoardDeals, getDoNowCounts, localDateKey } from '@/utils/deal-board';
+import { buildDealCardPresentation } from '@/utils/deal-card';
 
 type ViewMode = 'board' | 'closed' | 'table';
 
@@ -73,6 +69,21 @@ function compactDate(date?: string | null) {
   return new Date(`${date}T12:00:00`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
 }
 
+function whyNow(deal: Deal, due: 'overdue' | 'today' | null): string | null {
+  if (!due) return null;
+  if (dealNeedsReview(deal)) {
+    return due === 'overdue' ? 'Past due and missing required lane details' : 'Due today but missing required lane details';
+  }
+  if (deal.priority === 'high') {
+    return due === 'overdue' ? 'High-priority follow-up slipped' : 'High-priority follow-up due today';
+  }
+  const lane = WORKFLOW_LANES.find(item => item.id === getWorkflowAction(deal));
+  if (lane && lane.id !== 'outreach') {
+    return `Scheduled ${lane.shortLabel.toLowerCase()} is ${due === 'overdue' ? 'overdue' : 'due today'}`;
+  }
+  return due === 'overdue' ? 'Follow-up is overdue' : 'Follow-up is due today';
+}
+
 export default function DealsPage() {
   const [view, setView] = useState<ViewMode>('board');
   const [mobileLane, setMobileLane] = useState<DealWorkflowAction>('outreach');
@@ -80,6 +91,7 @@ export default function DealsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [gate, setGate] = useState<{ deal: Deal; target: DealWorkflowAction } | null>(null);
+  const [reviewFix, setReviewFix] = useState<{ deal: Deal; reasons: ReturnType<typeof reviewReasons> } | null>(null);
   const [celebrate, setCelebrate] = useState<{ dealId: string; laneId: DealWorkflowAction; sprite?: string } | null>(null);
   const [pickerDeal, setPickerDeal] = useState<Deal | null>(null);
   const [attentionFilter, setAttentionFilter] = useState<BoardAttentionFilter>('all');
@@ -127,11 +139,6 @@ export default function DealsPage() {
     el.scrollBy({ left: dir * el.clientWidth * 0.8, behavior: 'smooth' });
   };
 
-  const scoredDeals = useMemo(
-    () => deals.map(deal => ({ deal, score: calculateLeadScore(deal), tier: scoreToTier(calculateLeadScore(deal)) })),
-    [deals]
-  );
-
   const actionBoardDeals = useMemo(
     () => deals.filter(deal => deal.stage !== 'closed_lost'),
     [deals]
@@ -153,6 +160,10 @@ export default function DealsPage() {
     [actionBoardDeals, attentionFilter, searchQuery, productFilter, priorityFilter, todayStr]
   );
 
+  const reviewReport = useMemo(
+    () => buildReviewReport(deals),
+    [deals]
+  );
   const productOptions = useMemo(
     () => Array.from(new Set([...PRODUCT_OPTIONS, ...actionBoardDeals.map(deal => deal.product)].filter(Boolean))).sort(),
     [actionBoardDeals]
@@ -165,6 +176,14 @@ export default function DealsPage() {
     });
     return groups;
   }, [visibleActionBoardDeals]);
+
+  // folk-style "total deal value per stage": sum of non-null deal.value per lane.
+  const laneValues = useMemo(() => sumLaneValues(WORKFLOW_LANES, dealsByAction), [dealsByAction]);
+
+  const openPipelineValue = useMemo(
+    () => WORKFLOW_LANES.reduce((acc, lane) => acc + laneValues[lane.id], 0),
+    [laneValues]
+  );
 
   const closedDeals = useMemo(
     () => deals.filter(deal => deal.stage === 'closed_won' || deal.stage === 'closed_lost'),
@@ -304,6 +323,36 @@ export default function DealsPage() {
     await refresh();
   };
 
+  const handleReviewFixConfirm = async (payload: ReviewFixPayload) => {
+    if (!reviewFix) return;
+    const { deal, reasons } = reviewFix;
+    const updates = buildReviewFix(reasons, payload);
+    if (Object.keys(updates).length === 0) {
+      setReviewFix(null);
+      return;
+    }
+    const before: Partial<Deal> = {
+      sample_status: deal.sample_status || null,
+      followup_date: deal.followup_date,
+      nudge_stage: deal.nudge_stage || null,
+      last_outcome: deal.last_outcome,
+      next_action: deal.next_action,
+    };
+    const label = WORKFLOW_BY_ID[getWorkflowAction(deal)].shortLabel;
+    await crm.updateDeal(deal.id, updates);
+    logActivity({
+      type: 'edit',
+      entity: 'deal',
+      entityId: deal.id,
+      label: `🔧 Data hygiene fix · ${label}`,
+      description: `Completed missing fields for ${deal.client} (${reasons.map(r => REVIEW_LABEL[r]).join(', ')})`,
+      undoPayload: before,
+    });
+    setReviewFix(null);
+    addToast(`✓ ${deal.client} review flag cleared`);
+    await refresh();
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -313,13 +362,14 @@ export default function DealsPage() {
   }
 
   const renderDealCard = (deal: Deal, opts?: { grip?: boolean; compact?: boolean }) => {
-    const score = calculateLeadScore(deal);
-    const tier = scoreToTier(score);
     const action = getWorkflowAction(deal);
     const nudge = nudgeLabel(deal.nudge_stage);
     const lane = WORKFLOW_LANES.find(item => item.id === action)!;
     const due = dueStateFor(deal, todayStr);
+    const reason = whyNow(deal, due);
+    const reasons = reviewReasons(deal);
     const isCompact = !!opts?.compact;
+    const presentation = buildDealCardPresentation(deal, contacts, companies, due);
 
     return (
       <button
@@ -328,61 +378,20 @@ export default function DealsPage() {
         className={clsx(
           'w-full text-left bg-white dark:bg-clay-card rounded-xl border transition-all active:scale-[0.98] active:bg-clay-surface',
           isCompact ? 'p-2.5' : 'p-3',
-          TIER_BG[tier]
+          'border-clay-hairline',
+          due === 'overdue' && 'border-l-2 border-l-clay-error',
+          due === 'today' && 'border-l-2 border-l-clay-ochre'
         )}
       >
-        <div className={clsx('flex items-center justify-between gap-2', !isCompact && 'mb-2')}>
-          <span className={clsx('text-[10px] font-semibold px-2 py-0.5 rounded border', TIER_COLORS[tier])}>{TIER_LABELS[tier]}</span>
-          <span className="flex items-center gap-1.5">
-            <span className="text-[10px] font-mono text-clay-muted">{score}/100</span>
-            {opts?.grip && <GripVertical className="w-3.5 h-3.5 text-clay-muted-soft" />}
-          </span>
-        </div>
-
-        <div className="flex items-start justify-between gap-1.5">
-          <h3 className={clsx(
-            'text-sm font-semibold text-clay-ink leading-snug',
-            isCompact ? 'truncate' : 'line-clamp-2'
-          )}>
-            {deal.client}
-          </h3>
-          {due && (
-            <span
-              className={clsx(
-                'inline-flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap shrink-0 mt-0.5',
-                due === 'overdue' ? 'bg-clay-error/10 text-clay-error' : 'bg-clay-ochre/10 text-clay-ochre'
-              )}
-            >
-              <span className={clsx('w-1.5 h-1.5 rounded-full animate-pulse-dot', due === 'overdue' ? 'bg-clay-error' : 'bg-clay-ochre')} />
-              {due === 'overdue' ? 'Overdue' : 'Due today'}
-            </span>
-          )}
-        </div>
-
-        {!isCompact && (
-          <>
-            <p className="text-xs text-clay-muted line-clamp-2 mt-0.5">{deal.title}</p>
-            <div className="flex flex-wrap items-center gap-1.5 mt-2">
-              <span className="text-[10px] font-medium text-clay-muted bg-clay-card px-1.5 py-0.5 rounded">{STAGE_LABELS[deal.stage]}</span>
-              <span className={clsx('text-[10px] font-semibold px-1.5 py-0.5 rounded', PRIORITY_CLASSES[deal.priority])}>{PRIORITY_LABELS[deal.priority]}</span>
-              {deal.sample_status && <span className="text-[10px] text-clay-ochre">{deal.sample_status === 'sent' ? 'Sent' : 'Received'}</span>}
-              {nudge && <span className="text-[10px] text-clay-muted">{nudge}</span>}
-            </div>
-            {(deal.followup_date || deal.next_action) && (
-              <div className="mt-2 pt-2 border-t border-clay-hairline/60">
-                {deal.followup_date && (
-                  <p className={clsx(
-                    'text-[10px]',
-                    due === 'overdue' ? 'text-clay-error font-semibold' : due === 'today' ? 'text-clay-ochre font-semibold' : 'text-clay-muted'
-                  )}>
-                    📅 {compactDate(deal.followup_date)}
-                  </p>
-                )}
-                {deal.next_action && <p className="text-[10px] text-clay-muted line-clamp-1 mt-0.5">{deal.next_action}</p>}
-              </div>
-            )}
-          </>
-        )}
+        <DealCardContent
+          deal={deal}
+          presentation={presentation}
+          whyNow={reason}
+          reviewLabels={reasons.map(item => REVIEW_LABEL[item])}
+          nudge={nudge}
+          compact={isCompact}
+          showGrip={opts?.grip}
+        />
         <p className="sr-only">Open {deal.client} in {lane.label}</p>
       </button>
     );
@@ -404,29 +413,13 @@ export default function DealsPage() {
         </button>
       </div>
 
-      {/* Brand banner */}
-      <div className="relative mb-4 rounded-lg border border-clay-hairline bg-white dark:bg-clay-card overflow-hidden">
-        <div className="flex items-center gap-4 p-4 md:p-5">
-          <div className="flex-1 min-w-0">
-            <p className="zams-eyebrow mb-1.5">Win · Lost · Follow up</p>
-            <p className="zams-display text-lg md:text-xl leading-tight">One deal, one next action.</p>
-            <p className="text-xs text-clay-muted mt-1">Sort every deal by what to do next — outreach, follow-up, reschedule, or parked.</p>
-          </div>
-          <Image
-            src="/assets/deal-lanes-hero.png"
-            alt="Clay characters pushing deals through the WIN, LOST, and FOLLOW UP lanes"
-            width={1344}
-            height={768}
-            className="hidden sm:block w-40 md:w-56 h-auto rounded border border-clay-hairline shrink-0"
-          />
-        </div>
-      </div>
+
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
-        <div className="bg-white dark:bg-clay-card border border-clay-hairline rounded-xl p-3"><p className="text-xs text-clay-muted">Active</p><p className="text-xl font-semibold text-clay-ink">{stats.active}</p></div>
-        <button onClick={() => focusAttention('today')} className="bg-clay-ochre/10 border border-clay-ochre/20 rounded-xl p-3 text-left active:scale-[0.98] transition-transform"><p className="text-xs text-clay-ochre">Due today</p><p className="text-xl font-semibold text-clay-ochre">{stats.dueToday}</p></button>
-        <div className="bg-clay-card border border-clay-hairline rounded-xl p-3"><p className="text-xs text-clay-muted">Parked</p><p className="text-xl font-semibold text-clay-ink">{stats.parked}</p></div>
-        <div className="bg-clay-mint/20 border border-clay-mint/30 rounded-xl p-3"><p className="text-xs text-clay-teal">Won</p><p className="text-xl font-semibold text-clay-teal">{stats.won}</p></div>
+        <div className="bg-white dark:bg-clay-card border border-clay-hairline rounded-xl p-3"><p className="zams-eyebrow">Active</p><p className="text-xl font-semibold text-clay-ink">{stats.active}</p></div>
+        <button onClick={() => focusAttention('today')} className="bg-clay-ochre/10 border border-clay-ochre/20 rounded-xl p-3 text-left active:scale-[0.98] transition-transform"><p className="zams-eyebrow text-clay-ochre">Due today</p><p className="text-xl font-semibold text-clay-ochre">{stats.dueToday}</p></button>
+        <div className="bg-clay-card border border-clay-hairline rounded-xl p-3"><p className="zams-eyebrow">Parked</p><p className="text-xl font-semibold text-clay-ink">{stats.parked}</p></div>
+        <div className="bg-clay-mint/20 border border-clay-mint/30 rounded-xl p-3"><p className="zams-eyebrow text-clay-teal">Won</p><p className="text-xl font-semibold text-clay-teal">{stats.won}</p></div>
       </div>
 
       <div className="flex bg-clay-card rounded-lg p-0.5 mb-4">
@@ -437,17 +430,16 @@ export default function DealsPage() {
 
       {view === 'board' && (
         <>
-          <section className="mb-3 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card p-3 md:p-4" aria-label="Do now filters">
-            <div className="flex items-start justify-between gap-3 mb-3">
-              <div>
-                <p className="zams-eyebrow mb-0.5">Do now</p>
-                <p className="text-sm font-semibold text-clay-ink">Find the next deal in seconds</p>
-                <p className="text-[11px] text-clay-muted mt-0.5">Showing {visibleActionBoardDeals.length} of {actionBoardDeals.length} deals</p>
+          <section className="mb-3 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-3 py-2.5 md:px-4" aria-label="Do now filters">
+            <div className="flex items-center justify-between gap-3 mb-2.5">
+              <div className="flex items-baseline gap-2 min-w-0">
+                <p className="zams-eyebrow">Do now</p>
+                <p className="text-xs text-clay-muted truncate">Showing {visibleActionBoardDeals.length} of {actionBoardDeals.length}</p>
               </div>
               {filtersActive && (
                 <button
                   onClick={clearDoNowFilters}
-                  className="inline-flex items-center gap-1.5 min-h-[36px] rounded-lg border border-clay-hairline px-2.5 text-xs font-medium text-clay-muted active:bg-clay-surface"
+                  className="inline-flex items-center gap-1.5 min-h-[44px] rounded-lg border border-clay-hairline px-2.5 text-xs font-medium text-clay-muted active:bg-clay-surface"
                 >
                   <X className="w-3.5 h-3.5" /> Clear
                 </button>
@@ -522,6 +514,56 @@ export default function DealsPage() {
             </div>
           </section>
 
+          <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-clay-ochre/30 bg-clay-ochre/5 px-4 py-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <TrendingUp className="w-4 h-4 text-clay-ochre shrink-0" />
+              <span className="text-sm font-medium text-clay-ink truncate">Open pipeline</span>
+            </div>
+            <span className="zams-mono text-base font-bold text-clay-ochre shrink-0">{formatBaht(openPipelineValue)}</span>
+          </div>
+
+          {attentionFilter === 'needs-review' && (
+            <section className="mb-3 rounded-xl border border-clay-lavender/30 bg-clay-lavender/5 p-3 md:p-4" aria-label="Data hygiene review queue">
+              <div className="flex items-start justify-between gap-3 mb-2">
+                <div>
+                  <p className="zams-eyebrow mb-0.5">Data hygiene · dry run</p>
+                  <p className="text-sm font-semibold text-clay-ink">{reviewReport.length} deal{reviewReport.length === 1 ? '' : 's'} need review</p>
+                </div>
+                <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-medium text-clay-muted bg-clay-card border border-clay-hairline px-2 py-1 rounded-full">
+                  <AlertCircle className="w-3 h-3" /> Read-only · no changes made
+                </span>
+              </div>
+              <p className="text-[11px] text-clay-muted mb-3">These deals violate a lane requirement (existing or imported). Review the reason and suggested fix — nothing is edited until you open a deal and save it yourself.</p>
+              <ul className="space-y-2">
+                {reviewReport.map(item => (
+                  <li key={item.deal.id} className="rounded-lg border border-clay-hairline bg-white dark:bg-clay-card p-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium text-clay-ink truncate">{item.deal.client}</span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[10px] font-medium text-clay-lavender bg-clay-lavender/15 px-1.5 py-0.5 rounded">{WORKFLOW_BY_ID[item.lane].shortLabel}</span>
+                        <button
+                          onClick={() => setReviewFix({ deal: item.deal, reasons: item.reasons })}
+                          className="text-[10px] font-semibold text-clay-canvas bg-clay-lavender px-2 py-0.5 rounded active:opacity-85"
+                        >
+                          Fix
+                        </button>
+                      </div>
+                    </div>
+                    <ul className="mt-1.5 space-y-0.5">
+                      {item.labels.map(label => (
+                        <li key={label} className="text-[11px] text-clay-body flex items-start gap-1.5">
+                          <span className="text-clay-lavender mt-0.5">•</span>
+                          <span>{label}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-[11px] text-clay-muted mt-1.5 leading-relaxed">Fix: {item.fix}</p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           <div className="mb-3 rounded-xl border border-clay-hairline bg-clay-surface px-3 py-2 flex items-center justify-between gap-3">
             <div className="flex items-start gap-2 text-xs text-clay-muted min-w-0">
               <CalendarDays className="w-4 h-4 mt-0.5 text-clay-lavender shrink-0" />
@@ -530,7 +572,7 @@ export default function DealsPage() {
             <button
               onClick={() => setCompact(!compact)}
               className={clsx(
-                'shrink-0 zams-mono text-[10px] uppercase tracking-[0.16px] px-2.5 py-1.5 rounded-lg border transition-colors',
+                'shrink-0 zams-mono text-[10px] uppercase tracking-[0.16px] min-h-[44px] px-2.5 py-1.5 rounded-lg border transition-colors',
                 compact ? 'border-clay-lavender bg-clay-lavender/20 text-clay-lavender' : 'border-clay-hairline text-clay-muted hover:border-clay-muted-soft'
               )}
             >
@@ -584,7 +626,7 @@ export default function DealsPage() {
                 >
                   <span>{lane.icon}</span>
                   <span>{lane.shortLabel}</span>
-                  <span className={clsx('text-xs', mobileLane === lane.id ? 'text-clay-canvas/70' : 'text-clay-muted')}>{dealsByAction[lane.id].length}</span>
+                  <span className={clsx('text-xs', mobileLane === lane.id ? 'text-clay-canvas/70' : 'text-clay-muted')}>{dealsByAction[lane.id].length} · {formatBaht(laneValues[lane.id])}</span>
                 </button>
               ))}
             </div>
@@ -601,7 +643,7 @@ export default function DealsPage() {
                       </h2>
                       <p className="text-xs text-clay-muted mt-1">{lane.description}</p>
                     </div>
-                    <span className="text-sm text-clay-muted bg-white/70 dark:bg-clay-card px-2 py-1 rounded-full">{laneDeals.length}</span>
+                    <span className="text-sm text-clay-muted bg-white/70 dark:bg-clay-card px-2 py-1 rounded-full">{laneDeals.length} · {formatBaht(laneValues[lane.id])}</span>
                   </div>
                   <div className="space-y-2">
                     {laneDeals.map(d => (
@@ -638,7 +680,7 @@ export default function DealsPage() {
                         <p className="text-xs text-clay-muted mt-0.5 leading-snug">{lane.description}</p>
                         <p className="zams-mono text-[9px] uppercase tracking-[0.14px] text-clay-muted-soft mt-1">{LANE_CRITERIA[lane.id]}</p>
                       </div>
-                      <span className="text-xs text-clay-muted bg-white/70 dark:bg-clay-card px-2 py-0.5 rounded-full shrink-0">{dealsByAction[lane.id].length}</span>
+                      <span className="text-xs text-clay-muted bg-white/70 dark:bg-clay-card px-2 py-0.5 rounded-full shrink-0">{dealsByAction[lane.id].length} · {formatBaht(laneValues[lane.id])}</span>
                     </div>
                     <div className="space-y-2 flex-1 pr-0.5">
                       {dealsByAction[lane.id].map(deal => (
@@ -750,6 +792,15 @@ export default function DealsPage() {
           companies={companies}
           onCancel={() => setGate(null)}
           onConfirm={handleGateConfirm}
+        />
+      )}
+
+      {reviewFix && (
+        <ReviewFixModal
+          deal={reviewFix.deal}
+          reasons={reviewFix.reasons}
+          onCancel={() => setReviewFix(null)}
+          onConfirm={handleReviewFixConfirm}
         />
       )}
 

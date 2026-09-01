@@ -1,12 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Company, COMPANY_STATUS_LABELS, CompanyStatus, Contact } from '@/types/crm';
 import { Building2, Tag, X, Edit2, Loader2, Check, UserPlus, Trash2, Gift, ShoppingCart } from 'lucide-react';
 import clsx from 'clsx';
 import { useToast } from '@/components/ToastProvider';
 import { useCrm } from '@/components/CrmProvider';
 import * as crm from '@/lib/crm';
+import { resizeImageToSquare, validateLogoFile } from '@/lib/image';
+import CompanyLogo from '@/components/CompanyLogo';
 
 const statusOptions: CompanyStatus[] = ['prospect', 'active_customer', 'inactive', 'lost'];
 
@@ -30,8 +32,51 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
   const [showLogSale, setShowLogSale] = useState(false);
   const [saleSaving, setSaleSaving] = useState(false);
   const [saleError, setSaleError] = useState<string | null>(null);
+  const [logoSaving, setLogoSaving] = useState(false);
+  const [logoError, setLogoError] = useState<string | null>(null);
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
   const [newSale, setNewSale] = useState({ amount: '', date: new Date().toISOString().split('T')[0], product: '' });
 
+  const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (logoInputRef.current) logoInputRef.current.value = '';
+    if (!file) return;
+    const validationError = validateLogoFile(file);
+    if (validationError) {
+      setLogoError(validationError);
+      return;
+    }
+    setLogoSaving(true);
+    setLogoError(null);
+    try {
+      const resized = await resizeImageToSquare(file);
+      const url = await crm.uploadCompanyLogo(company.id, resized);
+      await crm.updateCompany(company.id, { logo_url: url });
+      onSaved();
+      addToast('Logo uploaded');
+    } catch (err: any) {
+      console.error('Logo upload failed:', err);
+      setLogoError('Could not upload: ' + (err.message || 'Unknown error'));
+    } finally {
+      setLogoSaving(false);
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    setLogoSaving(true);
+    setLogoError(null);
+    try {
+      if (company.logo_url) await crm.deleteCompanyLogo(company.id);
+      await crm.updateCompany(company.id, { logo_url: null });
+      onSaved();
+      addToast('Logo removed');
+    } catch (err: any) {
+      console.error('Logo remove failed:', err);
+      setLogoError('Could not remove: ' + (err.message || 'Unknown error'));
+    } finally {
+      setLogoSaving(false);
+    }
+  };
   const handleLogSale = async () => {
     const amountNum = parseFloat(newSale.amount.replace(/,/g, ''));
     if (!Number.isFinite(amountNum) || amountNum <= 0) {
@@ -158,6 +203,38 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
             </button>
           </div>
         </div>
+
+        {/* Brand logo */}
+        <div className="flex items-center gap-3 mb-4">
+          <CompanyLogo src={company.logo_url} name={company.name} size={56} />
+          <div className="flex flex-col gap-1.5">
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleLogoChange}
+              className="hidden"
+              id={`logo-upload-${company.id}`}
+            />
+            <label
+              htmlFor={`logo-upload-${company.id}`}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-clay-hairline bg-clay-surface text-xs font-medium text-clay-ink cursor-pointer active:bg-clay-card transition-colors"
+            >
+              {logoSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Building2 className="w-3.5 h-3.5" />}
+              {company.logo_url ? 'Replace logo' : 'Upload logo'}
+            </label>
+            {company.logo_url && (
+              <button
+                onClick={handleRemoveLogo}
+                disabled={logoSaving}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-clay-hairline text-xs font-medium text-clay-muted-soft active:bg-clay-surface disabled:opacity-50 transition-colors"
+              >
+                Remove
+              </button>
+            )}
+          </div>
+        </div>
+        {logoError && <div className="mb-4 text-xs text-clay-error">{logoError}</div>}
 
         {saving && (
           <div className="mb-4 flex items-center gap-2 text-sm text-clay-success animate-pulse">

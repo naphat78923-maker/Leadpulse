@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Deal, STAGE_LABELS, DealStage } from '@/types/crm';
@@ -9,6 +9,7 @@ import { deals as dataDeals, contacts as dataContacts, companies as dataCompanie
 import CreateModal from '@/components/CreateModal';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import MascotSprite from '@/components/MascotSprite';
+import TaskActionSheet from '@/components/TaskActionSheet';
 import ReorderSignalsCard from '@/components/ReorderSignalsCard';
 import { Plus, TrendingUp, AlertCircle, ChevronRight, Loader2, MessageCircle, Phone, Mail, Users, Package, Bell } from 'lucide-react';
 import { calculateLeadScore, scoreToTier, TIER_LABELS, TIER_COLORS, TIER_BG, PRIORITY_CLASSES, PRIORITY_LABELS } from '@/utils/lead-scoring';
@@ -54,6 +55,8 @@ export default function TodayPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const [logDealId, setLogDealId] = useState<string | undefined>(undefined);
+  const [startOpen, setStartOpen] = useState(false);
+  const startButtonRef = useRef<HTMLButtonElement>(null);
   const { deals: dbDeals, contacts: dbContacts, companies: dbCompanies, meetings: dbMeetings, loading, createDeal, addMeeting } = useCrm();
 
   const deals = dbDeals.length > 0 ? dbDeals : (dataDeals as Deal[]);
@@ -417,7 +420,14 @@ export default function TodayPage() {
         {actionQueue.length === 0 ? (
           <div className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline p-8 flex flex-col items-center gap-3">
             <MascotSprite src="/assets/mascots/mascot-parked.png" size={44} alt="Sleepy mascot" />
-            <p className="text-sm text-clay-muted">Everything is moving. Nothing waiting.</p>
+            <p className="text-sm text-clay-muted mb-2">Everything is moving. Nothing waiting.</p>
+            <button
+              ref={startButtonRef}
+              onClick={() => setStartOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-clay-ink text-clay-canvas text-sm font-medium rounded-lg active:opacity-85"
+            >
+              Start a task
+            </button>
           </div>
         ) : (
           <>
@@ -586,6 +596,22 @@ export default function TodayPage() {
         contacts={contacts}
         companies={companies}
         selectedDealId={logDealId}
+      />
+      <TaskActionSheet
+        open={startOpen}
+        onClose={() => setStartOpen(false)}
+        onFollowUp={() => {
+          setStartOpen(false);
+          startButtonRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }}
+        onNewLead={() => {
+          setStartOpen(false);
+          setIsModalOpen(true);
+        }}
+        onLogTouch={() => {
+          setStartOpen(false);
+          setIsLogModalOpen(true);
+        }}
       />
     </div>
   );

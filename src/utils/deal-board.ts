@@ -1,4 +1,4 @@
-import type { Deal } from '@/types/crm';
+import type { Deal, DealWorkflowAction, SampleStatus, NudgeStage } from '@/types/crm';
 import { getWorkflowAction } from '@/utils/deal-workflow';
 
 export type BoardAttentionFilter = 'all' | 'overdue' | 'today' | 'needs-review';
@@ -35,31 +35,153 @@ export function dealDueState(deal: Deal, today: string): 'overdue' | 'today' | '
 const WAITING_FOR_RESPONSE_PATTERN = /\b(waiting|awaiting)\b.{0,80}\b(reply|response|feedback)\b|\bno response\b/i;
 const PRE_CONTACT_ACTION_PATTERN = /\b(find|locate|identify|research|map)\b.{0,120}\b(buyer|contact|procurement|purchasing|r&d|decision.?maker|route)\b|before\s+(approach|outreach|contact)/i;
 
-export function dealNeedsReview(deal: Deal): boolean {
+/**
+ * Each broken-record case has a stable reason code. The codes are the single
+ * source of truth for both the card badge and the dry-run repair list, so the
+ * UI and the audit report can never drift apart.
+ */
+export type ReviewReason =
+  | 'sample-status-missing'
+  | 'testing-date-missing'
+  | 'followup-date-or-nudge-missing'
+  | 'parked-revisit-missing'
+  | 'reply-outcome-missing'
+  | 'pre-contact-action'
+  | 'success-step-missing';
+
+export const REVIEW_LABEL: Record<ReviewReason, string> = {
+  'sample-status-missing': 'Sample missing sent/received status',
+  'testing-date-missing': 'Testing missing a testing date',
+  'followup-date-or-nudge-missing': 'Follow-up missing date or nudge level',
+  'parked-revisit-missing': 'Parked missing a revisit date',
+  'reply-outcome-missing': 'Reply lane missing an outcome',
+  'pre-contact-action': 'Sample/testing started before contact researched',
+  'success-step-missing': 'Won account missing a next success step',
+};
+
+export const REVIEW_FIX: Record<ReviewReason, string> = {
+  'sample-status-missing': 'Set sample status to Sent or Received in the Sample lane.',
+  'testing-date-missing': 'Add a testing date in the Testing lane.',
+  'followup-date-or-nudge-missing': 'Add a follow-up date and pick one nudge level in the Follow-up lane.',
+  'parked-revisit-missing': 'Add a revisit date in the Parked lane.',
+  'reply-outcome-missing': 'Log the client reply outcome, or clear a "waiting for reply" next action.',
+  'pre-contact-action': 'Resolve the pre-contact research step (find buyer/contact) before sample/testing.',
+  'success-step-missing': 'Add a next customer-success step (next action) for the won account.',
+};
+
+export function reviewReasons(deal: Deal): ReviewReason[] {
+  const reasons: ReviewReason[] = [];
   const action = getWorkflowAction(deal);
   const nextAction = deal.next_action?.trim() || '';
 
   if ((action === 'sample' || action === 'testing') && PRE_CONTACT_ACTION_PATTERN.test(nextAction)) {
-    return true;
+    reasons.push('pre-contact-action');
   }
 
   switch (action) {
     case 'reply':
-      return !deal.last_outcome?.trim() || WAITING_FOR_RESPONSE_PATTERN.test(nextAction);
+      if (!deal.last_outcome?.trim() || WAITING_FOR_RESPONSE_PATTERN.test(nextAction)) {
+        reasons.push('reply-outcome-missing');
+      }
+      break;
     case 'sample':
-      return !deal.sample_status;
+      if (!deal.sample_status) reasons.push('sample-status-missing');
+      break;
     case 'testing':
-      return !deal.followup_date;
+      if (!deal.followup_date) reasons.push('testing-date-missing');
+      break;
     case 'reschedule':
-      return !deal.followup_date || !deal.nudge_stage;
+      if (!deal.followup_date || !deal.nudge_stage) reasons.push('followup-date-or-nudge-missing');
+      break;
     case 'parked':
-      return !deal.followup_date;
+      if (!deal.followup_date) reasons.push('parked-revisit-missing');
+      break;
     case 'success':
-      return deal.stage !== 'closed_won';
+      // A won account still needs a planned next customer-success step.
+      if (deal.stage !== 'closed_won' || !nextAction) reasons.push('success-step-missing');
+      break;
     case 'outreach':
     default:
-      return false;
+      break;
   }
+
+  return reasons;
+}
+
+export function dealNeedsReview(deal: Deal): boolean {
+  return reviewReasons(deal).length > 0;
+}
+
+export interface ReviewItem {
+  deal: Deal;
+  lane: DealWorkflowAction;
+  reasons: ReviewReason[];
+  labels: string[];
+  fix: string;
+}
+
+/**
+ * Dry-run repair list. Pure + read-only: it groups flagged deals with a
+ * human-readable reason and a suggested fix. It never writes to the CRM —
+ * callers decide whether to act on the output.
+ */
+export function buildReviewReport(deals: Deal[]): ReviewItem[] {
+  return deals
+    .filter(deal => dealNeedsReview(deal))
+    .map(deal => {
+      const reasons = reviewReasons(deal);
+      return {
+        deal,
+        lane: getWorkflowAction(deal),
+        reasons,
+        labels: reasons.map(r => REVIEW_LABEL[r]),
+        fix: reasons.map(r => REVIEW_FIX[r]).join(' '),
+      };
+    });
+}
+
+/**
+ * Maps the flagged deal's reasons + the user's fix inputs to a minimal set of
+ * deal fields to update. Pure and testable — the modal collects inputs, this
+ * function decides which fields they satisfy. Only the fields actually needed
+ * to clear the flags are written; nothing else is touched.
+ */
+export function buildReviewFix(
+  reasons: ReviewReason[],
+  input: {
+    sample_status?: SampleStatus | null;
+    followup_date?: string | null;
+    nudge_stage?: NudgeStage | null;
+    reply_outcome?: string | null;
+    reply_summary?: string | null;
+    next_action?: string | null;
+  }
+): Partial<Deal> {
+  const updates: Partial<Deal> = {};
+  const has = (r: ReviewReason) => reasons.includes(r);
+
+  if (has('sample-status-missing') && input.sample_status) {
+    updates.sample_status = input.sample_status;
+  }
+  if ((has('testing-date-missing') || has('parked-revisit-missing')) && input.followup_date) {
+    updates.followup_date = input.followup_date;
+  }
+  if (has('followup-date-or-nudge-missing')) {
+    if (input.followup_date) updates.followup_date = input.followup_date;
+    if (input.nudge_stage) updates.nudge_stage = input.nudge_stage;
+  }
+  if (has('reply-outcome-missing') && input.reply_outcome) {
+    const detail = input.reply_summary ? `: ${input.reply_summary}` : '';
+    updates.last_outcome = `💬 Client replied — ${input.reply_outcome}${detail}`;
+  }
+  if (has('success-step-missing') && input.next_action?.trim()) {
+    updates.next_action = input.next_action.trim();
+  }
+  if (has('pre-contact-action') && input.next_action?.trim()) {
+    updates.next_action = input.next_action.trim();
+  }
+
+  return updates;
 }
 
 const PRIORITY_RANK: Record<Deal['priority'], number> = {

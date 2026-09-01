@@ -45,6 +45,25 @@ export async function updateCompany(id: string, updates: Partial<Company>) {
   return data;
 }
 
+// ─── Company logo storage (bucket: company-logos, folder: logos/<id>) ───
+export const COMPANY_LOGO_BUCKET = 'company-logos';
+
+export async function uploadCompanyLogo(companyId: string, file: File): Promise<string> {
+  const path = `logos/${companyId}.webp`;
+  const { error } = await supabase.storage
+    .from(COMPANY_LOGO_BUCKET)
+    .upload(path, file, { upsert: true, contentType: 'image/webp', cacheControl: '3600' });
+  if (error) throw error;
+  const { data } = supabase.storage.from(COMPANY_LOGO_BUCKET).getPublicUrl(path);
+  return data.publicUrl;
+}
+
+export async function deleteCompanyLogo(companyId: string): Promise<void> {
+  const path = `logos/${companyId}.webp`;
+  const { error } = await supabase.storage.from(COMPANY_LOGO_BUCKET).remove([path]);
+  if (error) throw error;
+}
+
 // ─── Contacts ───
 export async function getContacts(): Promise<Contact[]> {
   const { data, error } = await supabase
@@ -103,6 +122,7 @@ export async function createDeal(deal: Omit<Deal, 'id' | 'created_at' | 'updated
   if (payload.followup_date === '') payload.followup_date = null;
   if (payload.nudge_stage === '') payload.nudge_stage = null;
   if (payload.sample_status === '') payload.sample_status = null;
+  if (typeof payload.draft_primary_ask === 'string' && !payload.draft_primary_ask.trim()) payload.draft_primary_ask = null;
   payload.value = normalizeDealValue(payload.value);
   const { data, error } = await supabase.from('deals').insert(payload).select().single();
   if (error) throw error;
@@ -121,6 +141,7 @@ function normalizeDealUpdate(updates: Partial<Deal>) {
   if (payload.followup_date === '') payload.followup_date = null;
   if (payload.nudge_stage === '') payload.nudge_stage = null;
   if (payload.sample_status === '') payload.sample_status = null;
+  if (typeof payload.draft_primary_ask === 'string' && !payload.draft_primary_ask.trim()) payload.draft_primary_ask = null;
   // Only touch value when the caller sent it — undo snapshots may omit the key.
   if ('value' in payload) payload.value = normalizeDealValue(payload.value);
   return payload;

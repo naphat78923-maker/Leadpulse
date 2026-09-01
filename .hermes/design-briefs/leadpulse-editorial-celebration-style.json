@@ -1,0 +1,262 @@
+{
+  "name": "LeadPulse Editorial Celebration Layer",
+  "version": "0.1.0",
+  "status": "proposed_for_review",
+  "scope": "Reference-only visual layer for milestone, empty, completion, and onboarding-moment screens. It does not replace LeadPulse's action-first CRM surfaces.",
+  "inspiration_analysis": {
+    "genre": "Mobile editorial reward screen, not a dense infographic or operational dashboard",
+    "core_effect": "One joyful outcome gets a calm, poster-like moment: short label, large serif statement, supporting reassurance, one expressive illustration, one action.",
+    "visual_formula": [
+      "Generous warm-white canvas",
+      "Small tinted category chip",
+      "High-contrast serif headline in two or three short lines",
+      "Plain sans-serif reassurance copy with one bold proof point",
+      "Single large central illustration with thick dark outlines and a small warm accent palette",
+      "One full-width dark primary action anchored near the bottom"
+    ],
+    "do_not_copy": [
+      "The source illustration, character, copy, or exact composition",
+      "A promotional trial/paywall message",
+      "A generic human avatar in place of LeadPulse's approved mascot system"
+    ]
+  },
+  "product_role": {
+    "use_for": [
+      "Deal won confirmation",
+      "All clear: no overdue actions",
+      "First customer or first completed interaction",
+      "Successful import or data-cleanup completion",
+      "A deliberately calm empty state with one next step"
+    ],
+    "do_not_use_for": [
+      "Deal action board",
+      "Contacts or Companies list rows",
+      "Tables, filters, form editing, or dense CRM details",
+      "Warnings, errors, destructive confirmation, or overdue work",
+      "More than one primary action"
+    ],
+    "leadpulse_rule": "Operational pages stay compact and action-first. This layer appears only when a user should pause, understand one positive state, then take one clear next step."
+  },
+  "tokens": {
+    "color": {
+      "canvas": {
+        "value": "#FDF6E9",
+        "leadpulse_token": "--color-clay-canvas",
+        "role": "Warm paper backdrop, with ample unframed whitespace"
+      },
+      "ink": {
+        "value": "#2B211A",
+        "leadpulse_token": "--color-clay-ink",
+        "role": "Headlines, illustration outline, primary button"
+      },
+      "body": {
+        "value": "#3F382F",
+        "leadpulse_token": "--color-clay-body",
+        "role": "Supporting copy"
+      },
+      "quiet_lavender": {
+        "value": "#E8E0F7",
+        "leadpulse_token": "--color-zams-powder",
+        "role": "Eyebrow chip and gentle celebratory background"
+      },
+      "primary_action": {
+        "value": "#7B5CD6",
+        "leadpulse_token": "--color-zams-violet",
+        "role": "Optional brand-forward action treatment; use the existing dark-ink CTA when the screen needs maximum calm"
+      },
+      "attention_ochre": {
+        "value": "#EEC35A",
+        "leadpulse_token": "--color-clay-ochre",
+        "role": "Small celebratory spark or progress accent only"
+      },
+      "progress_mint": {
+        "value": "#7FC9A8",
+        "leadpulse_token": "--color-clay-mint",
+        "role": "Completed/progress accent, never generic CTA"
+      },
+      "decorative_coral": {
+        "value": "#E0766A",
+        "leadpulse_token": "--color-clay-coral",
+        "role": "Small illustration accent only, never error semantics"
+      },
+      "danger": {
+        "value": "#D9543F",
+        "leadpulse_token": "--color-clay-error",
+        "role": "Reserved for real danger and destructive actions, never celebration"
+      }
+    },
+    "typography": {
+      "editorial_headline": {
+        "font_family": "Lustria, Georgia, serif",
+        "font_size_mobile": "36px",
+        "line_height": "1.14",
+        "font_weight": 400,
+        "letter_spacing": "-0.025em",
+        "max_lines": 3,
+        "use": "Celebration or calm-empty-state headline only, never dense CRM labels"
+      },
+      "body": {
+        "font_family": "DM Sans, system-ui, sans-serif",
+        "font_size_mobile": "17px",
+        "line_height": "1.4",
+        "font_weight": 400,
+        "use": "Reassurance and explanatory copy"
+      },
+      "body_emphasis": {
+        "font_family": "DM Sans, system-ui, sans-serif",
+        "font_weight": 700,
+        "use": "One proof point or reassurance, not an additional headline"
+      },
+      "eyebrow": {
+        "font_family": "DM Sans, system-ui, sans-serif",
+        "font_size": "14px",
+        "font_weight": 600,
+        "use": "Short state label, two to three words maximum"
+      },
+      "metadata": {
+        "font_family": "Martian Mono, ui-monospace, monospace",
+        "font_size": "11px",
+        "use": "Optional dates, count, or compact outcome metadata"
+      }
+    },
+    "spacing": {
+      "screen_padding_x_mobile": "24px",
+      "safe_top": "max(32px, env(safe-area-inset-top))",
+      "eyebrow_to_headline": "28px",
+      "headline_to_body": "24px",
+      "body_to_illustration": "36px",
+      "illustration_to_detail": "28px",
+      "detail_to_cta": "40px",
+      "cta_bottom": "max(24px, env(safe-area-inset-bottom))",
+      "section_rhythm": "Use 24px, 32px, or 48px steps. Never crowd this layer with dashboard-card spacing."
+    },
+    "shape": {
+      "eyebrow_radius": "6px",
+      "button_radius": "14px",
+      "button_height": "56px",
+      "card_radius": "18px",
+      "shadow": "none by default; use a very soft 0 8px 24px rgba(43,33,26,0.08) only when a surface must separate from the canvas"
+    }
+  },
+  "layout": {
+    "composition": "vertical-editorial-poster",
+    "max_content_width": "440px",
+    "alignment": "centered text and illustration; primary action spans the content width",
+    "reading_order": [
+      "eyebrow_chip",
+      "editorial_headline",
+      "supporting_copy",
+      "single_illustration",
+      "quiet_detail",
+      "single_primary_action"
+    ],
+    "rules": {
+      "headline": "Use a human outcome, not a metric dump. Example structure: ‘You cleared today’s queue.’",
+      "supporting_copy": "One sentence plus one optional bold reassurance or proof point.",
+      "illustration": "One focal visual only. It should consume visual space, not introduce more information.",
+      "detail": "One short line, 140 characters maximum. Put audit/history detail behind the next screen.",
+      "cta": "One action only. Secondary navigation should be a quiet text link or the back gesture, not a second button."
+    }
+  },
+  "illustration": {
+    "direction": "Flat editorial joy can inform composition and color blocking, but LeadPulse keeps its existing approved fixed PNG mascot family.",
+    "approved_source": "/public/assets/mascots/*.png via MascotSprite",
+    "recommended_mappings": {
+      "deal_won": "/assets/mascots/mascot-won-trophy.png or mascot-won-confetti.png",
+      "all_clear": "/assets/mascots/mascot-parked.png",
+      "next_action_ready": "/assets/mascots/mascot-followup.png",
+      "planning_moment": "/assets/mascots/mascot-teardrop.png"
+    },
+    "display_size": {
+      "mobile": "160px to 220px square",
+      "desktop": "220px to 280px square"
+    },
+    "rules": [
+      "Use one mascot at a time and give it generous breathing room.",
+      "Do not generate a new AI person, avatar, clay letter, or replacement mascot from this reference.",
+      "A small CSS-only sparkle/confetti accent is allowed on genuine success, but it must not obscure text or keep looping.",
+      "Illustration never communicates critical CRM status by itself. The headline and text must state the outcome."
+    ]
+  },
+  "components": {
+    "eyebrow_chip": {
+      "background": "{tokens.color.quiet_lavender.value}",
+      "text_color": "{tokens.color.ink.value}",
+      "padding": "6px 10px",
+      "label_examples": [
+        "Deal won",
+        "Queue clear",
+        "Nice work",
+        "Import complete"
+      ]
+    },
+    "primary_cta": {
+      "background": "{tokens.color.ink.value}",
+      "text_color": "#FFFFFF",
+      "height": "{tokens.shape.button_height}",
+      "radius": "{tokens.shape.button_radius}",
+      "label_style": "Verb-first and specific: ‘Open action board’, ‘Review the deal’, ‘Log next touch’",
+      "avoid_labels": [
+        "Continue",
+        "Okay",
+        "Get started",
+        "Done"
+      ]
+    },
+    "quiet_detail": {
+      "max_lines": 2,
+      "typography": "{tokens.typography.body}",
+      "color": "{tokens.color.body.value}",
+      "alignment": "center"
+    }
+  },
+  "motion": {
+    "principle": "A single calm reveal, not gamified movement.",
+    "sequence": [
+      { "element": "eyebrow_chip", "delay_ms": 0, "animation": "fade-up", "duration_ms": 180 },
+      { "element": "editorial_headline", "delay_ms": 70, "animation": "fade-up", "duration_ms": 240 },
+      { "element": "supporting_copy", "delay_ms": 140, "animation": "fade-up", "duration_ms": 220 },
+      { "element": "mascot", "delay_ms": 180, "animation": "soft-scale-in", "duration_ms": 280 },
+      { "element": "primary_cta", "delay_ms": 240, "animation": "fade-up", "duration_ms": 180 }
+    ],
+    "interaction": {
+      "cta_pressed": "scale(0.98) for 120ms",
+      "success_accent": "One 600ms non-looping sparkle burst at most",
+      "reduced_motion": "Render all elements immediately with no transform, scale, sparkle, or stagger."
+    }
+  },
+  "accessibility": {
+    "contrast": "All normal text must meet WCAG AA 4.5:1 against its actual surface. Do not rely on pastel lavender, mint, coral, or ochre text alone.",
+    "tap_targets": "Primary action minimum 48px high, supporting actions minimum 44px.",
+    "semantic_order": "Headline is an h1 or h2 appropriate to the route. The mascot has meaningful alt text only when it conveys the outcome; otherwise use empty alt text.",
+    "focus": "Primary CTA has a visible 2px focus ring that remains clear on the warm canvas and dark mode.",
+    "dark_mode": "Use the existing midnight-cocoa canvas and warm ink. Do not paste the bright-white source screen into dark mode."
+  },
+  "leadpulse_screen_recipes": {
+    "deal_won": {
+      "eyebrow": "Deal won",
+      "headline_pattern": "[Company] is now a customer.",
+      "support_pattern": "The deal is closed won and the sales signal is recorded.",
+      "cta": "Review customer"
+    },
+    "all_clear": {
+      "eyebrow": "Queue clear",
+      "headline_pattern": "Nothing is overdue today.",
+      "support_pattern": "Your next follow-up is [relative date].",
+      "cta": "Open action board"
+    },
+    "import_complete": {
+      "eyebrow": "Import complete",
+      "headline_pattern": "[Count] records are ready to review.",
+      "support_pattern": "Possible duplicates remain visible for your approval. Nothing was merged automatically.",
+      "cta": "Review records"
+    }
+  },
+  "guardrails": [
+    "This is a ceremonial layer, not a global LeadPulse reskin.",
+    "Preserve the warm night-desk palette, action-first information hierarchy, explicit Save feedback, and dark-mode contrast.",
+    "Do not apply display-serif typography to Deal board cards, tables, filters, or editing forms.",
+    "Do not use celebration visual language for overdue work, missing data, errors, or destructive actions.",
+    "No implementation or asset changes are authorized by this JSON alone."
+  ]
+}

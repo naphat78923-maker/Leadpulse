@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { Deal } from '@/types/crm';
+import type { ReviewReason } from './deal-board';
 import {
+  buildReviewReport,
+  buildReviewFix,
   dealNeedsReview,
   filterAndSortBoardDeals,
   getDoNowCounts,
   localDateKey,
+  reviewReasons,
   sortDealsForDoNow,
 } from './deal-board';
 
@@ -75,6 +79,32 @@ describe('sortDealsForDoNow', () => {
   });
 });
 
+describe('buildReviewFix', () => {
+  const reasons = (...r: ReviewReason[]): ReviewReason[] => r;
+
+  it('maps only the fields the flagged reasons require', () => {
+    expect(buildReviewFix(reasons('sample-status-missing'), { sample_status: 'sent' })).toEqual({ sample_status: 'sent' });
+    expect(buildReviewFix(reasons('testing-date-missing'), { followup_date: '2026-09-01' })).toEqual({ followup_date: '2026-09-01' });
+    expect(buildReviewFix(reasons('parked-revisit-missing'), { followup_date: '2026-09-01' })).toEqual({ followup_date: '2026-09-01' });
+    expect(buildReviewFix(reasons('followup-date-or-nudge-missing'), { followup_date: '2026-09-01', nudge_stage: 'firm' })).toEqual({ followup_date: '2026-09-01', nudge_stage: 'firm' });
+    expect(buildReviewFix(reasons('reply-outcome-missing'), { reply_outcome: 'positive', reply_summary: 'ok' })).toEqual({ last_outcome: '💬 Client replied — positive: ok' });
+    expect(buildReviewFix(reasons('success-step-missing'), { next_action: 'Quarterly check-in' })).toEqual({ next_action: 'Quarterly check-in' });
+  });
+
+  it('ignores inputs for reasons the deal does not have', () => {
+    const updates = buildReviewFix(reasons('sample-status-missing'), {
+      sample_status: 'sent',
+      followup_date: '2026-09-01', // not requested for this deal
+      next_action: 'stray',
+    });
+    expect(updates).toEqual({ sample_status: 'sent' });
+  });
+
+  it('writes nothing when the required inputs are empty', () => {
+    expect(buildReviewFix(reasons('sample-status-missing'), {})).toEqual({});
+  });
+});
+
 describe('dealNeedsReview', () => {
   it('flags incomplete action-lane records and accepts complete ones', () => {
     expect(dealNeedsReview(deal({ id: 'reply', client: 'Reply', workflow_action: 'reply' }))).toBe(true);
@@ -99,6 +129,48 @@ describe('dealNeedsReview', () => {
     expect(dealNeedsReview(deal({ id: 'won', client: 'Won', workflow_action: 'success', stage: 'negotiation' }))).toBe(true);
 
     expect(dealNeedsReview(deal({ id: 'complete-sample', client: 'Complete', workflow_action: 'sample', sample_status: 'sent' }))).toBe(false);
+  });
+
+  it('flags a won account with no next customer-success step (case 5)', () => {
+    expect(dealNeedsReview(deal({
+      id: 'won-no-step',
+      client: 'Won No Step',
+      workflow_action: 'success',
+      stage: 'closed_won',
+    }))).toBe(true);
+    expect(dealNeedsReview(deal({
+      id: 'won-with-step',
+      client: 'Won With Step',
+      workflow_action: 'success',
+      stage: 'closed_won',
+      next_action: 'Schedule quarterly reorder check-in',
+    }))).toBe(false);
+  });
+});
+
+describe('reviewReasons', () => {
+  it('returns stable reason codes for each broken-record case', () => {
+    expect(reviewReasons(deal({ id: 's', client: 'Sample', workflow_action: 'sample' }))).toEqual(['sample-status-missing']);
+    expect(reviewReasons(deal({ id: 't', client: 'Testing', workflow_action: 'testing' }))).toEqual(['testing-date-missing']);
+    expect(reviewReasons(deal({ id: 'f', client: 'Follow-up', workflow_action: 'reschedule', followup_date: today }))).toEqual(['followup-date-or-nudge-missing']);
+    expect(reviewReasons(deal({ id: 'p', client: 'Parked', workflow_action: 'parked' }))).toEqual(['parked-revisit-missing']);
+    expect(reviewReasons(deal({ id: 'r', client: 'Reply', workflow_action: 'reply' }))).toEqual(['reply-outcome-missing']);
+  });
+});
+
+describe('buildReviewReport', () => {
+  it('produces a read-only list of flagged deals with labels and fixes', () => {
+    const input = [
+      deal({ id: 'sample', client: 'Sample Co', workflow_action: 'sample' }),
+      deal({ id: 'ok', client: 'Clean Co', workflow_action: 'sample', sample_status: 'sent' }),
+    ];
+    const report = buildReviewReport(input);
+    expect(report).toHaveLength(1);
+    expect(report[0].deal.id).toBe('sample');
+    expect(report[0].labels).toContain('Sample missing sent/received status');
+    expect(report[0].fix).toMatch(/Sample lane/);
+    // Report must never mutate the source deals.
+    expect(input[0].sample_status).toBeNull();
   });
 });
 

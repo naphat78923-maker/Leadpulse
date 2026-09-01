@@ -1,12 +1,16 @@
 'use client';
 
 import { useState } from 'react';
-import { Contact, CONTACT_STATUS_LABELS, ContactStatus, Company } from '@/types/crm';
-import { Mail, Phone, X, Edit2, Save, Loader2, Check, Trash2 } from 'lucide-react';
+import { Contact, CONTACT_STATUS_LABELS, ContactIdentityQuality, ContactStatus, Company } from '@/types/crm';
+import { Mail, Phone, X, Edit2, Loader2, Check, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
 import { useToast } from '@/components/ToastProvider';
 import * as crm from '@/lib/crm';
 import { useCrm } from '@/components/CrmProvider';
+import { CONTACT_IDENTITY_OPTIONS, contactIdentityLabel, contactNameFieldCopy } from '@/utils/contact-identity';
+import InteractionThread from '@/components/InteractionThread';
+import LogInteractionModal from '@/components/LogInteractionModal';
+import { Plus } from 'lucide-react';
 
 const statusOptions: ContactStatus[] = ['active', 'replied', 'not_interested', 'no_response', 'parked'];
 
@@ -19,7 +23,8 @@ interface ContactDetailProps {
 
 export default function ContactDetail({ contact, onClose, onSaved, companies }: ContactDetailProps) {
   const { addToast } = useToast();
-  const { deleteEntity } = useCrm();
+  const { deleteEntity, meetings = [], contacts = [], deals = [], addMeeting } = useCrm();
+  const [logOpen, setLogOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -34,8 +39,10 @@ export default function ContactDetail({ contact, onClose, onSaved, companies }: 
     job_title: contact.job_title || '',
     company_id: contact.company_id || '',
     status: contact.status,
+    identity_quality: contact.identity_quality ?? 'unknown',
     notes: contact.notes || '',
   });
+  const contactNameCopy = contactNameFieldCopy(editData.identity_quality);
 
   const handleSave = async () => {
     setSaving(true);
@@ -52,6 +59,7 @@ export default function ContactDetail({ contact, onClose, onSaved, companies }: 
         job_title: updated.job_title || '',
         company_id: updated.company_id || '',
         status: updated.status,
+        identity_quality: updated.identity_quality || 'unknown',
         notes: updated.notes || '',
       });
       setEditing(false);
@@ -67,7 +75,16 @@ export default function ContactDetail({ contact, onClose, onSaved, companies }: 
     }
   };
 
+  const contactInteractions = meetings
+    .filter(m =>
+      (m.contact_ids || []).includes(contact.id) ||
+      (contact.company_id && m.company_id === contact.company_id && !(m.contact_ids || []).includes(contact.id))
+    )
+    .slice()
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+
   return (
+    <>
     <div className="fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50 p-0 md:p-4" onClick={onClose}>
       <div className={clsx(
         'bg-white dark:bg-clay-card w-full md:max-w-md md:rounded-2xl rounded-t-2xl p-6 max-h-[80vh] overflow-y-auto transition-all duration-300',
@@ -77,6 +94,8 @@ export default function ContactDetail({ contact, onClose, onSaved, companies }: 
           {editing ? (
             <input
               type="text"
+              aria-label={contactNameCopy.label}
+              placeholder={contactNameCopy.placeholder}
               value={editData.name}
               onChange={e => setEditData(prev => ({ ...prev, name: e.target.value }))}
               className="text-lg font-semibold text-clay-ink bg-transparent border-b border-clay-ink outline-none flex-1 mr-2"
@@ -101,7 +120,7 @@ export default function ContactDetail({ contact, onClose, onSaved, companies }: 
                 )}
               </button>
             )}
-            <button onClick={() => setEditing(!editing)} className="p-2 text-clay-muted active:opacity-70">
+            <button onClick={() => setEditing(!editing)} className="p-2 text-clay-muted active:opacity-70" aria-label="Edit contact">
               <Edit2 className="w-5 h-5" />
             </button>
             <button onClick={() => setConfirmArchive(true)} className="p-2 text-clay-muted-soft active:opacity-70 hover:text-clay-error transition-colors" aria-label="Archive contact">
@@ -160,21 +179,22 @@ export default function ContactDetail({ contact, onClose, onSaved, companies }: 
  )}
  </div>
 
- {/* Second Phone */}
+ {/* Alternate Phone */}
  <div className="flex items-center gap-2 text-clay-body">
  <Phone className="w-4 h-4 text-clay-ochre" />
- <span className="text-clay-muted text-xs">+</span>
+ <span className="text-clay-muted text-xs">Alternate:</span>
  {editing ? (
    <input
      type="tel"
+     aria-label="Alternate phone"
      value={editData.phone_second || ''}
      onChange={e => setEditData(prev => ({ ...prev, phone_second: e.target.value }))}
      className="flex-1 px-2 py-1 border border-clay-hairline rounded text-base bg-white dark:bg-clay-card"
-     placeholder="Second phone (optional)"
+     placeholder="Alternate phone (optional)"
    />
  ) : (
    <span className="truncate text-clay-ochre font-medium">
-     {contact.phone_second ? contact.phone_second : '+ add second'}
+     {contact.phone_second ? contact.phone_second : '—'}
    </span>
  )}
  </div>
@@ -224,6 +244,23 @@ export default function ContactDetail({ contact, onClose, onSaved, companies }: 
             )}
           </div>
 
+          <label className="block text-clay-body">
+            Contact quality
+            {editing ? (
+              <select
+                value={editData.identity_quality}
+                onChange={e => setEditData(prev => ({ ...prev, identity_quality: e.target.value as ContactIdentityQuality }))}
+                className="block w-full mt-1 px-2 py-2 border border-clay-hairline rounded text-base bg-white dark:bg-clay-card"
+              >
+                {CONTACT_IDENTITY_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            ) : (
+              <span className="block mt-1 text-clay-body">
+                {contactIdentityLabel(contact.identity_quality)}
+              </span>
+            )}
+          </label>
+
           <div className="text-clay-body">
             <span className="text-clay-muted">Company: </span>
             {editing ? (
@@ -259,7 +296,29 @@ export default function ContactDetail({ contact, onClose, onSaved, companies }: 
                 {contact.notes || 'No notes yet'}
               </div>
             )}
-          </div>
+
+            </div>
+
+            <div className="mt-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="zams-display text-sm text-clay-ink">Interactions</h3>
+                <button
+                  type="button"
+                  onClick={() => setLogOpen(true)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-clay-ink text-clay-canvas text-xs font-medium active:opacity-85 transition-opacity min-h-[36px]"
+                >
+                  <Plus className="w-3.5 h-3.5" /> New interaction
+                </button>
+              </div>
+              <InteractionThread
+                contact={contact}
+                meetings={contactInteractions}
+                allContacts={contacts}
+                deals={deals}
+                companies={companies}
+              />
+            </div>
+
           {confirmArchive && (
             <div className="mt-4 rounded-xl border border-clay-hairline bg-clay-surface p-4">
               <div className="flex gap-3"><span className="text-2xl">🗑️</span><div><p className="font-semibold text-clay-ink">Archive this contact?</p><p className="text-xs text-clay-muted mt-1">{contact.name} will be hidden from lists and the company view. You can undo this from the Activity feed.</p></div></div>
@@ -269,5 +328,17 @@ export default function ContactDetail({ contact, onClose, onSaved, companies }: 
         </div>
       </div>
     </div>
+
+    <LogInteractionModal
+      isOpen={logOpen}
+      onClose={() => setLogOpen(false)}
+      onSave={async (meeting) => { await addMeeting(meeting); }}
+      deals={deals}
+      contacts={contacts}
+      companies={companies}
+      initialContactIds={[contact.id]}
+      initialCompanyId={contact.company_id || undefined}
+    />
+    </>
   );
 }

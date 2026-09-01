@@ -3,10 +3,10 @@
 import { useState } from 'react';
 import { Check, Edit2, Loader2, Undo2, X, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
-import { Deal, DealStage, DealWorkflowAction, NudgeStage, SampleStatus, STAGE_LABELS } from '@/types/crm';
+import { Deal, DealStage, DealWorkflowAction, NudgeStage, SampleStatus } from '@/types/crm';
 import { useToast } from '@/components/ToastProvider';
 import { useCrm } from '@/components/CrmProvider';
-import { dealClientName, dealLabel } from '@/utils/dealLabel';
+import { dealClientName } from '@/utils/dealLabel';
 import * as crm from '@/lib/crm';
 import { NUDGE_OPTIONS, SAMPLE_STATUS_OPTIONS, WORKFLOW_BY_ID, WORKFLOW_LANES, getWorkflowAction, nudgeLabel, canNudge } from '@/utils/deal-workflow';
 
@@ -32,6 +32,8 @@ function appendOutcome(existing: string, entry?: string) {
   return existing ? `${existing}\n---\n${entry}` : entry;
 }
 
+const DRAFTING_WORKFLOWS = new Set<DealWorkflowAction>(['outreach', 'reply', 'reschedule']);
+
 export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) {
   const { addToast } = useToast();
   const { logActivity, deleteEntity, companies, contacts } = useCrm();
@@ -56,6 +58,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
     nudge_stage: deal.nudge_stage || '',
     sample_status: deal.sample_status || '',
     next_action: deal.next_action || '',
+    draft_primary_ask: deal.draft_primary_ask || '',
     followup_date: deal.followup_date || '',
     last_outcome: deal.last_outcome || '',
     last_outcome_new: '',
@@ -70,6 +73,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
     nudge_stage: deal.nudge_stage || null,
     sample_status: deal.sample_status || null,
     next_action: deal.next_action,
+    draft_primary_ask: deal.draft_primary_ask || null,
     followup_date: deal.followup_date,
     last_outcome: deal.last_outcome,
   });
@@ -140,6 +144,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
         nudge_stage: actionToSave === 'reschedule' ? editData.nudge_stage as NudgeStage : null,
         sample_status: actionToSave === 'sample' ? editData.sample_status as SampleStatus : null,
         next_action: editData.next_action,
+        draft_primary_ask: editData.draft_primary_ask.trim() || null,
         followup_date: newFollowup || null,
         last_outcome: finalOutcome,
       });
@@ -154,6 +159,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
         nudge_stage: updated.nudge_stage || '',
         sample_status: updated.sample_status || '',
         next_action: updated.next_action || '',
+        draft_primary_ask: updated.draft_primary_ask || '',
         followup_date: updated.followup_date || '',
         last_outcome: updated.last_outcome || '',
         last_outcome_new: '',
@@ -273,6 +279,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
         nudge_stage: undoSnapshot.nudge_stage || '',
         sample_status: undoSnapshot.sample_status || '',
         next_action: undoSnapshot.next_action || '',
+        draft_primary_ask: undoSnapshot.draft_primary_ask || '',
         followup_date: undoSnapshot.followup_date || '',
         last_outcome: undoSnapshot.last_outcome || '',
         last_outcome_new: '',
@@ -289,6 +296,9 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
 
   const isOverdue = deal.followup_date && new Date(`${deal.followup_date}T12:00:00`) < new Date() && !['closed_won', 'closed_lost'].includes(deal.stage);
   const workflow = WORKFLOW_BY_ID[currentWorkflow];
+  const visibleWorkflow = editing ? editData.workflow_action : currentWorkflow;
+  const visiblePrimaryAsk = editing ? editData.draft_primary_ask : deal.draft_primary_ask;
+  const showDraftingBrief = DRAFTING_WORKFLOWS.has(visibleWorkflow) || Boolean(visiblePrimaryAsk?.trim());
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50 p-0 md:p-4" onClick={onClose}>
@@ -340,7 +350,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
             <p className="text-[10px] font-semibold tracking-wider text-clay-muted mb-2">ACTION LANE — WHAT HAPPENS NEXT</p>
             {editing ? (
               <>
-                <select value={editData.workflow_action} onChange={event => setEditData(prev => ({ ...prev, workflow_action: event.target.value as DealWorkflowAction, nudge_stage: canNudge(event.target.value as DealWorkflowAction) ? prev.nudge_stage : '', sample_status: event.target.value === 'sample' ? prev.sample_status : '' }))} className="w-full px-3 py-2.5 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card">
+                <select aria-label="Action lane" value={editData.workflow_action} onChange={event => setEditData(prev => ({ ...prev, workflow_action: event.target.value as DealWorkflowAction, nudge_stage: canNudge(event.target.value as DealWorkflowAction) ? prev.nudge_stage : '', sample_status: event.target.value === 'sample' ? prev.sample_status : '' }))} className="w-full px-3 py-2.5 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card">
                   {WORKFLOW_LANES.filter(lane => canNudge(currentWorkflow) || (lane.id !== 'reschedule' && lane.id !== 'parked')).map(lane => <option key={lane.id} value={lane.id}>{lane.icon} {lane.label}</option>)}
                 </select>
                 <p className="text-xs text-clay-muted mt-2">{WORKFLOW_BY_ID[editData.workflow_action].description}</p>
@@ -352,17 +362,24 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
             )}
           </section>
 
-          <div className="grid grid-cols-2 gap-3">
-            <label className="text-clay-body">Priority{editing ? <select value={editData.priority} onChange={event => setEditData(prev => ({ ...prev, priority: event.target.value as Deal['priority'] }))} className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select> : <span className="block mt-1 px-2 py-1.5 bg-clay-card rounded text-xs capitalize">{deal.priority}</span>}</label>
-          </div>
-
-          <label className="block text-clay-body">Deal name<span className="ml-1 text-xs text-clay-muted">(auto: Product · Company)</span><p className="mt-1 font-medium text-clay-ink">{dealLabel(deal, companies, contacts)}</p></label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="text-clay-body">Product{editing ? <input value={editData.product} onChange={event => setEditData(prev => ({ ...prev, product: event.target.value }))} className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card" /> : <p className="mt-1 text-clay-ink">{deal.product}</p>}</label>
-            <label className="text-clay-body">Value (THB){editing ? <input type="text" inputMode="decimal" value={editData.value} onChange={event => setEditData(prev => ({ ...prev, value: event.target.value }))} placeholder="e.g., 50000" className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card" /> : <p className="mt-1 font-medium text-clay-ink">{deal.value != null ? Number(deal.value).toLocaleString('en-US') : '—'}</p>}</label>
-          </div>
-          <label className="block text-clay-body">Next action note{editing ? <input value={editData.next_action} onChange={event => setEditData(prev => ({ ...prev, next_action: event.target.value }))} placeholder="What exactly will happen next?" className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card" /> : <p className="mt-1 rounded-lg bg-clay-surface p-3 text-xs text-clay-body">{deal.next_action || '—'}</p>}</label>
+          <label className="block text-clay-body">CRM next action{editing ? <input value={editData.next_action} onChange={event => setEditData(prev => ({ ...prev, next_action: event.target.value }))} placeholder="What needs to happen internally?" className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card" /> : <p className="mt-1 rounded-lg bg-clay-surface p-3 text-xs text-clay-body">{deal.next_action || '—'}</p>}</label>
+          {showDraftingBrief && (
+            <section className="rounded-xl border border-clay-lavender/30 bg-clay-lavender/10 p-3">
+              <p className="text-[10px] font-semibold tracking-wider text-clay-muted">EBIMARU DRAFTING BRIEF</p>
+              <p className="mt-1 text-xs text-clay-muted">One client question only. This is drafting guidance, not a send instruction.</p>
+              <label className="block mt-3 text-clay-body">Primary client ask{editing ? <input value={editData.draft_primary_ask} onChange={event => setEditData(prev => ({ ...prev, draft_primary_ask: event.target.value }))} placeholder="What one thing should the client answer?" className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card" /> : <p className="mt-1 rounded-lg bg-white/60 dark:bg-clay-card p-3 text-xs text-clay-body">{deal.draft_primary_ask || '—'}</p>}</label>
+            </section>
+          )}
           <label className="block text-clay-body">{editing && editData.workflow_action === 'parked' ? 'Revisit date' : editing && editData.workflow_action === 'testing' ? 'Testing date' : 'Follow-up date'}{editing ? <input type="date" value={editData.followup_date} onChange={event => setEditData(prev => ({ ...prev, followup_date: event.target.value }))} className="block mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card" /> : <p className={clsx('mt-1', isOverdue ? 'text-clay-error font-medium' : 'text-clay-ink')}>{deal.followup_date || '—'}</p>}</label>
+
+          <details className="rounded-xl border border-clay-hairline bg-clay-surface">
+            <summary className="cursor-pointer px-3 py-3 text-sm font-medium text-clay-body">Commercial details</summary>
+            <div className="grid grid-cols-1 gap-3 border-t border-clay-hairline px-3 py-3 sm:grid-cols-3">
+              <label className="text-clay-body">Product{editing ? <input value={editData.product} onChange={event => setEditData(prev => ({ ...prev, product: event.target.value }))} className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card" /> : <p className="mt-1 text-clay-ink">{deal.product}</p>}</label>
+              <label className="text-clay-body">Priority{editing ? <select value={editData.priority} onChange={event => setEditData(prev => ({ ...prev, priority: event.target.value as Deal['priority'] }))} className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select> : <span className="block mt-1 px-2 py-1.5 bg-clay-card rounded text-xs capitalize">{deal.priority}</span>}</label>
+              <label className="text-clay-body">Value (THB){editing ? <input type="text" inputMode="decimal" value={editData.value} onChange={event => setEditData(prev => ({ ...prev, value: event.target.value }))} placeholder="e.g., 50000" className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card" /> : <p className="mt-1 font-medium text-clay-ink">{deal.value != null ? Number(deal.value).toLocaleString('en-US') : '—'}</p>}</label>
+            </div>
+          </details>
 
           <section>
             <p className="text-clay-body">Outcome history</p>

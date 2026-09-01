@@ -8,7 +8,8 @@ import { contacts as dataContacts, companies as dataCompanies } from '@/data/crm
 import CreateModal from '@/components/CreateModal';
 import ContactDetail from '@/components/ContactDetail';
 import CompanyDetail from '@/components/CompanyDetail';
-import { Search, Plus, Mail, Phone, ChevronRight, Loader2, Building2, AlertCircle } from 'lucide-react';
+import ListActionBar from '@/components/ListActionBar';
+import { Mail, Phone, ChevronRight, Loader2, Building2, AlertCircle } from 'lucide-react';
 import clsx from 'clsx';
 
 type ViewMode = 'all' | 'by_status' | 'by_company';
@@ -151,49 +152,37 @@ export default function ContactsPage() {
   );
 
   return (
-    <div className="p-4 md:p-6 max-w-6xl pb-20 lg:pb-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <p className="zams-eyebrow mb-1">Contacts · {filtered.length} of {contacts.length}</p>
-          <h1 className="zams-display text-2xl md:text-[28px] leading-none">Contacts</h1>
-        </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="zams-btn-primary"
-        >
-          <Plus className="w-4 h-4" /> <span className="hidden sm:inline">New contact</span>
-        </button>
-      </div>
-
-      {/* Search + company filter */}
-      <div className="flex items-center gap-2 mb-4">
-        <div className="flex-1 relative">
-          <Search className="w-4 h-4 text-clay-muted absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Search..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-3 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-zams-violet/40"
-          />
-        </div>
-        <select
-          value={companyFilter}
-          onChange={(e) => setCompanyFilter(e.target.value)}
-          className="max-w-[45%] md:max-w-[220px] bg-white dark:bg-clay-card border border-clay-hairline rounded-lg px-2.5 py-3 text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-zams-violet/40 truncate"
-        >
-          <option value="all">All companies</option>
-          {sortedCompanies.map((c: Company) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
-        <div className="flex bg-clay-card rounded-lg p-0.5 shrink-0">
-          <button onClick={() => setView('all')} className={clsx('px-3 py-2 text-xs font-medium rounded-md', view === 'all' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>All</button>
-          <button onClick={() => setView('by_status')} className={clsx('px-3 py-2 text-xs font-medium rounded-md', view === 'by_status' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>Status</button>
-          <button onClick={() => setView('by_company')} className={clsx('px-3 py-2 text-xs font-medium rounded-md', view === 'by_company' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>Company</button>
-        </div>
-      </div>
+    <div className="p-4 md:p-6 max-w-6xl pb-20 lg:pb-6 pt-2 md:pt-4">
+      {/* Unified action bar — adapted inspiration layout */}
+      <ListActionBar
+        label="Contacts"
+        total={contacts.length}
+        filtered={filtered.length}
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search name, email, title…"
+        onAdd={() => setIsModalOpen(true)}
+        addLabel="New contact"
+        leading={
+          <select
+            value={companyFilter}
+            onChange={(e) => setCompanyFilter(e.target.value)}
+            className="max-w-[40%] md:max-w-[200px] bg-white dark:bg-clay-card border border-clay-hairline rounded-lg px-2.5 py-2 text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-zams-violet/40 truncate"
+          >
+            <option value="all">All companies</option>
+            {sortedCompanies.map((c: Company) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        }
+        trailing={
+          <div className="flex bg-clay-card rounded-lg p-0.5 shrink-0">
+            <button onClick={() => setView('all')} className={clsx('px-3 py-2 text-xs font-medium rounded-md', view === 'all' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>All</button>
+            <button onClick={() => setView('by_status')} className={clsx('px-3 py-2 text-xs font-medium rounded-md', view === 'by_status' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>Status</button>
+            <button onClick={() => setView('by_company')} className={clsx('px-3 py-2 text-xs font-medium rounded-md', view === 'by_company' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>Company</button>
+          </div>
+        }
+      />
 
       {/* Empty state */}
       {filtered.length === 0 && (
