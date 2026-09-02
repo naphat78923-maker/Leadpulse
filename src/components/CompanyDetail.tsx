@@ -225,7 +225,7 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
 
         {/* Brand logo */}
         <div className="flex items-center gap-3 mb-4">
-          <CompanyLogo src={company.logo_url} name={company.name} size={56} />
+          <CompanyLogo src={company.logo_url} name={company.name} id={company.id} size={56} />
           <div className="flex flex-col gap-1.5">
             <input
               ref={logoInputRef}

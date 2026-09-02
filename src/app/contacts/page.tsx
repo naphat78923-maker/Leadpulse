@@ -12,6 +12,7 @@ import ListActionBar from '@/components/ListActionBar';
 import { Mail, Phone, ChevronRight, Loader2, Building2, AlertCircle } from 'lucide-react';
 import clsx from 'clsx';
 import { PageTransition } from '@/components/motion';
+import EntityAvatar from '@/components/EntityAvatar';
 
 type ViewMode = 'all' | 'by_status' | 'by_company';
 
@@ -120,9 +121,13 @@ export default function ContactsPage() {
       onClick={() => setSelectedContact(contact.id)}
       className="motion-lift bg-white dark:bg-clay-card border border-clay-hairline rounded-lg p-3 flex items-center gap-3 cursor-pointer active:bg-clay-surface hover:border-zams-violet/30"
     >
-      <div className="w-10 h-10 rounded-full bg-clay-surface flex items-center justify-center text-clay-ink font-semibold text-sm flex-shrink-0">
-        {contact.name.charAt(0)}
-      </div>
+      <EntityAvatar
+        kind="person"
+        name={contact.name}
+        id={contact.id}
+        size={40}
+        className="flex-shrink-0"
+      />
       <div className="flex-1 min-w-0">
         <h4 className="text-sm font-medium text-clay-ink truncate">{contact.name}</h4>
         <p className="text-xs text-clay-muted truncate">{contact.job_title || contact.email || '—'}</p>
