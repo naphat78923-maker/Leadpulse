@@ -67,7 +67,7 @@ export default function ListActionBar({
       {trailing}
 
       {onAdd && (
-        <button onClick={onAdd} className="zams-btn-primary shrink-0">
+        <button onClick={onAdd} className="zams-btn-primary shrink-0 motion-press">
           <Plus className="w-4 h-4" /> <span className="hidden sm:inline">{addLabel}</span>
         </button>
       )}

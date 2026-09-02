@@ -10,6 +10,7 @@ import { useCrm } from '@/components/CrmProvider';
 import { NUDGE_OPTIONS, SAMPLE_STATUS_OPTIONS, nudgeColorClass, NEXT_WORKFLOW, WORKFLOW_BY_ID, canNudge, getWorkflowAction } from '@/utils/deal-workflow';
 import { buildInteractionWorkflowUpdate } from '@/utils/interaction-workflow';
 import { localDateKey } from '@/utils/deal-board';
+import ModalShell from '@/components/motion/ModalShell';
 
 interface LogInteractionModalProps {
   isOpen: boolean;
@@ -98,8 +99,6 @@ export default function LogInteractionModal({
     // Only reset when the modal opens. Data refreshes while open must not erase the form.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
-
-  if (!isOpen) return null;
 
   const deal = deals.find(item => item.id === selectedDeal);
   const dealAction = deal ? getWorkflowAction(deal) : undefined;
@@ -222,11 +221,13 @@ export default function LogInteractionModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50 p-0 md:p-4" onClick={saving ? undefined : onClose}>
-      <div
-        className="bg-white dark:bg-clay-card w-full md:max-w-lg md:rounded-2xl rounded-t-2xl shadow-2xl max-h-[90vh] overflow-y-auto"
-        onClick={e => e.stopPropagation()}
-      >
+    <ModalShell
+      open={isOpen}
+      onClose={onClose}
+      lockDismiss={saving}
+      panelClassName="bg-white dark:bg-clay-card md:max-w-lg md:rounded-2xl rounded-t-2xl shadow-2xl max-h-[90vh] overflow-y-auto"
+    >
+      <>
         <div className="sticky top-0 bg-white dark:bg-clay-card flex items-center justify-between p-4 border-b border-clay-hairline z-10">
           <h2 className="text-lg font-semibold text-clay-ink">Log Interaction</h2>
           <button onClick={onClose} disabled={saving} className="text-clay-muted hover:text-clay-ink p-2 -mr-2 disabled:opacity-40">
@@ -493,7 +494,7 @@ export default function LogInteractionModal({
             <button
               type="submit"
               disabled={saving}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-clay-ink text-clay-canvas text-sm font-medium rounded-lg active:opacity-85 transition-opacity min-h-[48px] disabled:opacity-60"
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-clay-ink text-clay-canvas text-sm font-medium rounded-lg motion-press min-h-[48px] disabled:opacity-60"
             >
               {saving && <Loader2 className="w-4 h-4 animate-spin" />}
               {saving ? 'Saving…' : pendingDealUpdate ? 'Retry deal update' : 'Save Interaction'}
@@ -502,13 +503,13 @@ export default function LogInteractionModal({
               type="button"
               onClick={onClose}
               disabled={saving}
-              className="px-4 py-3 bg-clay-card text-clay-ink text-sm font-medium rounded-lg active:bg-clay-surface transition-colors min-h-[48px] disabled:opacity-40"
+              className="px-4 py-3 bg-clay-card text-clay-ink text-sm font-medium rounded-lg motion-press min-h-[48px] disabled:opacity-40"
             >
               Cancel
             </button>
           </div>
         </form>
-      </div>
-    </div>
+      </>
+    </ModalShell>
   );
 }

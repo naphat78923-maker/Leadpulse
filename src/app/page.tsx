@@ -15,6 +15,7 @@ import { Plus, TrendingUp, AlertCircle, ChevronRight, Loader2, MessageCircle, Ph
 import { calculateLeadScore, scoreToTier, TIER_LABELS, TIER_COLORS, TIER_BG, PRIORITY_CLASSES, PRIORITY_LABELS } from '@/utils/lead-scoring';
 import { WORKFLOW_LANES, getWorkflowAction, nudgeLabel } from '@/utils/deal-workflow';
 import { dealClientName } from '@/utils/dealLabel';
+import { PageTransition, StaggerList, StaggerItem } from '@/components/motion';
 
 // One-line action verbs for the queue (brief item 5: "Call, DM, Send sample, Find buyer")
 const ACTION_VERBS: Record<string, string> = {
@@ -149,7 +150,7 @@ export default function TodayPage() {
   };
 
   return (
-    <div className="p-4 md:p-6 max-w-6xl pb-20 lg:pb-6">
+    <PageTransition className="p-4 md:p-6 max-w-6xl pb-20 lg:pb-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-4 md:mb-6">
         <div className="flex items-center gap-3">
@@ -200,7 +201,7 @@ export default function TodayPage() {
           </button>
           <button
             onClick={() => setIsLogModalOpen(true)}
-            className="clay-btn-primary"
+            className="clay-btn-primary motion-press"
           >
             <MessageCircle className="w-4 h-4" /> <span className="hidden sm:inline">Log interaction</span>
           </button>
@@ -431,15 +432,15 @@ export default function TodayPage() {
           </div>
         ) : (
           <>
-            <div className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline divide-y divide-clay-hairline overflow-hidden">
+            <StaggerList className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline divide-y divide-clay-hairline overflow-hidden">
               {actionQueue.slice(0, 4).map(item => {
                 const days = item.kind === 'overdue' && item.deal.followup_date ? daysOverdue(item.deal.followup_date) : 0;
                 const lane = WORKFLOW_LANES.find(l => l.id === getWorkflowAction(item.deal))!;
                 const verb = ACTION_VERBS[getWorkflowAction(item.deal)] || 'Follow up';
                 const nudgeChip = item.deal.nudge_stage ? nudgeLabel(item.deal.nudge_stage) : null;
                 return (
-                  <div key={item.deal.id} className="px-4 py-3 flex items-center gap-3 group">
-                    {/* Left-edge urgency marker — the clay stamp, not a red box */}
+                  <StaggerItem key={item.deal.id} className="px-4 py-3 flex items-center gap-3 group">
+                    {/* Left-edge urgency marker */}
                     {item.kind === 'overdue' && (
                       <span className="w-1 self-stretch shrink-0 rounded-full bg-clay-error" aria-hidden />
                     )}
@@ -469,7 +470,7 @@ export default function TodayPage() {
                     </div>
                     <button
                       onClick={() => { setLogDealId(item.deal.id); setIsLogModalOpen(true); }}
-                      className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-clay-hairline text-clay-ink text-xs font-medium hover:border-clay-lavender hover:text-clay-lavender transition-colors min-h-[44px]"
+                      className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-clay-hairline text-clay-ink text-xs font-medium hover:border-clay-lavender hover:text-clay-lavender transition-colors min-h-[44px] motion-press"
                       aria-label={`Log follow-up for ${dealClientName(item.deal, companies, contacts)}`}
                     >
                       <MessageCircle className="w-4 h-4" />
@@ -477,15 +478,15 @@ export default function TodayPage() {
                     </button>
                     <button
                       onClick={() => router.push('/deals?deal=' + item.deal.id)}
-                      className="shrink-0 w-9 h-9 rounded-lg bg-clay-lavender text-white flex items-center justify-center hover:bg-[#6a4bc8] transition-colors"
+                      className="shrink-0 w-9 h-9 rounded-lg bg-clay-lavender text-white flex items-center justify-center hover:bg-[#6a4bc8] transition-colors motion-press"
                       aria-label={`Open ${dealClientName(item.deal, companies, contacts)}`}
                     >
                       <ChevronRight className="w-4 h-4" />
                     </button>
-                  </div>
+                  </StaggerItem>
                 );
               })}
-            </div>
+            </StaggerList>
 
             {dealFollowUps.overdue.length > 3 && (
               <button
@@ -613,6 +614,6 @@ export default function TodayPage() {
           setIsLogModalOpen(true);
         }}
       />
-    </div>
+    </PageTransition>
   );
 }
