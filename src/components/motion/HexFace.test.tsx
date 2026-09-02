@@ -102,4 +102,36 @@ describe('HexFace', () => {
       'pause'
     );
   });
+
+  it('sets data-hovered on pointer enter and clears on leave', () => {
+    stubMatchMedia(false);
+    render(<HexFace kind="call" size={48} alt="Hover me" />);
+    const el = screen.getByRole('img', { name: 'Hover me' });
+    expect(el.hasAttribute('data-hovered')).toBe(false);
+    fireEvent.pointerEnter(el);
+    expect(el.hasAttribute('data-hovered')).toBe(true);
+    fireEvent.pointerLeave(el);
+    expect(el.hasAttribute('data-hovered')).toBe(false);
+  });
+
+  it('does not set data-hovered under prefers-reduced-motion', () => {
+    stubMatchMedia(true);
+    render(<HexFace kind="message" size={40} alt="No hover" />);
+    const el = screen.getByRole('img', { name: 'No hover' });
+    fireEvent.pointerEnter(el);
+    expect(el.hasAttribute('data-hovered')).toBe(false);
+  });
+
+  it('clears data-hovered while pressed (press wins over hover)', () => {
+    stubMatchMedia(false);
+    render(<HexFace kind="package" size={48} alt="Press wins" />);
+    const el = screen.getByRole('img', { name: 'Press wins' });
+    fireEvent.pointerEnter(el);
+    expect(el.hasAttribute('data-hovered')).toBe(true);
+    fireEvent.pointerDown(el, { button: 0 });
+    expect(el.hasAttribute('data-hovered')).toBe(false);
+    fireEvent.pointerUp(el);
+    // Still hovered after press release
+    expect(el.hasAttribute('data-hovered')).toBe(true);
+  });
 });
