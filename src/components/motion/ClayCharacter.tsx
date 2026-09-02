@@ -29,13 +29,24 @@ const POSTER: Record<ClayKind, string> = {
   success: '/assets/clay/success.webp',
 };
 
-const LOTTIE_URL: Record<ClayKind, string> = {
+/** v1 — whole-PNG pose+tilt; kept for optional mid-size use. */
+const LOTTIE_V1_URL: Record<ClayKind, string> = {
   call: '/assets/clay/lottie/call.json',
   message: '/assets/clay/lottie/message.json',
   package: '/assets/clay/lottie/package.json',
   search: '/assets/clay/lottie/search.json',
   pause: '/assets/clay/lottie/pause.json',
   success: '/assets/clay/lottie/success.json',
+};
+
+/** v2 — foot-anchored fluid heroes; amps tuned for ≥44px only. */
+const LOTTIE_V2_URL: Record<ClayKind, string> = {
+  call: '/assets/clay/lottie-v2/call.json',
+  message: '/assets/clay/lottie-v2/message.json',
+  package: '/assets/clay/lottie-v2/package.json',
+  search: '/assets/clay/lottie-v2/search.json',
+  pause: '/assets/clay/lottie-v2/pause.json',
+  success: '/assets/clay/lottie-v2/success.json',
 };
 
 const ALT: Record<ClayKind, string> = {
@@ -47,8 +58,16 @@ const ALT: Record<ClayKind, string> = {
   success: 'Clay character celebrating',
 };
 
-/** Below this rendered size, skip Lottie mount — WebP poster only. */
+/** Below this rendered size, never mount Lottie — WebP poster only. */
 const MIN_LOTTIE_PX = 24;
+/** v2 hero framing — only mount v2 at/above this; mid sizes stay WebP (or v1). */
+const HERO_LOTTIE_PX = 44;
+/**
+ * Mid band (MIN..HERO): prefer WebP only so v2 amps never run small.
+ * Set true to fall back to v1 Lottie in that band instead.
+ */
+const USE_V1_FOR_MID = false;
+
 const ENTER_EASE = [0.22, 1, 0.36, 1] as const;
 const PRESS_OUT_S = 0.09;
 const PRESS_IN_S = 0.14;
@@ -68,6 +87,12 @@ function usePrefersReducedMotion() {
   return reduce;
 }
 
+function lottieSrcForSize(kind: ClayKind, size: number): string | null {
+  if (size >= HERO_LOTTIE_PX) return LOTTIE_V2_URL[kind];
+  if (USE_V1_FOR_MID && size >= MIN_LOTTIE_PX) return LOTTIE_V1_URL[kind];
+  return null;
+}
+
 export type ClayCharacterProps = {
   kind: ClayKind;
   /** Display size in px (posters are 512² WebP; Lottie is 768²). */
@@ -83,11 +108,11 @@ export type ClayCharacterProps = {
 };
 
 /**
- * Animation Bot clay character — Lottie idle when motion OK + size ≥24px
- * (fetched by URL), WebP poster for reduced-motion / tiny / press crossfade.
- * Enter 220ms ease [0.22,1,0.36,1] opacity+scale 0.94→1;
- * press: pause + lottie opacity→0 in 90ms, scale 0.96 (≥32) / 0.975 (<32);
- * release 140ms + play.
+ * Animation Bot clay character —
+ * ≥44px: Lottie v2 (fluid hero framing);
+ * mid (~24–43): WebP preferred (v1 optional via USE_V1_FOR_MID);
+ * &lt;24: WebP only.
+ * Press pause+crossfade to WebP, live PRM, enter/stagger, press scale by size.
  */
 export default function ClayCharacter({
   kind,
@@ -104,7 +129,8 @@ export default function ClayCharacter({
   const [entered, setEntered] = useState(instant || false);
   const isPressed = pressed || holding;
 
-  const mountLottie = !reduce && size >= MIN_LOTTIE_PX;
+  const lottieSrc = reduce ? null : lottieSrcForSize(kind, size);
+  const mountLottie = Boolean(lottieSrc);
   const showFrame = framed ?? size >= 28;
   const pressScale = size >= 32 ? 0.96 : 0.975;
   const blend = showFrame
@@ -194,11 +220,11 @@ export default function ClayCharacter({
           )}
           draggable={false}
         />
-        {mountLottie && (
+        {mountLottie && lottieSrc && (
           <Lottie
-            key={kind}
+            key={`${kind}-${lottieSrc}`}
             lottieRef={lottieRef}
-            src={LOTTIE_URL[kind]}
+            src={lottieSrc}
             loop
             autoplay
             className={clsx('absolute inset-0 w-full h-full', blend)}
