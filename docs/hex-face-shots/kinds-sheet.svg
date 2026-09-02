@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="200" viewBox="0 0 760 200">
+<rect width="760" height="200" fill="#fdf6e9"/>
+<text x="24" y="28" font-family="system-ui,sans-serif" font-size="14" font-weight="600" fill="#2b211a">LeadPulse HexFace kinds</text>
+<g transform="translate(24 40)">
+<svg width="96" height="96" viewBox="0 0 100 100"><polygon points="50,10 86,30 86,70 50,90 14,70 14,30" fill="#2a5a5a" stroke="#2a5a5a" stroke-width="14" stroke-linejoin="round" stroke-linecap="round"/>
+  <ellipse cx="42" cy="34" rx="16" ry="10" fill="rgba(255,255,255,0.18)"/>
+  <g transform="translate(-4 6) rotate(-12 50 52)">
+    <ellipse cx="44.5" cy="52" rx="5.2" ry="7.4" fill="#fff"/>
+    <ellipse cx="55.5" cy="52" rx="5.2" ry="7.4" fill="#fff"/>
+  </g></svg>
+</g>
+<text x="72" y="160" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#3f382f">call</text>
+<g transform="translate(144 40)">
+<svg width="96" height="96" viewBox="0 0 100 100"><polygon points="50,10 86,30 86,70 50,90 14,70 14,30" fill="#d98ba8" stroke="#d98ba8" stroke-width="14" stroke-linejoin="round" stroke-linecap="round"/>
+  <ellipse cx="42" cy="34" rx="16" ry="10" fill="rgba(255,255,255,0.18)"/>
+  <g transform="translate(-5 7) rotate(-16 50 52)">
+    <ellipse cx="44.75" cy="52" rx="5.2" ry="7.4" fill="#fff"/>
+    <ellipse cx="55.25" cy="52" rx="5.2" ry="7.4" fill="#fff"/>
+  </g></svg>
+</g>
+<text x="192" y="160" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#3f382f">message</text>
+<g transform="translate(264 40)">
+<svg width="96" height="96" viewBox="0 0 100 100"><polygon points="50,10 86,30 86,70 50,90 14,70 14,30" fill="#f2b48c" stroke="#f2b48c" stroke-width="14" stroke-linejoin="round" stroke-linecap="round"/>
+  <ellipse cx="42" cy="34" rx="16" ry="10" fill="rgba(255,255,255,0.18)"/>
+  <g transform="translate(-3 5) rotate(-8 50 52)">
+    <ellipse cx="44.5" cy="52" rx="5.2" ry="7.4" fill="#fff"/>
+    <ellipse cx="55.5" cy="52" rx="5.2" ry="7.4" fill="#fff"/>
+  </g></svg>
+</g>
+<text x="312" y="160" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#3f382f">package</text>
+<g transform="translate(384 40)">
+<svg width="96" height="96" viewBox="0 0 100 100"><polygon points="50,10 86,30 86,70 50,90 14,70 14,30" fill="#b8a4ed" stroke="#b8a4ed" stroke-width="14" stroke-linejoin="round" stroke-linecap="round"/>
+  <ellipse cx="42" cy="34" rx="16" ry="10" fill="rgba(255,255,255,0.18)"/>
+  <g transform="translate(-2 4) rotate(-18 50 52)">
+    <ellipse cx="44.0" cy="52" rx="5.2" ry="7.4" fill="#fff"/>
+    <ellipse cx="56.0" cy="52" rx="5.2" ry="7.4" fill="#fff"/>
+  </g></svg>
+</g>
+<text x="432" y="160" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#3f382f">search</text>
+<g transform="translate(504 40)">
+<svg width="96" height="96" viewBox="0 0 100 100"><polygon points="50,10 86,30 86,70 50,90 14,70 14,30" fill="#eec35a" stroke="#eec35a" stroke-width="14" stroke-linejoin="round" stroke-linecap="round"/>
+  <ellipse cx="42" cy="34" rx="16" ry="10" fill="rgba(255,255,255,0.18)"/>
+  <g transform="translate(-4 8) rotate(-6 50 52)">
+    <ellipse cx="45.0" cy="52" rx="5.2" ry="7.4" fill="#fff"/>
+    <ellipse cx="55.0" cy="52" rx="5.2" ry="7.4" fill="#fff"/>
+  </g></svg>
+</g>
+<text x="552" y="160" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#3f382f">pause</text>
+<g transform="translate(624 40)">
+<svg width="96" height="96" viewBox="0 0 100 100"><polygon points="50,10 86,30 86,70 50,90 14,70 14,30" fill="#7fc9a8" stroke="#7fc9a8" stroke-width="14" stroke-linejoin="round" stroke-linecap="round"/>
+  <ellipse cx="42" cy="34" rx="16" ry="10" fill="rgba(255,255,255,0.18)"/>
+  <g transform="translate(-3 5) rotate(-14 50 52)">
+    <ellipse cx="44.25" cy="52" rx="5.2" ry="7.4" fill="#fff"/>
+    <ellipse cx="55.75" cy="52" rx="5.2" ry="7.4" fill="#fff"/>
+  </g></svg>
+</g>
+<text x="672" y="160" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#3f382f">success</text>
+</svg>
