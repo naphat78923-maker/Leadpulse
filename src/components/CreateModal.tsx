@@ -7,6 +7,7 @@ import ContactPicker from '@/components/ContactPicker';
 import { NUDGE_OPTIONS, SAMPLE_STATUS_OPTIONS, WORKFLOW_BY_ID, WORKFLOW_LANES } from '@/utils/deal-workflow';
 import { deriveDealIdentity } from '@/utils/dealLabel';
 import { CONTACT_IDENTITY_OPTIONS, contactNameFieldCopy } from '@/utils/contact-identity';
+import ModalShell from '@/components/motion/ModalShell';
 
 type ModalType = 'company' | 'contact' | 'deal' | 'meeting';
 const DRAFTING_WORKFLOWS = new Set<DealWorkflowAction>(['outreach', 'reply', 'reschedule']);
@@ -31,8 +32,6 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
       setError(null);
     }
   }, [isOpen, type]);
-
-  if (!isOpen) return null;
 
   function getInitialState(t: ModalType) {
     switch (t) {
@@ -101,11 +100,12 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
   const showDraftingBrief = type === 'deal' && (DRAFTING_WORKFLOWS.has(form.workflow_action) || Boolean(form.draft_primary_ask?.trim()));
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50 p-0 md:p-4" onClick={onClose}>
-      <div
-        className="bg-white dark:bg-clay-card w-full md:max-w-lg md:rounded-2xl rounded-t-2xl shadow-2xl max-h-[90vh] overflow-y-auto"
-        onClick={e => e.stopPropagation()}
-      >
+    <ModalShell
+      open={isOpen}
+      onClose={onClose}
+      panelClassName="bg-white dark:bg-clay-card md:max-w-lg md:rounded-2xl rounded-t-2xl shadow-2xl max-h-[90vh] overflow-y-auto"
+    >
+      <>
         {/* Header */}
         <div className="sticky top-0 bg-white dark:bg-clay-card flex items-center justify-between p-4 border-b border-clay-hairline z-10">
           <div className="flex items-center gap-3">
@@ -213,14 +213,14 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
           {/* Actions */}
           {error && <div className="rounded-lg bg-clay-error/10 px-3 py-2 text-sm text-clay-error">{error}</div>}
           <div className="flex items-center gap-3 pt-2 pb-4">
-            <button type="submit" className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-clay-ink text-clay-canvas text-sm font-medium rounded-lg active:opacity-85 transition-opacity min-h-[48px]">
+            <button type="submit" className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-clay-ink text-clay-canvas text-sm font-medium rounded-lg motion-press min-h-[48px]">
               <Save className="w-4 h-4" /> Save
             </button>
-            <button type="button" onClick={onClose} className="px-4 py-3 bg-clay-card text-clay-ink text-sm font-medium rounded-lg active:bg-clay-surface transition-colors min-h-[48px]">Cancel</button>
+            <button type="button" onClick={onClose} className="px-4 py-3 bg-clay-card text-clay-ink text-sm font-medium rounded-lg motion-press min-h-[48px]">Cancel</button>
           </div>
         </form>
-      </div>
-    </div>
+      </>
+    </ModalShell>
   );
 }
 

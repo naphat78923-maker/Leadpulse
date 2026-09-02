@@ -9,6 +9,7 @@ import CompanyDetail from '@/components/CompanyDetail';
 import CompanyLogo from '@/components/CompanyLogo';
 import { Search, Plus, Tag, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
+import { PageTransition } from '@/components/motion';
 
 type ViewMode = 'all' | 'by_status';
 
@@ -63,7 +64,7 @@ export default function CompaniesPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 max-w-6xl pb-20 lg:pb-6">
+    <PageTransition className="p-4 md:p-6 max-w-6xl pb-20 lg:pb-6">
       <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-xl md:text-2xl font-semibold text-clay-ink">Companies</h1>
@@ -71,7 +72,7 @@ export default function CompaniesPage() {
         </div>
         <button
           onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 px-3 py-2 bg-clay-ink text-clay-canvas text-sm font-medium rounded-lg active:opacity-85"
+          className="flex items-center gap-2 px-3 py-2 bg-clay-ink text-clay-canvas text-sm font-medium rounded-lg motion-press"
         >
           <Plus className="w-4 h-4" /> <span className="hidden sm:inline">New</span>
         </button>
@@ -163,6 +164,6 @@ export default function CompaniesPage() {
       )}
 
       <CreateModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={handleCreate} type="company" />
-    </div>
+    </PageTransition>
   );
 }

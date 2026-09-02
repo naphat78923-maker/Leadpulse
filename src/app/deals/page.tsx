@@ -32,6 +32,7 @@ import { formatBaht, sumLaneValues } from '@/utils/format';
 import { WORKFLOW_LANES, WORKFLOW_BY_ID, LANE_MASCOT_PATHS, getWorkflowAction, nudgeLabel } from '@/utils/deal-workflow';
 import { BoardAttentionFilter, dealNeedsReview, reviewReasons, REVIEW_LABEL, buildReviewReport, buildReviewFix, filterAndSortBoardDeals, getDoNowCounts, localDateKey } from '@/utils/deal-board';
 import { buildDealCardPresentation } from '@/utils/deal-card';
+import { PageTransition } from '@/components/motion';
 
 type ViewMode = 'board' | 'closed' | 'table';
 
@@ -398,7 +399,7 @@ export default function DealsPage() {
   };
 
   return (
-    <div className="p-4 md:px-4 md:py-6 pb-20 lg:pb-6 min-h-full">
+    <PageTransition className="p-4 md:px-4 md:py-6 pb-20 lg:pb-6 min-h-full">
       <div className="flex items-start justify-between gap-3 mb-4">
         <div>
           <p className="zams-eyebrow mb-1">Pipeline · Action board</p>
@@ -407,7 +408,7 @@ export default function DealsPage() {
         </div>
         <button
           onClick={() => setIsModalOpen(true)}
-          className="clay-btn-primary shrink-0"
+          className="clay-btn-primary shrink-0 motion-press"
         >
           <Plus className="w-4 h-4" /> <span className="hidden sm:inline">New deal</span>
         </button>
@@ -818,7 +819,7 @@ export default function DealsPage() {
       )}
 
       <CreateModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={handleCreate} type="deal" companies={companies} contacts={contacts} />
-    </div>
+    </PageTransition>
   );
 }
 

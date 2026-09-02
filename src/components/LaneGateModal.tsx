@@ -7,6 +7,8 @@ import MascotSprite from '@/components/MascotSprite';
 import ContactPicker from '@/components/ContactPicker';
 import { X, Loader2, Phone, Mail, MessageCircle } from 'lucide-react';
 import clsx from 'clsx';
+import { motion } from 'framer-motion';
+import { overlayVariants, panelVariants, tweenBase, tweenSlow } from '@/lib/motion';
 
 export interface LaneGatePayload {
   workflow_action: DealWorkflowAction;
@@ -99,8 +101,23 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
 
   return (
     <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/50" onClick={onCancel} />
-      <div className="relative bg-white dark:bg-clay-card w-full sm:max-w-md rounded-t-2xl sm:rounded-lg animate-slide-up max-h-[90vh] overflow-y-auto">
+      <motion.div
+        className="absolute inset-0 bg-black/50"
+        variants={overlayVariants}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+        transition={tweenBase}
+        onClick={onCancel}
+      />
+      <motion.div
+        className="relative bg-white dark:bg-clay-card w-full sm:max-w-md rounded-t-2xl sm:rounded-lg max-h-[90vh] overflow-y-auto"
+        variants={panelVariants}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+        transition={tweenSlow}
+      >
         {/* Header */}
         <div className="sticky top-0 bg-white dark:bg-clay-card border-b border-clay-hairline px-5 py-4 z-10">
           <div className="flex items-start justify-between gap-3">
@@ -291,7 +308,7 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Move deal'}
           </button>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

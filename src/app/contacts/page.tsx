@@ -11,6 +11,7 @@ import CompanyDetail from '@/components/CompanyDetail';
 import ListActionBar from '@/components/ListActionBar';
 import { Mail, Phone, ChevronRight, Loader2, Building2, AlertCircle } from 'lucide-react';
 import clsx from 'clsx';
+import { PageTransition } from '@/components/motion';
 
 type ViewMode = 'all' | 'by_status' | 'by_company';
 
@@ -117,7 +118,7 @@ export default function ContactsPage() {
     <div
       key={contact.id}
       onClick={() => setSelectedContact(contact.id)}
-      className="bg-white dark:bg-clay-card border border-clay-hairline rounded-lg p-3 flex items-center gap-3 cursor-pointer active:bg-clay-surface hover:border-zams-violet/30 transition-colors"
+      className="motion-lift bg-white dark:bg-clay-card border border-clay-hairline rounded-lg p-3 flex items-center gap-3 cursor-pointer active:bg-clay-surface hover:border-zams-violet/30"
     >
       <div className="w-10 h-10 rounded-full bg-clay-surface flex items-center justify-center text-clay-ink font-semibold text-sm flex-shrink-0">
         {contact.name.charAt(0)}
@@ -152,7 +153,7 @@ export default function ContactsPage() {
   );
 
   return (
-    <div className="p-4 md:p-6 max-w-6xl pb-20 lg:pb-6 pt-2 md:pt-4">
+    <PageTransition className="p-4 md:p-6 max-w-6xl pb-20 lg:pb-6 pt-2 md:pt-4">
       {/* Unified action bar — adapted inspiration layout */}
       <ListActionBar
         label="Contacts"
@@ -286,6 +287,6 @@ export default function ContactsPage() {
         type="contact"
         companies={companies}
       />
-    </div>
+    </PageTransition>
   );
 }

@@ -1,6 +1,8 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { toastVariants } from '@/lib/motion';
 
 interface Toast {
   id: string;
@@ -49,34 +51,41 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <ToastContext.Provider value={{ toasts, addToast, removeToast }}>
       {children}
       <div className="fixed bottom-20 left-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
-        {toasts.map(toast => (
-          <div
-            key={toast.id}
-            className={`pointer-events-auto mx-auto px-4 py-3 rounded-xl shadow-lg text-sm font-medium animate-slide-up flex items-center gap-3 max-w-sm ${
-              toast.type === 'success'
-                ? 'bg-clay-success text-white'
-                : 'bg-clay-error text-white'
-            }`}
-          >
-            {toast.type === 'success' ? (
-              <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
-            ) : (
-              <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></svg>
-            )}
-            <span className="flex-1">{toast.message}</span>
-            {toast.action && (
-              <button
-                onClick={() => {
-                  toast.action!.onClick();
-                  removeToast(toast.id);
-                }}
-                className="shrink-0 text-xs font-bold uppercase tracking-wide underline underline-offset-2 hover:opacity-80"
-              >
-                {toast.action.label}
-              </button>
-            )}
-          </div>
-        ))}
+        <AnimatePresence initial={false}>
+          {toasts.map(toast => (
+            <motion.div
+              key={toast.id}
+              layout
+              variants={toastVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              className={`pointer-events-auto mx-auto px-4 py-3 rounded-xl shadow-lg text-sm font-medium flex items-center gap-3 max-w-sm ${
+                toast.type === 'success'
+                  ? 'bg-clay-success text-white'
+                  : 'bg-clay-error text-white'
+              }`}
+            >
+              {toast.type === 'success' ? (
+                <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+              ) : (
+                <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></svg>
+              )}
+              <span className="flex-1">{toast.message}</span>
+              {toast.action && (
+                <button
+                  onClick={() => {
+                    toast.action!.onClick();
+                    removeToast(toast.id);
+                  }}
+                  className="shrink-0 text-xs font-bold uppercase tracking-wide underline underline-offset-2 hover:opacity-80 motion-press"
+                >
+                  {toast.action.label}
+                </button>
+              )}
+            </motion.div>
+          ))}
+        </AnimatePresence>
       </div>
     </ToastContext.Provider>
   );
