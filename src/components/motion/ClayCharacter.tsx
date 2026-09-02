@@ -2,7 +2,15 @@
 
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
-import { motion, useReducedMotion } from 'framer-motion';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
+import type { LottieHandle } from 'lottie-react';
+import { motion } from 'framer-motion';
 import clsx from 'clsx';
 
 const Lottie = dynamic(
@@ -39,12 +47,33 @@ const ALT: Record<ClayKind, string> = {
   success: 'Clay character celebrating',
 };
 
+/** Below this rendered size, skip Lottie mount — WebP poster only. */
+const MIN_LOTTIE_PX = 24;
+const ENTER_EASE = [0.22, 1, 0.36, 1] as const;
+const PRESS_OUT_S = 0.09;
+const PRESS_IN_S = 0.14;
+
+/** Live prefers-reduced-motion via matchMedia (not mount-only). */
+function usePrefersReducedMotion() {
+  const [reduce, setReduce] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const sync = () => setReduce(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+
+  return reduce;
+}
+
 export type ClayCharacterProps = {
   kind: ClayKind;
   /** Display size in px (posters are 512² WebP; Lottie is 768²). */
   size?: number;
   className?: string;
-  /** Force pressed (scale 0.96) visual — e.g. controlled press state. */
+  /** Force pressed (scale + WebP poster) visual — e.g. controlled press state. */
   pressed?: boolean;
   /** Skip enter animation when already in view. */
   instant?: boolean;
@@ -54,9 +83,11 @@ export type ClayCharacterProps = {
 };
 
 /**
- * Animation Bot clay character — Lottie idle when motion OK (fetched by URL,
- * not bundled), WebP poster for reduced-motion / loading / whileTap base.
- * Enter 220ms ease [0.22,1,0.36,1]; press scale 0.96 / 150ms.
+ * Animation Bot clay character — Lottie idle when motion OK + size ≥24px
+ * (fetched by URL), WebP poster for reduced-motion / tiny / press crossfade.
+ * Enter 220ms ease [0.22,1,0.36,1] opacity+scale 0.94→1;
+ * press: pause + lottie opacity→0 in 90ms, scale 0.96 (≥32) / 0.975 (<32);
+ * release 140ms + play.
  */
 export default function ClayCharacter({
   kind,
@@ -67,41 +98,88 @@ export default function ClayCharacter({
   framed,
   alt,
 }: ClayCharacterProps) {
-  const reduce = useReducedMotion();
-  // Poster when reduced-motion or controlled press; Lottie idle otherwise.
-  const showLottie = !reduce && !pressed;
+  const reduce = usePrefersReducedMotion();
+  const lottieRef = useRef<LottieHandle>(null);
+  const [holding, setHolding] = useState(false);
+  const [entered, setEntered] = useState(instant || false);
+  const isPressed = pressed || holding;
+
+  const mountLottie = !reduce && size >= MIN_LOTTIE_PX;
   const showFrame = framed ?? size >= 28;
+  const pressScale = size >= 32 ? 0.96 : 0.975;
   const blend = showFrame
     ? 'mix-blend-multiply dark:mix-blend-normal dark:brightness-95'
     : undefined;
 
+  const endPress = useCallback(() => {
+    setHolding((was) => {
+      if (was) lottieRef.current?.play();
+      return false;
+    });
+  }, []);
+
+  const onPointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLSpanElement>) => {
+      if (reduce || e.button !== 0) return;
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+      setHolding(true);
+      lottieRef.current?.pause();
+    },
+    [reduce]
+  );
+
+  const onPointerUp = useCallback(
+    (e: ReactPointerEvent<HTMLSpanElement>) => {
+      if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+      endPress();
+    },
+    [endPress]
+  );
+
+  // Controlled `pressed` prop: pause/play Lottie to match.
+  useEffect(() => {
+    if (!mountLottie) return;
+    if (pressed) lottieRef.current?.pause();
+    else if (!holding) lottieRef.current?.play();
+  }, [pressed, holding, mountLottie]);
+
+  // Enter once (220ms), then press 90ms down / 140ms up — transform+opacity only.
+  const motionTransition = reduce
+    ? { duration: 0.01 }
+    : isPressed
+      ? { duration: PRESS_OUT_S, ease: 'easeOut' as const }
+      : entered
+        ? { duration: PRESS_IN_S, ease: 'easeOut' as const }
+        : { duration: 0.22, ease: ENTER_EASE };
+
   return (
     <motion.span
       className={clsx(
-        'inline-flex shrink-0 items-center justify-center select-none',
+        'inline-flex shrink-0 items-center justify-center select-none touch-manipulation',
         showFrame &&
           'overflow-hidden rounded-lg border border-clay-hairline/70 bg-[#f3efe7] dark:bg-[#2b2721] dark:border-clay-hairline/50 shadow-[0_4px_10px_-3px_rgba(0,0,0,0.28)] dark:shadow-[0_5px_12px_-4px_rgba(0,0,0,0.6)]',
         className
       )}
-      style={{ width: size, height: size }}
-      initial={instant || reduce ? false : { opacity: 0, y: 12, scale: 0.96 }}
-      animate={
-        pressed
-          ? { opacity: 1, y: 0, scale: 0.96 }
-          : { opacity: 1, y: 0, scale: 1 }
-      }
-      transition={
-        reduce
-          ? { duration: 0.01 }
-          : pressed
-            ? { duration: 0.15, ease: [0.4, 0, 0.2, 1] }
-            : { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
-      }
-      whileTap={
-        reduce || pressed
-          ? undefined
-          : { scale: 0.96, transition: { duration: 0.15, ease: [0.4, 0, 0.2, 1] } }
-      }
+      style={{
+        width: size,
+        height: size,
+        willChange: 'transform',
+      }}
+      initial={instant || reduce ? false : { opacity: 0, scale: 0.94 }}
+      animate={{
+        opacity: 1,
+        scale: isPressed && !reduce ? pressScale : 1,
+      }}
+      transition={{
+        opacity: motionTransition,
+        scale: motionTransition,
+      }}
+      onAnimationComplete={() => setEntered(true)}
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onPointerCancel={endPress}
     >
       <span className="relative block w-full h-full overflow-hidden">
         <Image
@@ -112,18 +190,28 @@ export default function ClayCharacter({
           className={clsx(
             'w-full h-full object-cover',
             blend,
-            showLottie && 'absolute inset-0'
+            mountLottie && 'absolute inset-0'
           )}
           draggable={false}
         />
-        {showLottie && (
+        {mountLottie && (
           <Lottie
             key={kind}
+            lottieRef={lottieRef}
             src={LOTTIE_URL[kind]}
             loop
             autoplay
             className={clsx('absolute inset-0 w-full h-full', blend)}
-            style={{ width: '100%', height: '100%' }}
+            style={{
+              width: '100%',
+              height: '100%',
+              opacity: isPressed ? 0 : 1,
+              transition: reduce
+                ? 'none'
+                : `opacity ${isPressed ? PRESS_OUT_S : PRESS_IN_S}s ease-out`,
+              willChange: 'opacity',
+              pointerEvents: 'none',
+            }}
             rendererSettings={{ preserveAspectRatio: 'xMidYMid slice' }}
           />
         )}

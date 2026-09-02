@@ -58,11 +58,11 @@ export const staggerContainerVariants: Variants = {
 };
 
 export const staggerItemVariants: Variants = {
-  initial: { opacity: 0, y: 8 },
+  initial: { opacity: 0, scale: 0.94 },
   animate: {
     opacity: 1,
-    y: 0,
-    transition: tweenBase,
+    scale: 1,
+    transition: { duration: 0.22, ease: EASE_OUT },
   },
 };
 

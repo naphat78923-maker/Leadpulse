@@ -391,7 +391,7 @@ export default function TodayPage() {
           <ClayCharacter kind="message" size={22} framed alt="Pulse messenger" />
           <p className="zams-mono text-[10px] uppercase tracking-[0.16px] text-clay-muted-soft">Today's pulse</p>
         </div>
-        <StaggerList className="flex items-center gap-3 shrink-0">
+        <StaggerList stagger={0.035} className="flex items-center gap-3 shrink-0">
           {PULSE_ITEMS.map(p => (
             <StaggerItem key={p.key} className="flex items-center gap-1.5">
               <ClayCharacter kind={p.clay} size={20} framed={false} instant alt={p.label} />
