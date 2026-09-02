@@ -33,9 +33,9 @@ export const WORKFLOW_LANES: WorkflowLane[] = [
   {
     id: 'sample',
     icon: '📦',
-    label: 'Mark sample sent / received',
+    label: 'Track sample delivery',
     shortLabel: 'Sample',
-    description: 'Track whether the sample is sent or received.',
+    description: 'Record the latest confirmed milestone. Only mark received after client confirmation.',
     className: 'border-clay-ochre/30 bg-clay-ochre/5',
   },
   {

@@ -100,6 +100,48 @@ describe('DealDetail primary client ask', () => {
     expect(screen.getByText("Ask for the team's first feedback")).toBeTruthy();
   });
 
+  it('separates the confirmed sample milestone from the next action and shows pipeline stage', () => {
+    render(
+      <DealDetail
+        deal={{
+          ...deal,
+          stage: 'proposal',
+          workflow_action: 'sample',
+          sample_status: 'received',
+          next_action: 'Awaiting feedback',
+        }}
+        onClose={vi.fn()}
+        onSaved={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('CURRENT WORKFLOW STEP')).toBeTruthy();
+    expect(screen.getByText('Pipeline stage: Proposal')).toBeTruthy();
+    expect(screen.getByText('Track sample delivery')).toBeTruthy();
+    expect(screen.getByText('Confirmed milestone: Received by client')).toBeTruthy();
+    expect(screen.getByText('NEXT ACTION — WHAT YOU DO NEXT')).toBeTruthy();
+  });
+
+  it('flags passive next-action states until they become concrete', () => {
+    render(
+      <DealDetail
+        deal={{ ...deal, next_action: 'Awaiting feedback' }}
+        onClose={vi.fn()}
+        onSaved={vi.fn()}
+      />
+    );
+
+    const warning = screen.getByRole('alert');
+    expect(warning.textContent).toContain('Needs a concrete action: start with follow up, ask, send, or confirm.');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit deal' }));
+    fireEvent.change(screen.getByLabelText('Next action'), {
+      target: { value: 'Follow up for sample-test feedback' },
+    });
+
+    expect(screen.queryByText('Needs a concrete action: start with follow up, ask, send, or confirm.')).toBeNull();
+  });
+
   it('keeps a newly entered ask visible when the action lane changes before save', () => {
     render(
       <DealDetail

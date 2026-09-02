@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { Check, Edit2, Loader2, Undo2, X, Trash2 } from 'lucide-react';
+import { AlertCircle, Check, Edit2, Loader2, Undo2, X, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
-import { Deal, DealStage, DealWorkflowAction, NudgeStage, SampleStatus } from '@/types/crm';
+import { Deal, DealStage, DealWorkflowAction, NudgeStage, SampleStatus, STAGE_LABELS } from '@/types/crm';
 import { useToast } from '@/components/ToastProvider';
 import { useCrm } from '@/components/CrmProvider';
 import { dealClientName } from '@/utils/dealLabel';
@@ -30,6 +30,10 @@ function timestampedEntry(text: string) {
 function appendOutcome(existing: string, entry?: string) {
   if (!entry) return existing;
   return existing ? `${existing}\n---\n${entry}` : entry;
+}
+
+function isPassiveNextAction(value?: string | null) {
+  return /^(awaiting|waiting|pending)\b/i.test(value?.trim() || '');
 }
 
 const DRAFTING_WORKFLOWS = new Set<DealWorkflowAction>(['outreach', 'reply', 'reschedule']);
@@ -298,6 +302,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
   const workflow = WORKFLOW_BY_ID[currentWorkflow];
   const visibleWorkflow = editing ? editData.workflow_action : currentWorkflow;
   const visiblePrimaryAsk = editing ? editData.draft_primary_ask : deal.draft_primary_ask;
+  const visibleNextAction = editing ? editData.next_action : deal.next_action;
   const showDraftingBrief = DRAFTING_WORKFLOWS.has(visibleWorkflow) || Boolean(visiblePrimaryAsk?.trim());
 
   return (
@@ -345,9 +350,10 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
                 </button>
               ))}
             </div>
+            <p className="mt-2 text-xs text-clay-muted">Pipeline stage: {STAGE_LABELS[editing ? editData.stage : deal.stage]}</p>
           </section>
           <section className="rounded-xl border border-clay-hairline bg-clay-surface p-3">
-            <p className="text-[10px] font-semibold tracking-wider text-clay-muted mb-2">ACTION LANE — WHAT HAPPENS NEXT</p>
+            <p className="text-[10px] font-semibold tracking-wider text-clay-muted mb-2">CURRENT WORKFLOW STEP</p>
             {editing ? (
               <>
                 <select aria-label="Action lane" value={editData.workflow_action} onChange={event => setEditData(prev => ({ ...prev, workflow_action: event.target.value as DealWorkflowAction, nudge_stage: canNudge(event.target.value as DealWorkflowAction) ? prev.nudge_stage : '', sample_status: event.target.value === 'sample' ? prev.sample_status : '' }))} className="w-full px-3 py-2.5 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card">
@@ -358,11 +364,16 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
                 {canNudge(editData.workflow_action) && <label className="block mt-3 text-xs text-clay-body">Nudge stage<select value={editData.nudge_stage} onChange={event => setEditData(prev => ({ ...prev, nudge_stage: event.target.value as NudgeStage }))} className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card"><option value="">Choose nudge</option>{NUDGE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label} · {option.days} days</option>)}</select></label>}
               </>
             ) : (
-              <div className="flex items-start gap-3"><span className="text-2xl">{workflow.icon}</span><div><p className="font-semibold text-clay-ink">{workflow.label}</p><p className="text-xs text-clay-muted mt-0.5">{workflow.description}</p>{deal.nudge_stage && <p className="text-xs text-clay-ochre mt-1">🔔 {nudgeLabel(deal.nudge_stage)}</p>}{deal.sample_status && <p className="text-xs text-clay-ochre mt-1">Sample {deal.sample_status}</p>}{!deal.nudge_stage && !canNudge(currentWorkflow) && <p className="text-xs text-clay-muted-soft mt-1">🔔 Nudge unlocks after sample is sent</p>}</div></div>
+              <div className="flex items-start gap-3"><span className="text-2xl">{workflow.icon}</span><div><p className="font-semibold text-clay-ink">{workflow.label}</p><p className="text-xs text-clay-muted mt-0.5">{workflow.description}</p>{deal.nudge_stage && <p className="text-xs text-clay-ochre mt-1">🔔 {nudgeLabel(deal.nudge_stage)}</p>}{deal.sample_status && <p className="text-xs text-clay-ochre mt-1">Confirmed milestone: {deal.sample_status === 'sent' ? 'Sent to client' : 'Received by client'}</p>}{!deal.nudge_stage && !canNudge(currentWorkflow) && <p className="text-xs text-clay-muted-soft mt-1">🔔 Nudge unlocks after sample is sent</p>}</div></div>
             )}
           </section>
 
-          <label className="block text-clay-body">CRM next action{editing ? <input value={editData.next_action} onChange={event => setEditData(prev => ({ ...prev, next_action: event.target.value }))} placeholder="What needs to happen internally?" className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card" /> : <p className="mt-1 rounded-lg bg-clay-surface p-3 text-xs text-clay-body">{deal.next_action || '—'}</p>}</label>
+          <section>
+            <p className="text-[10px] font-semibold tracking-wider text-clay-muted">NEXT ACTION — WHAT YOU DO NEXT</p>
+            {editing ? <label className="block"><span className="sr-only">Next action</span><input aria-label="Next action" value={editData.next_action} onChange={event => setEditData(prev => ({ ...prev, next_action: event.target.value }))} placeholder="Start with a verb: follow up, ask, send, confirm…" className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card" /></label> : <p className="mt-1 rounded-lg bg-clay-surface p-3 text-xs text-clay-body">{deal.next_action || '—'}</p>}
+            {isPassiveNextAction(visibleNextAction) && <p role="alert" className="mt-1.5 flex items-start gap-2 rounded-lg border border-clay-ochre/40 bg-clay-ochre/15 px-2.5 py-2 text-xs font-medium text-clay-ochre"><AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" /><span>Needs a concrete action: start with follow up, ask, send, or confirm.</span></p>}
+            <p className="mt-1 text-xs text-clay-muted">Use a specific verb and the result you need. Put the timing in the follow-up date.</p>
+          </section>
           {showDraftingBrief && (
             <section className="rounded-xl border border-clay-lavender/30 bg-clay-lavender/10 p-3">
               <p className="text-[10px] font-semibold tracking-wider text-clay-muted">EBIMARU DRAFTING BRIEF</p>
