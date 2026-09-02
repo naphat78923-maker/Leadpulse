@@ -7,7 +7,6 @@ import { useCrm } from '@/components/CrmProvider';
 import { deals as dataDeals, contacts as dataContacts, companies as dataCompanies, meetings as dataMeetings } from '@/data/crmData';
 import CreateModal from '@/components/CreateModal';
 import LogInteractionModal from '@/components/LogInteractionModal';
-import MascotSprite from '@/components/MascotSprite';
 import TaskActionSheet from '@/components/TaskActionSheet';
 import ReorderSignalsCard from '@/components/ReorderSignalsCard';
 import { Plus, ChevronRight, MessageCircle } from 'lucide-react';
@@ -154,7 +153,7 @@ export default function TodayPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-4 md:mb-6">
         <div className="flex items-center gap-3">
-          <MascotSprite src="/assets/mascot-teardrop.png" size={46} alt="LeadPulse mascot" />
+          <ClayCharacter kind="call" size={46} alt="LeadPulse clay character" />
           <div>
             <p className="zams-eyebrow mb-0.5">
               {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
@@ -230,11 +229,11 @@ export default function TodayPage() {
 
       {/* Today's plan — the hero */}
       <div className="mb-4 rounded-2xl border border-clay-hairline bg-white dark:bg-clay-card p-5 md:p-6 flex flex-col md:flex-row md:items-center gap-4 md:gap-5 relative overflow-hidden shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_6px_20px_-12px_rgba(43,33,26,0.25)]">
-        <MascotSprite
-          src={startHere ? '/assets/mascots/mascot-teardrop.png' : '/assets/mascots/mascot-outreach.png'}
-          size={56}
-          alt={startHere ? 'Planner mascot' : 'Scout mascot'}
-        />
+        {startHere ? (
+          <ClayCharacter kind="call" size={56} alt="Planner clay character" />
+        ) : (
+          <ClayCharacter kind="success" size={56} alt="All clear clay character" />
+        )}
         <div className="flex-1 min-w-0">
           <p className="zams-eyebrow mb-1">Today's plan</p>
           {startHere ? (
@@ -295,7 +294,7 @@ export default function TodayPage() {
             </button>
             {dealFollowUps.dueToday.length === 0 ? (
               <p className="text-xs text-clay-muted flex items-center gap-1.5">
-                <MascotSprite src="/assets/mascots/mascot-parked.png" size={18} alt="Sleepy mascot" />
+                <ClayCharacter kind="pause" size={18} framed={false} instant alt="" />
                 Nothing scheduled for today.
               </p>
             ) : (
@@ -346,7 +345,7 @@ export default function TodayPage() {
             </button>
             {dealFollowUps.thisWeek.length === 0 ? (
               <p className="text-xs text-clay-muted flex items-center gap-1.5">
-                <MascotSprite src="/assets/mascots/mascot-parked.png" size={18} alt="Sleepy mascot" />
+                <ClayCharacter kind="pause" size={18} framed={false} instant alt="" />
                 Light week ahead.
               </p>
             ) : (
@@ -392,15 +391,15 @@ export default function TodayPage() {
           <ClayCharacter kind="message" size={22} framed alt="Pulse messenger" />
           <p className="zams-mono text-[10px] uppercase tracking-[0.16px] text-clay-muted-soft">Today's pulse</p>
         </div>
-        <div className="flex items-center gap-3 shrink-0">
+        <StaggerList className="flex items-center gap-3 shrink-0">
           {PULSE_ITEMS.map(p => (
-            <div key={p.key} className="flex items-center gap-1.5">
-              <ClayCharacter kind={p.clay} size={20} framed alt={p.label} />
+            <StaggerItem key={p.key} className="flex items-center gap-1.5">
+              <ClayCharacter kind={p.clay} size={20} framed={false} instant alt={p.label} />
               <span className="text-sm font-semibold text-clay-ink leading-none">{todayCounts[p.key] ?? 0}</span>
               <span className="zams-mono text-[9px] uppercase tracking-[0.1px] text-clay-muted-soft">{p.label}</span>
-            </div>
+            </StaggerItem>
           ))}
-        </div>
+        </StaggerList>
         <span className="text-[11px] text-clay-muted-soft ml-auto shrink-0 flex items-center gap-1.5">
           {todayMeetings.length === 0 && <ClayCharacter kind="pause" size={18} framed alt="Resting — no touches yet" />}
           {todayMeetings.length === 0 ? 'No touches yet today' : `${todayMeetings.length} ${todayMeetings.length === 1 ? 'touch' : 'touches'} today`}
@@ -410,7 +409,7 @@ export default function TodayPage() {
       {/* Action queue — top 3 overdue first, one-line verbs, chips */}
       <section className="mb-6">
         <div className="flex items-center gap-2.5 mb-3">
-          <MascotSprite src="/assets/mascots/mascot-followup.png" size={28} alt="Follow-up mascot" />
+          <ClayCharacter kind="call" size={28} alt="Follow-up clay character" />
           <div>
             <h2 className="zams-display text-lg md:text-xl leading-tight">Action queue</h2>
             <p className="text-xs text-clay-muted">
@@ -421,7 +420,7 @@ export default function TodayPage() {
 
         {actionQueue.length === 0 ? (
           <div className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline p-8 flex flex-col items-center gap-3">
-            <ClayCharacter kind="pause" size={56} framed alt="All clear — resting" />
+            <ClayCharacter kind="success" size={56} framed alt="All clear — nothing waiting" />
             <p className="text-sm text-clay-muted mb-2">Everything is moving. Nothing waiting.</p>
             <button
               ref={startButtonRef}
@@ -504,7 +503,7 @@ export default function TodayPage() {
           <div className="mt-4 text-center py-10 bg-white dark:bg-clay-card rounded-xl border border-clay-hairline">
             <div className="relative mx-auto mb-4 w-28 h-28 flex items-center justify-center">
               <div className="absolute inset-0 rounded-full bg-clay-lavender/20" />
-              <ClayCharacter kind="success" size={96} framed className="relative" alt="Ready for your first win" />
+              <ClayCharacter kind="search" size={96} framed className="relative" alt="Search for your next prospect" />
             </div>
             <p className="text-sm font-medium text-clay-ink mb-1">No active deals yet</p>
             <p className="text-xs text-clay-muted mb-4">Your first deal card is waiting to be made.</p>
