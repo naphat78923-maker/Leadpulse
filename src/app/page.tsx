@@ -153,7 +153,7 @@ export default function TodayPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-4 md:mb-6">
         <div className="flex items-center gap-3">
-          <ClayCharacter kind="call" size={46} alt="LeadPulse clay character" />
+          <ClayCharacter kind="call" size={48} alt="LeadPulse clay character" />
           <div>
             <p className="zams-eyebrow mb-0.5">
               {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
@@ -409,7 +409,7 @@ export default function TodayPage() {
       {/* Action queue — top 3 overdue first, one-line verbs, chips */}
       <section className="mb-6">
         <div className="flex items-center gap-2.5 mb-3">
-          <ClayCharacter kind="call" size={28} alt="Follow-up clay character" />
+          <ClayCharacter kind="call" size={44} alt="Follow-up clay character" />
           <div>
             <h2 className="zams-display text-lg md:text-xl leading-tight">Action queue</h2>
             <p className="text-xs text-clay-muted">
