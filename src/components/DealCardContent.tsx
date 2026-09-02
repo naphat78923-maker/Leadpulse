@@ -52,6 +52,7 @@ export default function DealCardContent({
               initials={contact.initials}
               size={36}
               className="shrink-0"
+              interactive={false}
             />
           )}
           <div className="min-w-0 pt-0.5">
