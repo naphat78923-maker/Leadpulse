@@ -87,6 +87,19 @@ export const LANE_MASCOT_PATHS: Record<DealWorkflowAction, string> = {
   success: '/assets/mascots/mascot-won-trophy.png',
 };
 
+/** Soft HexFace kind per lane (SVG faces — replaces PNG mascots on the board chrome). */
+export type DealHexKind = 'call' | 'message' | 'package' | 'search' | 'pause' | 'success';
+
+export const LANE_HEX_KIND: Record<DealWorkflowAction, DealHexKind> = {
+  outreach: 'call',
+  reply: 'message',
+  sample: 'package',
+  testing: 'search',
+  reschedule: 'pause',
+  parked: 'pause',
+  success: 'success',
+};
+
 export const NUDGE_OPTIONS: Array<{ value: NudgeStage; label: string; days: number }> = [
   { value: 'warm', label: 'Warm nudge', days: 3 },
   { value: 'remind', label: 'Remind nudge', days: 7 },
