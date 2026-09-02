@@ -2,7 +2,6 @@
 
 import { useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
 import { Deal, STAGE_LABELS, DealStage } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
 import { deals as dataDeals, contacts as dataContacts, companies as dataCompanies, meetings as dataMeetings } from '@/data/crmData';
@@ -11,11 +10,12 @@ import LogInteractionModal from '@/components/LogInteractionModal';
 import MascotSprite from '@/components/MascotSprite';
 import TaskActionSheet from '@/components/TaskActionSheet';
 import ReorderSignalsCard from '@/components/ReorderSignalsCard';
-import { Plus, TrendingUp, AlertCircle, ChevronRight, Loader2, MessageCircle, Phone, Mail, Users, Package, Bell } from 'lucide-react';
+import { Plus, ChevronRight, MessageCircle } from 'lucide-react';
 import { calculateLeadScore, scoreToTier, TIER_LABELS, TIER_COLORS, TIER_BG, PRIORITY_CLASSES, PRIORITY_LABELS } from '@/utils/lead-scoring';
 import { WORKFLOW_LANES, getWorkflowAction, nudgeLabel } from '@/utils/deal-workflow';
 import { dealClientName } from '@/utils/dealLabel';
-import { PageTransition, StaggerList, StaggerItem } from '@/components/motion';
+import { PageTransition, StaggerList, StaggerItem, ClayCharacter } from '@/components/motion';
+import type { ClayKind } from '@/components/motion';
 
 // One-line action verbs for the queue (brief item 5: "Call, DM, Send sample, Find buyer")
 const ACTION_VERBS: Record<string, string> = {
@@ -28,13 +28,13 @@ const ACTION_VERBS: Record<string, string> = {
   success: 'Congratulate',
 };
 
-const PULSE_ITEMS = [
-  { key: 'call', label: 'Calls', icon: <Phone className="w-3.5 h-3.5 text-clay-teal" /> },
-  { key: 'email', label: 'Emails', icon: <Mail className="w-3.5 h-3.5 text-clay-pink" /> },
-  { key: 'dm', label: 'DMs', icon: <MessageCircle className="w-3.5 h-3.5 text-clay-lavender" /> },
-  { key: 'meeting', label: 'Meetings', icon: <Users className="w-3.5 h-3.5 text-clay-lavender" /> },
-  { key: 'sample_sent', label: 'Samples', icon: <Package className="w-3.5 h-3.5 text-clay-ochre" /> },
-  { key: 'nudge', label: 'Nudges', icon: <Bell className="w-3.5 h-3.5 text-clay-coral" /> },
+const PULSE_ITEMS: { key: string; label: string; clay: ClayKind }[] = [
+  { key: 'call', label: 'Calls', clay: 'call' },
+  { key: 'email', label: 'Emails', clay: 'message' },
+  { key: 'dm', label: 'DMs', clay: 'message' },
+  { key: 'meeting', label: 'Meetings', clay: 'search' },
+  { key: 'sample_sent', label: 'Samples', clay: 'package' },
+  { key: 'nudge', label: 'Nudges', clay: 'pause' },
 ];
 
 function daysOverdue(dateStr: string): number {
@@ -210,17 +210,18 @@ export default function TodayPage() {
 
       {/* Mini stats — quiet, one strip */}
       <div className="mb-4 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-4 py-2 flex items-center overflow-x-auto">
-        {[
+        {([
           { label: 'Active', value: stats.activeDeals, to: '/deals' },
-          { label: 'Won', value: stats.wonDeals, to: '/deals' },
+          { label: 'Won', value: stats.wonDeals, to: '/deals', clay: 'success' as const },
           { label: 'Contacts', value: stats.contacts, to: '/contacts' },
-          { label: 'Companies', value: stats.companies, to: '/companies' },
-        ].map((s, i) => (
+          { label: 'Companies', value: stats.companies, to: '/companies', clay: 'search' as const },
+        ] as const).map((s, i) => (
           <button
             key={s.label}
             onClick={() => router.push(s.to)}
-            className={`flex items-baseline gap-1.5 px-4 shrink-0 text-left active:bg-clay-surface ${i > 0 ? 'border-l border-clay-hairline' : ''}`}
+            className={`flex items-center gap-1.5 px-4 shrink-0 text-left active:bg-clay-surface ${i > 0 ? 'border-l border-clay-hairline' : ''}`}
           >
+            {'clay' in s && s.clay ? <ClayCharacter kind={s.clay} size={18} framed instant alt="" /> : null}
             <span className="text-sm font-semibold text-clay-ink leading-none">{s.value}</span>
             <span className="zams-mono text-[9px] uppercase tracking-[0.14px] text-clay-muted">{s.label}</span>
           </button>
@@ -388,20 +389,20 @@ export default function TodayPage() {
       </section>
       <div className="mb-6 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-4 py-2.5 flex items-center gap-3 overflow-x-auto">
         <div className="flex items-center gap-2 shrink-0">
-          <MascotSprite src="/assets/mascots/mascot-reply.png" size={20} alt="Listener mascot" />
+          <ClayCharacter kind="message" size={22} framed alt="Pulse messenger" />
           <p className="zams-mono text-[10px] uppercase tracking-[0.16px] text-clay-muted-soft">Today's pulse</p>
         </div>
         <div className="flex items-center gap-3 shrink-0">
           {PULSE_ITEMS.map(p => (
             <div key={p.key} className="flex items-center gap-1.5">
-              {p.icon}
+              <ClayCharacter kind={p.clay} size={20} framed alt={p.label} />
               <span className="text-sm font-semibold text-clay-ink leading-none">{todayCounts[p.key] ?? 0}</span>
               <span className="zams-mono text-[9px] uppercase tracking-[0.1px] text-clay-muted-soft">{p.label}</span>
             </div>
           ))}
         </div>
         <span className="text-[11px] text-clay-muted-soft ml-auto shrink-0 flex items-center gap-1.5">
-          {todayMeetings.length === 0 && <MascotSprite src="/assets/mascots/mascot-parked.png" size={18} alt="Sleepy mascot" />}
+          {todayMeetings.length === 0 && <ClayCharacter kind="pause" size={18} framed alt="Resting — no touches yet" />}
           {todayMeetings.length === 0 ? 'No touches yet today' : `${todayMeetings.length} ${todayMeetings.length === 1 ? 'touch' : 'touches'} today`}
         </span>
       </div>
@@ -420,7 +421,7 @@ export default function TodayPage() {
 
         {actionQueue.length === 0 ? (
           <div className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline p-8 flex flex-col items-center gap-3">
-            <MascotSprite src="/assets/mascots/mascot-parked.png" size={44} alt="Sleepy mascot" />
+            <ClayCharacter kind="pause" size={56} framed alt="All clear — resting" />
             <p className="text-sm text-clay-muted mb-2">Everything is moving. Nothing waiting.</p>
             <button
               ref={startButtonRef}
@@ -501,15 +502,9 @@ export default function TodayPage() {
 
         {deals.filter((d: Deal) => d.stage !== 'closed_won' && d.stage !== 'closed_lost').length === 0 && (
           <div className="mt-4 text-center py-10 bg-white dark:bg-clay-card rounded-xl border border-clay-hairline">
-            <div className="relative mx-auto mb-4 w-28 h-28">
+            <div className="relative mx-auto mb-4 w-28 h-28 flex items-center justify-center">
               <div className="absolute inset-0 rounded-full bg-clay-lavender/20" />
-              <Image
-                src="/assets/mascot-teardrop.png"
-                alt="LeadPulse mascot holding a deal card"
-                width={1024}
-                height={1024}
-                className="relative w-28 h-28 object-contain"
-              />
+              <ClayCharacter kind="success" size={96} framed className="relative" alt="Ready for your first win" />
             </div>
             <p className="text-sm font-medium text-clay-ink mb-1">No active deals yet</p>
             <p className="text-xs text-clay-muted mb-4">Your first deal card is waiting to be made.</p>
