@@ -4,6 +4,7 @@ import {
   useCallback,
   useState,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
 } from 'react';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
@@ -28,6 +29,15 @@ export type HexFaceProps = {
   alt?: string;
 };
 
+/** Soft chunky silhouette family — fat round stroke, distinct per kind. */
+export type HexFaceShape =
+  | 'hex'
+  | 'squircle'
+  | 'rounded-rect'
+  | 'circle'
+  | 'diamond'
+  | 'pentagon';
+
 /** Solid clay accents per kind — chunky face fills (not muted mixes). */
 export const HEX_KIND_ACCENT: Record<ClayKind, string> = {
   call: 'var(--color-clay-teal)',
@@ -36,6 +46,16 @@ export const HEX_KIND_ACCENT: Record<ClayKind, string> = {
   search: 'var(--color-clay-lavender)',
   pause: 'var(--color-clay-ochre)',
   success: 'var(--color-clay-mint)',
+};
+
+/** Kind → soft shape (silhouette only; color/eyes/motion stay kind-driven). */
+export const HEX_KIND_SHAPE: Record<ClayKind, HexFaceShape> = {
+  call: 'hex',
+  message: 'squircle',
+  package: 'rounded-rect',
+  search: 'circle',
+  pause: 'diamond',
+  success: 'pentagon',
 };
 
 const ALT: Record<ClayKind, string> = {
@@ -62,11 +82,72 @@ const EYE_POSE: Record<
 
 const ENTER_EASE = [0.22, 1, 0.36, 1] as const;
 
-/** Soft hex silhouette — strokeLinejoin round fattens into a chunky blob. */
+/** Soft hex — strokeLinejoin round fattens into a chunky blob. */
 const HEX_POINTS = '50,10 86,30 86,70 50,90 14,70 14,30';
+/** Soft rounded square / squircle blob. */
+const SQUIRCLE_POINTS = '24,24 76,24 76,76 24,76';
+/** Box-y rounded rectangle (slightly wider). */
+const ROUNDED_RECT_POINTS = '16,28 84,28 84,72 16,72';
+/** Soft diamond (rhombus). */
+const DIAMOND_POINTS = '50,12 88,50 50,88 12,50';
+/**
+ * Soft rounded pentagon (point-up, regular-ish).
+ * Readable at ~18px with fat round stroke.
+ */
+const PENTAGON_POINTS = '50,12 86,38 72,81 28,81 14,38';
+
+const STROKE = {
+  strokeWidth: 14,
+  strokeLinejoin: 'round' as const,
+  strokeLinecap: 'round' as const,
+};
+
+function KindSilhouette({
+  shape,
+  fill,
+}: {
+  shape: HexFaceShape;
+  fill: string;
+}): ReactNode {
+  if (shape === 'circle') {
+    return (
+      <circle
+        cx={50}
+        cy={50}
+        r={34}
+        fill={fill}
+        stroke={fill}
+        strokeWidth={STROKE.strokeWidth}
+        strokeLinecap={STROKE.strokeLinecap}
+      />
+    );
+  }
+
+  const points =
+    shape === 'hex'
+      ? HEX_POINTS
+      : shape === 'squircle'
+        ? SQUIRCLE_POINTS
+        : shape === 'rounded-rect'
+          ? ROUNDED_RECT_POINTS
+          : shape === 'diamond'
+            ? DIAMOND_POINTS
+            : PENTAGON_POINTS;
+
+  return (
+    <polygon
+      points={points}
+      fill={fill}
+      stroke={fill}
+      strokeWidth={STROKE.strokeWidth}
+      strokeLinejoin={STROKE.strokeLinejoin}
+      strokeLinecap={STROKE.strokeLinecap}
+    />
+  );
+}
 
 /**
- * Soft rounded-hex + slanted pill eyes (Coding-bot style).
+ * Soft kind-shaped face + slanted pill eyes (Coding-bot style).
  * Idle: Y bob + blink. Press freezes idle + slight scale.
  * prefers-reduced-motion → static. Pure SVG + framer-motion — no Lottie.
  */
@@ -84,8 +165,9 @@ export default function HexFace({
   const isPressed = pressed || holding;
   const freeze = reduce || isPressed;
   const fill = HEX_KIND_ACCENT[kind];
+  const shape = HEX_KIND_SHAPE[kind];
   const eyes = EYE_POSE[kind];
-  const decorative = alt === "";
+  const decorative = alt === '';
   const label = decorative ? undefined : (alt ?? ALT[kind]);
   const tapScale = size >= 32 ? pressScale : 0.975;
 
@@ -112,10 +194,11 @@ export default function HexFace({
 
   return (
     <motion.span
-      role={decorative ? undefined : "img"}
+      role={decorative ? undefined : 'img'}
       aria-label={label}
       aria-hidden={decorative ? true : undefined}
       data-kind={kind}
+      data-shape={shape}
       data-hex-face=""
       className={clsx(
         'inline-flex shrink-0 items-center justify-center select-none touch-manipulation',
@@ -158,14 +241,7 @@ export default function HexFace({
           aria-hidden="true"
           className="overflow-visible"
         >
-          <polygon
-            points={HEX_POINTS}
-            fill={fill}
-            stroke={fill}
-            strokeWidth={14}
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
+          <KindSilhouette shape={shape} fill={fill} />
           {/* Soft highlight blob */}
           <ellipse
             cx={42}
