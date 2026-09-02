@@ -82,6 +82,29 @@ const EYE_POSE: Record<
 
 const ENTER_EASE = [0.22, 1, 0.36, 1] as const;
 
+/** Soft spring for hover lift / tilt / scale. */
+const springHover = {
+  type: 'spring' as const,
+  stiffness: 380,
+  damping: 22,
+  mass: 0.55,
+};
+
+const springEyeLook = {
+  type: 'spring' as const,
+  stiffness: 420,
+  damping: 28,
+  mass: 0.4,
+};
+
+const HOVER_SCALE = 1.07;
+const HOVER_LIFT = -3;
+const HOVER_TILT = 5;
+/** Max eye look in SVG user units toward pointer. */
+const EYE_LOOK_MAX = 2.6;
+/** Fixed look-up when hovered but no move yet. */
+const EYE_LOOK_UP = -2.2;
+
 /** Soft hex — strokeLinejoin round fattens into a chunky blob. */
 const HEX_POINTS = '50,10 86,30 86,70 50,90 14,70 14,30';
 /** Soft rounded square / squircle blob. */
@@ -148,8 +171,9 @@ function KindSilhouette({
 
 /**
  * Soft kind-shaped face + slanted pill eyes (Coding-bot style).
- * Idle: Y bob + blink. Press freezes idle + slight scale.
- * prefers-reduced-motion → static. Pure SVG + framer-motion — no Lottie.
+ * Idle: Y bob + blink. Hover (pointer): scale/lift/tilt + snappier bob + eye look.
+ * Press freezes idle + slight scale (wins over hover). prefers-reduced-motion → static.
+ * Pure SVG + framer-motion — no Lottie.
  */
 export default function HexFace({
   kind,
@@ -162,7 +186,11 @@ export default function HexFace({
 }: HexFaceProps) {
   const reduce = usePrefersReducedMotion();
   const [holding, setHolding] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [eyeLook, setEyeLook] = useState({ x: 0, y: 0 });
   const isPressed = pressed || holding;
+  /** Hover motion only when not reduced and not pressed. */
+  const hoverActive = hovered && !isPressed && !reduce;
   const freeze = reduce || isPressed;
   const fill = HEX_KIND_ACCENT[kind];
   const shape = HEX_KIND_SHAPE[kind];
@@ -192,6 +220,44 @@ export default function HexFace({
     [endPress]
   );
 
+  const onPointerEnter = useCallback(() => {
+    if (reduce) return;
+    setHovered(true);
+    // Default look-up until pointer move refines direction.
+    setEyeLook({ x: 0, y: EYE_LOOK_UP });
+  }, [reduce]);
+
+  const onPointerLeave = useCallback(() => {
+    setHovered(false);
+    setEyeLook({ x: 0, y: 0 });
+  }, []);
+
+  const onPointerMove = useCallback(
+    (e: ReactPointerEvent<HTMLSpanElement>) => {
+      if (reduce || isPressed || !hovered) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      if (rect.width < 1 || rect.height < 1) return;
+      const nx = (e.clientX - (rect.left + rect.width / 2)) / (rect.width / 2);
+      const ny = (e.clientY - (rect.top + rect.height / 2)) / (rect.height / 2);
+      const clamp = (v: number) => Math.max(-1, Math.min(1, v));
+      setEyeLook({
+        x: clamp(nx) * EYE_LOOK_MAX,
+        y: clamp(ny) * EYE_LOOK_MAX,
+      });
+    },
+    [reduce, isPressed, hovered]
+  );
+
+  const outerScale = reduce
+    ? 1
+    : isPressed
+      ? tapScale
+      : hoverActive
+        ? HOVER_SCALE
+        : 1;
+  const outerY = hoverActive ? HOVER_LIFT : 0;
+  const outerRotate = hoverActive ? HOVER_TILT : 0;
+
   return (
     <motion.span
       role={decorative ? undefined : 'img'}
@@ -200,6 +266,7 @@ export default function HexFace({
       data-kind={kind}
       data-shape={shape}
       data-hex-face=""
+      data-hovered={hoverActive ? '' : undefined}
       className={clsx(
         'inline-flex shrink-0 items-center justify-center select-none touch-manipulation',
         className
@@ -208,30 +275,49 @@ export default function HexFace({
         width: size,
         height: size,
         willChange: 'transform',
+        // Soft shadow via filter — no layout; only when hover-active.
+        filter: hoverActive
+          ? 'drop-shadow(0 3px 5px rgba(28, 25, 23, 0.14))'
+          : 'drop-shadow(0 0 0 rgba(0,0,0,0))',
       }}
       initial={instant || reduce ? false : { opacity: 0, scale: 0.94 }}
       animate={{
         opacity: 1,
-        scale: isPressed && !reduce ? tapScale : 1,
+        scale: outerScale,
+        y: outerY,
+        rotate: outerRotate,
       }}
       transition={
         reduce
           ? { duration: 0.01 }
           : isPressed
             ? springPress
-            : { duration: 0.22, ease: ENTER_EASE }
+            : hoverActive || hovered
+              ? springHover
+              : { duration: 0.22, ease: ENTER_EASE }
       }
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
       onPointerCancel={endPress}
+      onPointerEnter={onPointerEnter}
+      onPointerLeave={onPointerLeave}
+      onPointerMove={onPointerMove}
     >
       <motion.span
         className="relative block h-full w-full"
-        animate={freeze ? { y: 0 } : { y: [0, -2.2, 0] }}
+        animate={
+          freeze
+            ? { y: 0 }
+            : hoverActive
+              ? { y: [0, -3.4, 0] }
+              : { y: [0, -2.2, 0] }
+        }
         transition={
           freeze
             ? { duration: 0.12 }
-            : { duration: 2.8, repeat: Infinity, ease: 'easeInOut' }
+            : hoverActive
+              ? { duration: 1.65, repeat: Infinity, ease: 'easeInOut' }
+              : { duration: 2.8, repeat: Infinity, ease: 'easeInOut' }
         }
       >
         <svg
@@ -250,38 +336,52 @@ export default function HexFace({
             ry={10}
             fill="rgba(255,255,255,0.18)"
           />
+          {/* Eye look (hover) — separate from blink so springs/keyframes don't fight. */}
           <motion.g
-            style={{ transformOrigin: `${50 + eyes.ox}px ${52 + eyes.oy}px` }}
-            animate={freeze ? { scaleY: 1 } : { scaleY: [1, 1, 1, 0.14, 1] }}
-            transition={
-              freeze
-                ? { duration: 0.08 }
-                : {
-                    duration: 3.4,
-                    times: [0, 0.78, 0.86, 0.9, 1],
-                    repeat: Infinity,
-                    ease: 'easeInOut',
-                  }
+            animate={
+              freeze || !hoverActive
+                ? { x: 0, y: 0 }
+                : { x: eyeLook.x, y: eyeLook.y }
             }
+            transition={springEyeLook}
           >
-            <g
-              transform={`translate(${eyes.ox} ${eyes.oy}) rotate(${eyes.rot} 50 52)`}
+            <motion.g
+              style={{
+                transformOrigin: `${50 + eyes.ox}px ${52 + eyes.oy}px`,
+              }}
+              animate={
+                freeze ? { scaleY: 1 } : { scaleY: [1, 1, 1, 0.14, 1] }
+              }
+              transition={
+                freeze
+                  ? { duration: 0.08 }
+                  : {
+                      duration: 3.4,
+                      times: [0, 0.78, 0.86, 0.9, 1],
+                      repeat: Infinity,
+                      ease: 'easeInOut',
+                    }
+              }
             >
-              <ellipse
-                cx={50 - eyes.gap / 2}
-                cy={52}
-                rx={5.2}
-                ry={7.4}
-                fill="#fff"
-              />
-              <ellipse
-                cx={50 + eyes.gap / 2}
-                cy={52}
-                rx={5.2}
-                ry={7.4}
-                fill="#fff"
-              />
-            </g>
+              <g
+                transform={`translate(${eyes.ox} ${eyes.oy}) rotate(${eyes.rot} 50 52)`}
+              >
+                <ellipse
+                  cx={50 - eyes.gap / 2}
+                  cy={52}
+                  rx={5.2}
+                  ry={7.4}
+                  fill="#fff"
+                />
+                <ellipse
+                  cx={50 + eyes.gap / 2}
+                  cy={52}
+                  rx={5.2}
+                  ry={7.4}
+                  fill="#fff"
+                />
+              </g>
+            </motion.g>
           </motion.g>
         </svg>
       </motion.span>
