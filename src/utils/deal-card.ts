@@ -1,4 +1,5 @@
 import type { Company, Contact, Deal } from '@/types/crm';
+import { entityInitials } from '@/utils/entity-avatar';
 
 export type DealCardDueState = 'overdue' | 'today' | null;
 export type DealCardTimingTone = 'overdue' | 'today' | 'scheduled' | 'none';
@@ -30,17 +31,6 @@ function compactDate(date?: string | null): string | null {
   });
 }
 
-function contactInitials(name: string): string {
-  const parts = name
-    .trim()
-    .split(/\s+/)
-    .map(part => part.replace(/[^\p{L}\p{N}]/gu, ''))
-    .filter(Boolean);
-
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return Array.from(parts[0]).slice(0, 2).join('').toUpperCase();
-  return `${Array.from(parts[0])[0]}${Array.from(parts.at(-1)!)[0]}`.toUpperCase();
-}
 
 function timingFor(deal: Deal, due: DealCardDueState): DealCardPresentation['timing'] {
   const date = compactDate(deal.followup_date);
@@ -71,7 +61,7 @@ export function buildDealCardPresentation(
       ? {
           name: contactName,
           role: primaryContact.job_title?.trim() || 'Role unknown',
-          initials: contactInitials(contactName),
+          initials: entityInitials(contactName),
           additionalCount: Math.max(0, linkedContacts.length - 1),
           missing: false,
         }

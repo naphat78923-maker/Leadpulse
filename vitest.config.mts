@@ -10,7 +10,8 @@ export default defineConfig({
     },
   },
   test: {
-    environment: 'jsdom',
+    // happy-dom: jsdom@30 requires Node ≥22; box/CI may be on Node 20.
+    environment: 'happy-dom',
     include: ['src/**/*.test.{ts,tsx}'],
   },
 });
