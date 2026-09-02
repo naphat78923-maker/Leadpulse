@@ -497,6 +497,40 @@ body {
   transform: scale(0.98);
 }
 
+
+/* ─── Clay character idle loops (Animation Bot handoff) ─── */
+@keyframes clay-idle-call {
+  0%, 100% { transform: rotate(-1.2deg); }
+  50% { transform: rotate(1.2deg); }
+}
+@keyframes clay-idle-message {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+@keyframes clay-idle-package {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+@keyframes clay-idle-search {
+  0%, 100% { transform: rotate(-1deg); }
+  50% { transform: rotate(1.4deg); }
+}
+@keyframes clay-idle-pause {
+  0%, 100% { transform: scale(1) translateY(0); }
+  50% { transform: scale(1.012) translateY(-2px); }
+}
+@keyframes clay-idle-success {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.clay-idle { transform-origin: 50% 70%; }
+.clay-idle-call { animation: clay-idle-call 2.8s ease-in-out infinite; }
+.clay-idle-message { animation: clay-idle-message 2.4s ease-in-out infinite; }
+.clay-idle-package { animation: clay-idle-package 3.2s ease-in-out infinite; }
+.clay-idle-search { animation: clay-idle-search 3s ease-in-out infinite; }
+.clay-idle-pause { animation: clay-idle-pause 4s ease-in-out infinite; }
+.clay-idle-success { animation: clay-idle-success 2.6s ease-in-out infinite; }
+
 /* Respect reduced motion — kill decorative animation & transform feedback */
 @media (prefers-reduced-motion: reduce) {
   html {
@@ -528,6 +562,15 @@ body {
   .mascot-ride,
   .mascot-pop,
   .lane-drop-over {
+    animation: none !important;
+  }
+  .clay-idle,
+  .clay-idle-call,
+  .clay-idle-message,
+  .clay-idle-package,
+  .clay-idle-search,
+  .clay-idle-pause,
+  .clay-idle-success {
     animation: none !important;
   }
 }
