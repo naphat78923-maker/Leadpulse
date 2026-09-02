@@ -13,7 +13,7 @@ import { Plus, ChevronRight, MessageCircle } from 'lucide-react';
 import { calculateLeadScore, scoreToTier, TIER_LABELS, TIER_COLORS, TIER_BG, PRIORITY_CLASSES, PRIORITY_LABELS } from '@/utils/lead-scoring';
 import { WORKFLOW_LANES, getWorkflowAction, nudgeLabel } from '@/utils/deal-workflow';
 import { dealClientName } from '@/utils/dealLabel';
-import { PageTransition, StaggerList, StaggerItem, ClayCharacter } from '@/components/motion';
+import { PageTransition, StaggerList, StaggerItem, HexFace } from '@/components/motion';
 import type { ClayKind } from '@/components/motion';
 
 // One-line action verbs for the queue (brief item 5: "Call, DM, Send sample, Find buyer")
@@ -153,7 +153,7 @@ export default function TodayPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-4 md:mb-6">
         <div className="flex items-center gap-3">
-          <ClayCharacter kind="call" size={48} alt="LeadPulse clay character" />
+          <HexFace kind="call" size={48} alt="LeadPulse hex face" />
           <div>
             <p className="zams-eyebrow mb-0.5">
               {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
@@ -220,7 +220,7 @@ export default function TodayPage() {
             onClick={() => router.push(s.to)}
             className={`flex items-center gap-1.5 px-4 shrink-0 text-left active:bg-clay-surface ${i > 0 ? 'border-l border-clay-hairline' : ''}`}
           >
-            {'clay' in s && s.clay ? <ClayCharacter kind={s.clay} size={18} framed instant alt="" /> : null}
+            {'clay' in s && s.clay ? <HexFace kind={s.clay} size={18} framed instant alt="" /> : null}
             <span className="text-sm font-semibold text-clay-ink leading-none">{s.value}</span>
             <span className="zams-mono text-[9px] uppercase tracking-[0.14px] text-clay-muted">{s.label}</span>
           </button>
@@ -230,9 +230,9 @@ export default function TodayPage() {
       {/* Today's plan — the hero */}
       <div className="mb-4 rounded-2xl border border-clay-hairline bg-white dark:bg-clay-card p-5 md:p-6 flex flex-col md:flex-row md:items-center gap-4 md:gap-5 relative overflow-hidden shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_6px_20px_-12px_rgba(43,33,26,0.25)]">
         {startHere ? (
-          <ClayCharacter kind="call" size={56} alt="Planner clay character" />
+          <HexFace kind="call" size={56} alt="Planner hex face" />
         ) : (
-          <ClayCharacter kind="success" size={56} alt="All clear clay character" />
+          <HexFace kind="success" size={56} alt="All clear hex face" />
         )}
         <div className="flex-1 min-w-0">
           <p className="zams-eyebrow mb-1">Today's plan</p>
@@ -294,7 +294,7 @@ export default function TodayPage() {
             </button>
             {dealFollowUps.dueToday.length === 0 ? (
               <p className="text-xs text-clay-muted flex items-center gap-1.5">
-                <ClayCharacter kind="pause" size={18} framed={false} instant alt="" />
+                <HexFace kind="pause" size={18} framed={false} instant alt="" />
                 Nothing scheduled for today.
               </p>
             ) : (
@@ -345,7 +345,7 @@ export default function TodayPage() {
             </button>
             {dealFollowUps.thisWeek.length === 0 ? (
               <p className="text-xs text-clay-muted flex items-center gap-1.5">
-                <ClayCharacter kind="pause" size={18} framed={false} instant alt="" />
+                <HexFace kind="pause" size={18} framed={false} instant alt="" />
                 Light week ahead.
               </p>
             ) : (
@@ -388,20 +388,20 @@ export default function TodayPage() {
       </section>
       <div className="mb-6 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-4 py-2.5 flex items-center gap-3 overflow-x-auto">
         <div className="flex items-center gap-2 shrink-0">
-          <ClayCharacter kind="message" size={22} framed alt="Pulse messenger" />
+          <HexFace kind="message" size={22} framed alt="Pulse messenger" />
           <p className="zams-mono text-[10px] uppercase tracking-[0.16px] text-clay-muted-soft">Today's pulse</p>
         </div>
         <StaggerList stagger={0.035} className="flex items-center gap-3 shrink-0">
           {PULSE_ITEMS.map(p => (
             <StaggerItem key={p.key} className="flex items-center gap-1.5">
-              <ClayCharacter kind={p.clay} size={20} framed={false} instant alt={p.label} />
+              <HexFace kind={p.clay} size={20} framed={false} instant alt={p.label} />
               <span className="text-sm font-semibold text-clay-ink leading-none">{todayCounts[p.key] ?? 0}</span>
               <span className="zams-mono text-[9px] uppercase tracking-[0.1px] text-clay-muted-soft">{p.label}</span>
             </StaggerItem>
           ))}
         </StaggerList>
         <span className="text-[11px] text-clay-muted-soft ml-auto shrink-0 flex items-center gap-1.5">
-          {todayMeetings.length === 0 && <ClayCharacter kind="pause" size={18} framed alt="Resting — no touches yet" />}
+          {todayMeetings.length === 0 && <HexFace kind="pause" size={18} framed alt="Resting — no touches yet" />}
           {todayMeetings.length === 0 ? 'No touches yet today' : `${todayMeetings.length} ${todayMeetings.length === 1 ? 'touch' : 'touches'} today`}
         </span>
       </div>
@@ -409,7 +409,7 @@ export default function TodayPage() {
       {/* Action queue — top 3 overdue first, one-line verbs, chips */}
       <section className="mb-6">
         <div className="flex items-center gap-2.5 mb-3">
-          <ClayCharacter kind="call" size={44} alt="Follow-up clay character" />
+          <HexFace kind="call" size={44} alt="Follow-up hex face" />
           <div>
             <h2 className="zams-display text-lg md:text-xl leading-tight">Action queue</h2>
             <p className="text-xs text-clay-muted">
@@ -420,7 +420,7 @@ export default function TodayPage() {
 
         {actionQueue.length === 0 ? (
           <div className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline p-8 flex flex-col items-center gap-3">
-            <ClayCharacter kind="success" size={56} framed alt="All clear — nothing waiting" />
+            <HexFace kind="success" size={56} framed alt="All clear — nothing waiting" />
             <p className="text-sm text-clay-muted mb-2">Everything is moving. Nothing waiting.</p>
             <button
               ref={startButtonRef}
@@ -503,7 +503,7 @@ export default function TodayPage() {
           <div className="mt-4 text-center py-10 bg-white dark:bg-clay-card rounded-xl border border-clay-hairline">
             <div className="relative mx-auto mb-4 w-28 h-28 flex items-center justify-center">
               <div className="absolute inset-0 rounded-full bg-clay-lavender/20" />
-              <ClayCharacter kind="search" size={96} framed className="relative" alt="Search for your next prospect" />
+              <HexFace kind="search" size={96} framed className="relative" alt="Search for your next prospect" />
             </div>
             <p className="text-sm font-medium text-clay-ink mb-1">No active deals yet</p>
             <p className="text-xs text-clay-muted mb-4">Your first deal card is waiting to be made.</p>

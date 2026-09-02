@@ -6,3 +6,6 @@ export { default as PageTransition } from './PageTransition';
 export { default as ModalShell } from './ModalShell';
 export { default as ClayCharacter } from './ClayCharacter';
 export type { ClayKind, ClayCharacterProps } from './ClayCharacter';
+export { default as HexFace } from './HexFace';
+export type { HexFaceProps } from './HexFace';
+export { HEX_KIND_ACCENT } from './HexFace';
