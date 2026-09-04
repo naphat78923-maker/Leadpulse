@@ -1,0 +1,155 @@
+{
+  "name": "LeadPulse Draft-Review Language Safeguard",
+  "version": "0.2.0",
+  "status": "approved_for_implementation",
+  "scope": "A contact-level language awareness layer for the Ebimaru drafting brief. P1 draft-review safeguard.",
+  "design_intent": {
+    "pattern": "Draft-review language badge with automatic override",
+    "not": "A global app-language setting or a send-time language auto-detector",
+    "goal": "Make the client's demonstrated language visible at the moment Pat reviews a draft, so the outbound message matches the client's own words — and auto-detect when that language is unclear.",
+    "core_rule": "Language is a contact-level fact. Pat's choice is already made when they pick the draft card — no separate override step."
+  },
+  "operator_reality": {
+    "source": "Ebimaru operator brief, 2026-09-03",
+    "validated_findings": [
+      "Scheduled work comes first; high-priority unscheduled deals need a forced date-or-park queue.",
+      "No linked contact means contact research, not outreach. Generic routes are fallback, not equal to named buyers.",
+      "Reply must mean a usable inbound response exists. Otherwise it belongs in Waiting/Follow-up with a date."
+    ],
+    "language_specific": [
+      "Clients in VG Saveur's market write in Thai, English, or a mix. Assuming one or the other risks a tone-deaf first message.",
+      "The client's last inbound message is the strongest evidence of their preferred language.",
+      "When the language is genuinely unclear, the system auto-detects and Pat can tell Ebimaru which language to pick on a case-by-case basis."
+    ]
+  },
+  "content_model": {
+    "contact_fields": [
+      {
+        "name": "outreach_language",
+        "type": "text",
+        "values": ["thai", "english", "autodetect"],
+        "default": "autodetect",
+        "purpose": "The client's demonstrated preferred language for outbound messages."
+      },
+      {
+        "name": "outreach_language_basis",
+        "type": "text",
+        "values": ["last_inbound", "pat_override", "autodetect"],
+        "default": "autodetect",
+        "purpose": "Why the system believes this is the client's language."
+      }
+    ],
+    "rules": [
+      "outreach_language defaults to 'autodetect' for all existing contacts. No backfill from name or company heuristics.",
+      "outreach_language_basis defaults to 'autodetect'. Only an explicit inbound interaction or a Pat override changes it.",
+      "A new inbound interaction in Thai updates outreach_language to 'thai' and basis to 'last_inbound' — only if the current basis is not 'pat_override'.",
+      "A new inbound interaction in English updates outreach_language to 'english' and basis to 'last_inbound' — only if the current basis is not 'pat_override'.",
+      "Mixed or ambiguous inbound leaves outreach_language unchanged at 'autodetect' unless Pat explicitly overrides.",
+      "Pat's choice is already made when they pick the draft card. Selecting a Thai draft sets outreach_language = 'thai', basis = 'pat_override'. Selecting an English draft sets outreach_language = 'english', basis = 'pat_override'."
+    ]
+  },
+  "draft_card_design": {
+    "name": "Draft review card with language badge",
+    "entry_point": "Ebimaru drafting brief section in DealDetail, shown when workflow_action is outreach, reply, or reschedule.",
+    "structure": [
+      "Language badge — prominent, top-left of the draft card.",
+      "Original inbound context — collapsed snippet of the client's last message, visible with one tap.",
+      "Draft preview — the proposed outbound text.",
+      "Draft language selector: 'Draft in Thai' / 'Draft in English' — Pat's choice here IS the language setting.",
+      "Send / edit / cancel actions — unchanged from current flow."
+    ],
+    "language_badge_states": [
+      {
+        "condition": "outreach_language = 'thai'",
+        "badge": "🇹🇭 Thai",
+        "tone": "muted",
+        "note": "No selector needed — language is known."
+      },
+      {
+        "condition": "outreach_language = 'english'",
+        "badge": "🇬🇧 English",
+        "tone": "muted",
+        "note": "No selector needed — language is known."
+      },
+      {
+        "condition": "outreach_language = 'autodetect'",
+        "badge": "🔄 Auto-detect",
+        "tone": "warning",
+        "note": "Draft language selector shown: Draft in Thai / Draft in English. Pat's choice writes the contact record automatically."
+      }
+    ],
+    "override_behavior": [
+      "Pat's choice is already made when they pick the draft card — no separate override step.",
+      "Clicking 'Draft in Thai' regenerates the draft in Thai AND writes outreach_language = 'thai', basis = 'pat_override' to the contact record.",
+      "Clicking 'Draft in English' regenerates the draft in English AND writes outreach_language = 'english', basis = 'pat_override' to the contact record.",
+      "The write is automatic and auditable — every draft-language choice is a Pat choice recorded on the contact.",
+      "A Pat-overridden language is not silently overwritten by a later inbound interaction."
+    ]
+  },
+  "auto_translation": {
+    "policy": "Case by case only",
+    "behavior": [
+      "The system does not auto-translate by default.",
+      "When Pat picks a draft card, they tell Ebimaru which language to pick — Thai or English.",
+      "Ebimaru regenerates the draft in the chosen language with the original inbound as context.",
+      "This is an explicit per-draft instruction, not a system-wide auto-translation feature."
+    ]
+  },
+  "inbound_context_display": {
+    "purpose": "Let Pat verify the language claim against the client's own words.",
+    "behavior": [
+      "Show the most recent inbound interaction's first 2-3 lines, collapsed.",
+      "Tap to expand and read the full inbound thread.",
+      "If no inbound interaction exists, show 'No inbound message on record — auto-detect.'",
+      "The context is read-only."
+    ]
+  },
+  "what_this_does_not_do": {
+    "no_auto_send": "The draft card never sends a message. Pat always reviews and explicitly sends.",
+    "no_global_setting": "There is no app-wide 'default to Thai' toggle. Language is per-contact, per-evidence.",
+    "no_silent_default": "When language is autodetect, the system does not pick Thai or English on its own. It shows the selector.",
+    "no_deal_level_field": "Language lives on the contact, not the deal. A deal inherits it through the linked contact.",
+    "no_blind_auto_translate": "Auto-translation is case-by-case. Pat tells Ebimaru which language to pick per draft."
+  },
+  "visual_language": {
+    "badge_style": "Pill badge, 12px, monospace eyebrow, positioned top-left of the draft card.",
+    "badge_colors": {
+      "thai": "border-clay-ochre/30 bg-clay-ochre/10 text-clay-ochre",
+      "english": "border-clay-lavender/30 bg-clay-lavender/10 text-clay-lavender",
+      "autodetect": "border-clay-coral/30 bg-clay-coral/10 text-clay-coral"
+    },
+    "selector_row": "Two equal-weight buttons, outlined, below the draft preview. Only visible when outreach_language = 'autodetect'.",
+    "inbound_context": "Collapsed accordion, 11px text, clay-surface background, top border."
+  },
+  "implementation_boundaries": {
+    "preserve": [
+      "Existing drafting brief section and its workflow-action gating.",
+      "Existing explicit Save, spinner, toast, success ring, and undo patterns.",
+      "Existing contact identity-quality model — language is additive, not a replacement.",
+      "Existing interaction ledger as the source of truth for inbound language evidence."
+    ],
+    "avoid": [
+      "Adding language to the deal record — it belongs on the contact.",
+      "Auto-detecting language from message text without an explicit inbound interaction.",
+      "Overriding a Pat-set language without a new explicit Pat choice.",
+      "Showing the selector row when language is already known (thai/english with basis = last_inbound)."
+    ]
+  },
+  "acceptance_criteria": [
+    "A contact with no inbound interaction shows 'Auto-detect' and shows the draft language selector.",
+    "A contact with a Thai inbound shows 'Thai' and hides the selector.",
+    "A contact with an English inbound shows 'English' and hides the selector.",
+    "A contact with mixed/ambiguous inbound shows 'Auto-detect' and shows the selector.",
+    "Pat clicking 'Draft in Thai' writes outreach_language = 'thai' and basis = 'pat_override' to the contact record.",
+    "Pat clicking 'Draft in English' writes outreach_language = 'english' and basis = 'pat_override' to the contact record.",
+    "A Pat-overridden language is not silently overwritten by a later inbound interaction.",
+    "The original inbound context is visible with one tap from the draft card.",
+    "No message is ever sent without Pat's explicit review and send action.",
+    "Auto-translation is case-by-case — Pat tells Ebimaru which language to pick per draft."
+  ],
+  "priority": "P1",
+  "depends_on": [
+    "P0 Reply-lane data hygiene (modal already live, cleaning in progress).",
+    "P0 Unscheduled priority queue (post-experiment)."
+  ]
+}

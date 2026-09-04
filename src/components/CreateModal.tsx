@@ -37,7 +37,7 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
   function getInitialState(t: ModalType) {
     switch (t) {
       case 'company': return { name: '', status: 'prospect', lead_source: '', account_owner: 'Pat', tags: '', industry: '', size: 'B', address: '', website: '', notes: '' };
-      case 'contact': return { name: '', identity_quality: 'unknown', email: '', phone: '', phone_second: '', line: '', job_title: '', company_id: '', status: 'active', notes: '' };
+      case 'contact': return { name: '', identity_quality: 'unknown', outreach_language: 'autodetect', email: '', phone: '', phone_second: '', line: '', job_title: '', company_id: '', status: 'active', notes: '' };
       // title + client are auto-derived from Product + Company on submit (no manual entry)
       case 'deal': return { stage: 'research', product: 'Butter', company_id: '', contact_ids: [] as string[], value: '', priority: 'medium', next_action: '', draft_primary_ask: '', followup_date: '', workflow_action: 'outreach', nudge_stage: '', sample_status: '', notes: '' };
       case 'meeting': return { description: '', type: 'call', date: new Date().toISOString().split('T')[0], company_id: '', contact_ids: [] as string[], deal_id: '', product: 'Butter', summary: '', outcome: '', followup_date: '' };

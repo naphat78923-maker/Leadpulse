@@ -1,14 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { AlertCircle, Check, Edit2, Loader2, Undo2, X, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
-import { Deal, DealStage, DealWorkflowAction, NudgeStage, SampleStatus, STAGE_LABELS } from '@/types/crm';
+import { Deal, DealStage, DealWorkflowAction, NudgeStage, SampleStatus, STAGE_LABELS, OutreachLanguage } from '@/types/crm';
 import { useToast } from '@/components/ToastProvider';
 import { useCrm } from '@/components/CrmProvider';
 import { dealClientName } from '@/utils/dealLabel';
 import * as crm from '@/lib/crm';
 import { NUDGE_OPTIONS, SAMPLE_STATUS_OPTIONS, WORKFLOW_BY_ID, WORKFLOW_LANES, getWorkflowAction, nudgeLabel, canNudge } from '@/utils/deal-workflow';
+import { outreachLanguageLabel, outreachLanguageBadgeColor, outreachLanguageBasisLabel } from '@/utils/contact-identity';
 
 interface DealDetailProps {
   deal: Deal;
@@ -40,13 +41,15 @@ const DRAFTING_WORKFLOWS = new Set<DealWorkflowAction>(['outreach', 'reply', 're
 
 export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) {
   const { addToast } = useToast();
-  const { logActivity, deleteEntity, companies, contacts } = useCrm();
+  const { logActivity, deleteEntity, companies, contacts, meetings = [] } = useCrm();
   const currentWorkflow = getWorkflowAction(deal);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [undoSnapshot, setUndoSnapshot] = useState<Partial<Deal> | null>(null);
+  const [draftLanguage, setDraftLanguage] = useState<OutreachLanguage>('autodetect');
+  const [inboundContextOpen, setInboundContextOpen] = useState(false);
   const [confirmSuccess, setConfirmSuccess] = useState(false);
   const [confirmLost, setConfirmLost] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
@@ -298,6 +301,37 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
     }
   };
 
+  const linkedContact = useMemo(() => {
+    if (!deal.contact_ids?.length) return null;
+    return contacts.find(c => deal.contact_ids.includes(c.id)) || null;
+  }, [deal.contact_ids, contacts]);
+
+  const outreachLanguage = linkedContact?.outreach_language ?? 'autodetect';
+  const outreachBasis = linkedContact?.outreach_language_basis ?? 'autodetect';
+
+  const lastInbound = useMemo(() => {
+    if (!linkedContact) return null;
+    const contactMeetings = meetings
+      .filter(m => (m.contact_ids || []).includes(linkedContact.id) && m.outcome && m.outcome !== 'no_response')
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    return contactMeetings[0] || null;
+  }, [linkedContact, meetings]);
+
+  const handleDraftLanguageSelect = async (lang: OutreachLanguage) => {
+    setDraftLanguage(lang);
+    if (linkedContact && lang !== 'autodetect') {
+      try {
+        await crm.updateContact(linkedContact.id, {
+          outreach_language: lang,
+          outreach_language_basis: 'pat_override',
+        });
+        addToast(`Language set to ${outreachLanguageLabel(lang).replace(/[^\w\s]/g, '').trim()}`);
+      } catch (err) {
+        addToast('Could not save language override');
+      }
+    }
+  };
+
   const isOverdue = deal.followup_date && new Date(`${deal.followup_date}T12:00:00`) < new Date() && !['closed_won', 'closed_lost'].includes(deal.stage);
   const workflow = WORKFLOW_BY_ID[currentWorkflow];
   const visibleWorkflow = editing ? editData.workflow_action : currentWorkflow;
@@ -376,9 +410,71 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
           </section>
           {showDraftingBrief && (
             <section className="rounded-xl border border-clay-lavender/30 bg-clay-lavender/10 p-3">
-              <p className="text-[10px] font-semibold tracking-wider text-clay-muted">EBIMARU DRAFTING BRIEF</p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] font-semibold tracking-wider text-clay-muted">EBIMARU DRAFTING BRIEF</p>
+                <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] border ${outreachLanguageBadgeColor(outreachLanguage)}`}>
+                  {outreachLanguageLabel(outreachLanguage)}
+                </span>
+              </div>
               <p className="mt-1 text-xs text-clay-muted">One client question only. This is drafting guidance, not a send instruction.</p>
               <label className="block mt-3 text-clay-body">Primary client ask{editing ? <input value={editData.draft_primary_ask} onChange={event => setEditData(prev => ({ ...prev, draft_primary_ask: event.target.value }))} placeholder="What one thing should the client answer?" className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card" /> : <p className="mt-1 rounded-lg bg-white/60 dark:bg-clay-card p-3 text-xs text-clay-body">{deal.draft_primary_ask || '—'}</p>}</label>
+
+              {outreachLanguage === 'autodetect' && (
+                <div className="mt-3 rounded-lg border border-clay-coral/30 bg-clay-coral/10 p-2.5">
+                  <p className="text-[10px] font-semibold text-clay-coral mb-1.5">LANGUAGE UNKNOWN — choose draft language</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleDraftLanguageSelect('thai')}
+                      className={clsx(
+                        'px-3 py-2 rounded-lg border text-xs font-medium transition-colors',
+                        draftLanguage === 'thai' ? 'border-clay-ochre bg-clay-ochre/20 text-clay-ochre' : 'border-clay-hairline text-clay-muted hover:border-clay-muted-soft'
+                      )}
+                    >
+                      🇹🇭 Draft in Thai
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDraftLanguageSelect('english')}
+                      className={clsx(
+                        'px-3 py-2 rounded-lg border text-xs font-medium transition-colors',
+                        draftLanguage === 'english' ? 'border-clay-lavender bg-clay-lavender/20 text-clay-lavender' : 'border-clay-hairline text-clay-muted hover:border-clay-muted-soft'
+                      )}
+                    >
+                      🇬🇧 Draft in English
+                    </button>
+                  </div>
+                  <p className="mt-1.5 text-[10px] text-clay-muted">Your choice sets the contact's outreach language.</p>
+                </div>
+              )}
+
+              {outreachLanguage !== 'autodetect' && outreachBasis && (
+                <p className="mt-2 text-[10px] text-clay-muted">
+                  Language: {outreachLanguageLabel(outreachLanguage)} · {outreachLanguageBasisLabel(outreachBasis)}
+                </p>
+              )}
+
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => setInboundContextOpen(!inboundContextOpen)}
+                  className="text-[10px] text-clay-muted underline"
+                >
+                  {inboundContextOpen ? 'Hide' : 'Show'} last inbound context
+                </button>
+                {inboundContextOpen && (
+                  <div className="mt-1.5 rounded-lg bg-clay-surface p-2.5 text-[11px] text-clay-body leading-relaxed">
+                    {lastInbound ? (
+                      <>
+                        <p className="text-clay-muted text-[10px] mb-1">{lastInbound.date} · {lastInbound.type}</p>
+                        <p>{lastInbound.summary || lastInbound.description}</p>
+                      </>
+                    ) : (
+                      <p className="text-clay-muted">No inbound message on record — auto-detect.</p>
+                    )}
+                  </div>
+                )}
+              </div>
             </section>
           )}
           <label className="block text-clay-body">{editing && editData.workflow_action === 'parked' ? 'Revisit date' : editing && editData.workflow_action === 'testing' ? 'Testing date' : 'Follow-up date'}{editing ? <input type="date" value={editData.followup_date} onChange={event => setEditData(prev => ({ ...prev, followup_date: event.target.value }))} className="block mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card" /> : <p className={clsx('mt-1', isOverdue ? 'text-clay-error font-medium' : 'text-clay-ink')}>{deal.followup_date || '—'}</p>}</label>

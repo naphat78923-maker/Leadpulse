@@ -133,6 +133,8 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
         company_id: el.company_id,
         status: el.status,
         identity_quality: el.identity_quality ?? 'unknown',
+        outreach_language: el.outreach_language ?? 'autodetect',
+        outreach_language_basis: el.outreach_language_basis ?? 'autodetect',
         notes: el.notes,
         last_contacted_date: el.last_contacted_date,
         created_at: el.created_at || new Date().toISOString(),

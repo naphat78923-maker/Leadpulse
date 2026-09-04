@@ -1,4 +1,4 @@
-// ─── LeadPulse CRM — Full Database Schema ───
+// LeadPulse CRM — Full Database Schema
 // Four connected databases: Contacts, Companies, Deal Pipeline, Meetings
 
 // ─── Companies ───
@@ -28,6 +28,8 @@ export interface Company {
 // ─── Contacts ───
 export type ContactStatus = 'active' | 'replied' | 'not_interested' | 'no_response' | 'parked';
 export type ContactIdentityQuality = 'named' | 'role_only' | 'company_route' | 'unknown';
+export type OutreachLanguage = 'thai' | 'english' | 'autodetect';
+export type OutreachLanguageBasis = 'last_inbound' | 'pat_override' | 'autodetect';
 
 export interface Contact {
   id: string;
@@ -40,6 +42,8 @@ export interface Contact {
   company_id: string | null;
   status: ContactStatus;
   identity_quality?: ContactIdentityQuality | null;
+  outreach_language?: OutreachLanguage;
+  outreach_language_basis?: OutreachLanguageBasis;
   last_contacted_date: string | null;
   notes: string | null;
   created_at: string;
@@ -68,6 +72,12 @@ export type DealWorkflowAction =
 
 export type NudgeStage = 'warm' | 'remind' | 'firm' | 'parking';
 export type SampleStatus = 'sent' | 'received';
+export type Value_type = 'estimated' | 'committed' | 'unknown';
+
+export interface ReshipEntry {
+  date: string;
+  reason: string;
+}
 
 export interface Deal {
   id: string;
@@ -89,6 +99,33 @@ export interface Deal {
   sample_status?: SampleStatus | null;
   created_at: string;
   updated_at: string;
+
+  // Revenue reporting fields (2026-08-28)
+  currency?: string | null;
+  close_date?: string | null;
+  stage_probability?: number | null;
+
+  // ─── Sales Controls (2026-09-03) ───
+
+  // Deal health
+  blocker?: string | null;
+  owner_contact_id?: string | null;
+  stale_days?: number | null;
+
+  // Test-to-order
+  test_recipient_contact_id?: string | null;
+  test_application?: string | null;
+  test_conditions?: string | null;
+  test_result_texture?: string | null;
+  test_result_flavour?: string | null;
+  test_feedback_date?: string | null;
+  reship_count?: number;
+  reship_history?: ReshipEntry[] | null;
+
+  // Forecast integrity
+  decision_maker_contact_id?: string | null;
+  value_type?: Value_type | null;
+  conflicting_signals?: string[] | null;
 }
 
 // ─── Meetings ───
@@ -160,3 +197,9 @@ export const PRODUCT_OPTIONS = [
   'White Chocolate',
   'Custom',
 ];
+
+export const VALUE_TYPE_LABELS: Record<Value_type, string> = {
+  estimated: 'Estimated',
+  committed: 'Committed',
+  unknown: 'Unknown',
+};
