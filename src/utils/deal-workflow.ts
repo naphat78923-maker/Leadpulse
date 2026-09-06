@@ -178,13 +178,56 @@ export interface DerivedNudge {
   suggestPark: boolean;
 }
 
+/** Human channels only: phone / LINE / IG / WhatsApp (call + dm + meeting). Not email. */
+export const HUMAN_TOUCH_MEETING_TYPES = ['call', 'dm', 'meeting'] as const;
+
+export function isHumanTouchMeetingType(type: string): boolean {
+  return (HUMAN_TOUCH_MEETING_TYPES as readonly string[]).includes(type);
+}
+
+/** Latest human-touch date (YYYY-MM-DD) for a deal. */
+export function lastHumanTouchDateForDeal(
+  meetings: Array<{ deal_id?: string | null; type: string; date: string }>,
+  dealId: string
+): string | null {
+  const touches = meetings
+    .filter(m => m.deal_id === dealId && isHumanTouchMeetingType(m.type) && m.date)
+    .map(m => m.date.slice(0, 10))
+    .sort((a, b) => b.localeCompare(a));
+  return touches[0] || null;
+}
+
+function daysBetweenKeys(earlier: string, later: string): number {
+  const a = new Date(`${earlier.slice(0, 10)}T00:00:00`).getTime();
+  const b = new Date(`${later.slice(0, 10)}T00:00:00`).getTime();
+  return Math.max(0, Math.round((b - a) / 86400000));
+}
+
 /**
- * Nudge badge derived from follow-up date + silence — never a stored editable stage.
+ * Silence for the ladder — prefer last human touch; fall back to overdue follow-up.
+ * Log touch resets toward Warm by advancing lastHumanTouch to today.
  */
-export function deriveNudge(deal: Deal, today: string): DerivedNudge | null {
-  const silence = silenceDaysPastFollowup(deal, today);
+export function silenceDaysForLadder(
+  deal: Deal,
+  today: string,
+  lastHumanTouch?: string | null
+): number {
+  if (deal.stage === 'closed_won' || deal.stage === 'closed_lost') return 0;
+  if (getWorkflowAction(deal) === 'parked') return 0;
+  if (lastHumanTouch) return daysBetweenKeys(lastHumanTouch, today);
+  return silenceDaysPastFollowup(deal, today);
+}
+
+/**
+ * Nudge badge derived from last human touch (preferred) or follow-up silence — never editable.
+ */
+export function deriveNudge(
+  deal: Deal,
+  today: string,
+  opts?: { lastHumanTouch?: string | null }
+): DerivedNudge | null {
+  const silence = silenceDaysForLadder(deal, today, opts?.lastHumanTouch);
   if (silence < 3) return null;
-  // Pick the strongest threshold met
   let match = DERIVED_NUDGE_OPTIONS[0];
   for (const opt of DERIVED_NUDGE_OPTIONS) {
     if (silence >= opt.minDays) match = opt;
@@ -249,10 +292,11 @@ export const NEXT_WORKFLOW: Partial<Record<DealWorkflowAction, DealWorkflowActio
 };
 
 export const NUDGE_COLOR_CLASS: Record<NudgeStage, string> = {
-  warm: 'bg-clay-ochre/25 text-clay-ochre border-clay-ochre/45',
-  remind: 'bg-clay-lavender/30 text-clay-lavender border-clay-lavender/50',
-  firm: 'bg-clay-coral/25 text-clay-coral border-clay-coral/45',
-  parking: 'bg-clay-ink/90 text-clay-canvas border-clay-ink',
+  // Clay/VG Saveur ladder: green Warm → orange Remind → rust Firm → grey Parking
+  warm: 'bg-clay-success/20 text-clay-success border-clay-success/40',
+  remind: 'bg-[#d97706]/15 text-[#c2410c]/90 border-[#d97706]/40',
+  firm: 'bg-[#c2410c]/15 text-[#9a3412] border-[#c2410c]/40',
+  parking: 'bg-clay-muted-soft/25 text-clay-muted border-clay-hairline',
 };
 
 export function nudgeColorClass(nudgeStage?: NudgeStage | null): string {
@@ -267,4 +311,36 @@ export function addDaysToDateKey(dateKey: string, days: number): string {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+/** Ladder rungs for NudgeLadderRail — Warm → Remind → Firm → Parking. */
+export const NUDGE_LADDER_RUNGS: Array<{
+  stage: NudgeStage;
+  label: string;
+  shortLabel: string;
+  days: number;
+  code: string;
+  /** Clay/VG Saveur: green → orange → rust → grey */
+  color: string;
+  track: string;
+}> = [
+  { stage: 'warm', label: 'Warm 3d', shortLabel: 'Warm', days: 3, code: 'NG-001', color: '#3daf7a', track: 'rgba(61,175,122,0.22)' },
+  { stage: 'remind', label: 'Remind 7d', shortLabel: 'Remind', days: 7, code: 'NG-002', color: '#d97706', track: 'rgba(217,119,6,0.22)' },
+  { stage: 'firm', label: 'Firm 14d', shortLabel: 'Firm', days: 14, code: 'NG-003', color: '#c2410c', track: 'rgba(194,65,12,0.22)' },
+  { stage: 'parking', label: 'Parking 21d', shortLabel: 'Parking', days: 21, code: 'NG-004', color: '#78716c', track: 'rgba(120,113,108,0.28)' },
+];
+
+export function nudgeLadderIndex(stage?: NudgeStage | null): number {
+  if (!stage) return -1;
+  return NUDGE_LADDER_RUNGS.findIndex(r => r.stage === stage);
+}
+
+/** Map raw silence days to a ladder stage (null if under Warm threshold). */
+export function stageFromSilenceDays(silenceDays: number): NudgeStage | null {
+  if (silenceDays < 3) return null;
+  let match: NudgeStage = 'warm';
+  for (const rung of NUDGE_LADDER_RUNGS) {
+    if (silenceDays >= rung.days) match = rung.stage;
+  }
+  return match;
 }

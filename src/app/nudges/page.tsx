@@ -8,6 +8,7 @@ import { deals as dataDeals } from '@/data/crmData';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
 import MascotSprite from '@/components/MascotSprite';
+import NudgeLadderRail from '@/components/NudgeLadderRail';
 import { Bell, ChevronRight, MessageCircle, Loader2, PauseCircle, Clock } from 'lucide-react';
 import clsx from 'clsx';
 import {
@@ -18,6 +19,7 @@ import {
   nudgeColorClass,
   addDaysToDateKey,
   DERIVED_NUDGE_OPTIONS,
+  lastHumanTouchDateForDeal,
 } from '@/utils/deal-workflow';
 import { localDateKey } from '@/utils/deal-board';
 import * as crm from '@/lib/crm';
@@ -46,9 +48,10 @@ export default function NudgesPage() {
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const [logDealId, setLogDealId] = useState<string | undefined>(undefined);
   const [parkDeal, setParkDeal] = useState<Deal | null>(null);
-  const { deals: dbDeals, loading, addMeeting, refresh, logActivity } = useCrm();
+  const { deals: dbDeals, meetings: dbMeetings, loading, addMeeting, refresh, logActivity } = useCrm();
 
   const deals = dbDeals.length > 0 ? dbDeals : (dataDeals as Deal[]);
+  const meetings = dbMeetings || [];
   const today = localDateKey();
 
   const buckets = useMemo(() => {
@@ -169,7 +172,9 @@ export default function NudgesPage() {
           {list.map(deal => {
             const overdue = seg === 'overdue' && deal.followup_date ? daysOverdue(deal.followup_date) : 0;
             const lane = WORKFLOW_BY_ID[getWorkflowAction(deal)];
-            const derived = deriveNudge(deal, today);
+            const derived = deriveNudge(deal, today, {
+              lastHumanTouch: lastHumanTouchDateForDeal(meetings, deal.id),
+            });
             return (
               <div key={deal.id} className="px-4 py-3 space-y-2">
                 <div className="flex items-center gap-3">
@@ -206,6 +211,15 @@ export default function NudgesPage() {
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
+                {derived && (
+                  <div className="pl-0 sm:pl-2 pr-1">
+                    <NudgeLadderRail
+                      stage={derived.stage}
+                      silenceDays={derived.silenceDays}
+                      variant="full"
+                    />
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-1.5 pl-0 sm:pl-2">
                   <button
                     onClick={() => handleLog(deal)}
@@ -238,9 +252,10 @@ export default function NudgesPage() {
         </div>
       )}
 
-      {/* Read-only legend of derived thresholds — not editable stage config */}
-      <div className="mt-5 rounded-xl border border-clay-hairline bg-clay-surface px-4 py-3">
-        <p className="text-[11px] font-medium text-clay-muted-soft uppercase tracking-wide mb-2">Derived from silence past follow-up</p>
+      {/* Read-only ladder — derived thresholds, not editable stage config */}
+      <div className="mt-5 rounded-xl border border-clay-hairline bg-clay-surface px-4 py-3 space-y-3">
+        <p className="text-[11px] font-medium text-clay-muted-soft uppercase tracking-wide">Nudge ladder · days since last human touch</p>
+        <NudgeLadderRail stage="firm" silenceDays={14} variant="full" />
         <div className="flex flex-wrap gap-2">
           {DERIVED_NUDGE_OPTIONS.map(opt => (
             <span key={opt.value} className={clsx('text-[11px] font-medium px-2 py-1 rounded-full border', nudgeColorClass(opt.value))}>

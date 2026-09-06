@@ -176,9 +176,6 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
               {form.workflow_action === 'sample' && (
                 <Select label="Sample Status" name="sample_status" value={form.sample_status} onChange={handleChange} options={[{ value: '', label: '— Choose status —' }, ...SAMPLE_STATUS_OPTIONS.map(option => ({ value: option.value, label: option.label }))]} />
               )}
-              {form.workflow_action === 'reschedule' && (
-                <Select label="Nudge Stage" name="nudge_stage" value={form.nudge_stage} onChange={handleChange} options={[{ value: '', label: '— Choose nudge —' }, ...NUDGE_OPTIONS.map(option => ({ value: option.value, label: `${option.label} · ${option.days} days` }))]} />
-              )}
               <Field label="CRM next action" name="next_action" value={form.next_action} onChange={handleChange} placeholder="What needs to happen internally?" />
               {showDraftingBrief && (
                 <section className="rounded-xl border border-clay-lavender/30 bg-clay-lavender/10 p-3">
@@ -230,7 +227,6 @@ function validateDealWorkflow(form: Record<string, any>): string | null {
   if (lane === 'sample' && !form.sample_status) return 'Choose whether the sample was sent or received.';
   if (lane === 'testing' && !form.followup_date) return 'Set the client testing date before saving.';
   if (lane === 'reschedule' && !form.followup_date) return 'Set the rescheduled follow-up date.';
-  if (lane === 'reschedule' && !form.nudge_stage) return 'Choose Warm, Remind, Firm, or Parking nudge.';
   if (lane === 'parked' && !form.followup_date) return 'Parked deals need a revisit date.';
   return null;
 }

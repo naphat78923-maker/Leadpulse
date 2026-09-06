@@ -29,7 +29,7 @@ import { Plus, TrendingUp, AlertCircle, Loader2, CalendarDays, ArrowRight, Searc
 import clsx from 'clsx';
 import { PRIORITY_CLASSES, PRIORITY_LABELS } from '@/utils/lead-scoring';
 import { formatBaht, sumLaneValues } from '@/utils/format';
-import { WORKFLOW_LANES, WORKFLOW_BY_ID, LANE_MASCOT_PATHS, getWorkflowAction, isOnJourneyBoard, isJourneyLane, deriveNudge, formatDerivedNudgeBadge } from '@/utils/deal-workflow';
+import { WORKFLOW_LANES, WORKFLOW_BY_ID, LANE_MASCOT_PATHS, getWorkflowAction, isOnJourneyBoard, isJourneyLane, deriveNudge, formatDerivedNudgeBadge, lastHumanTouchDateForDeal } from '@/utils/deal-workflow';
 import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import { BoardAttentionFilter, dealNeedsReview, reviewReasons, REVIEW_LABEL, buildReviewReport, buildReviewFix, filterAndSortBoardDeals, getDoNowCounts, localDateKey } from '@/utils/deal-board';
@@ -99,7 +99,7 @@ export default function DealsPage() {
   const [productFilter, setProductFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<Deal['priority'] | 'all'>('all');
 
-  const { deals: dbDeals, contacts: dbContacts, companies: dbCompanies, loading, refresh, createDeal, logActivity, addMeeting } = useCrm();
+  const { deals: dbDeals, contacts: dbContacts, companies: dbCompanies, meetings: dbMeetings, loading, refresh, createDeal, logActivity, addMeeting } = useCrm();
   const { addToast } = useToast();
   const deals: Deal[] = dbDeals.length > 0 ? dbDeals : (dataDeals as Deal[]);
   const contacts = dbContacts.length > 0 ? dbContacts : (dataContacts as any);
@@ -357,7 +357,9 @@ export default function DealsPage() {
 
   const renderDealCard = (deal: Deal, opts?: { grip?: boolean; compact?: boolean }) => {
     const action = getWorkflowAction(deal);
-    const derived = deriveNudge(deal, todayStr);
+    const derived = deriveNudge(deal, todayStr, {
+      lastHumanTouch: lastHumanTouchDateForDeal(dbMeetings || [], deal.id),
+    });
     const nudge = derived ? formatDerivedNudgeBadge(derived) : null;
     const nudgeStage = derived?.stage ?? null;
     const lane = WORKFLOW_BY_ID[action];
@@ -386,6 +388,7 @@ export default function DealsPage() {
           reviewLabels={reasons.map(item => REVIEW_LABEL[item])}
           nudge={nudge}
           nudgeStage={nudgeStage}
+          silenceDays={derived?.silenceDays ?? null}
           compact={isCompact}
           showGrip={opts?.grip}
         />
@@ -793,7 +796,9 @@ export default function DealsPage() {
             <tbody>
               {deals.map(deal => {
                 const lane = WORKFLOW_BY_ID[getWorkflowAction(deal)];
-                const derived = deriveNudge(deal, todayStr);
+                const derived = deriveNudge(deal, todayStr, {
+      lastHumanTouch: lastHumanTouchDateForDeal(dbMeetings || [], deal.id),
+    });
                 return <tr key={deal.id} onClick={() => setSelectedDeal(deal.id)} className="border-b border-clay-hairline active:bg-clay-surface cursor-pointer transition-colors"><td className="px-3 py-3"><p className="font-medium text-clay-ink">{deal.client}</p><p className="text-[10px] text-clay-muted truncate max-w-40">{deal.title}</p></td><td className="px-3 py-3"><span className="text-xs text-clay-body whitespace-nowrap">{lane.icon} {lane.shortLabel}</span>{derived && <p className="text-[10px] text-clay-muted mt-0.5">{formatDerivedNudgeBadge(derived)}</p>}</td><td className="hidden sm:table-cell px-3 py-3"><span className="text-[10px] font-medium bg-clay-card px-1.5 py-0.5 rounded text-clay-muted">{STAGE_LABELS[deal.stage]}</span></td><td className="hidden sm:table-cell px-3 py-3 text-xs text-clay-muted">{compactDate(deal.followup_date) || '—'}</td><td className="px-3 py-3"><span className={clsx('text-[10px] font-semibold px-2 py-0.5 rounded', PRIORITY_CLASSES[deal.priority])}>{PRIORITY_LABELS[deal.priority]}</span></td></tr>;
               })}
             </tbody>

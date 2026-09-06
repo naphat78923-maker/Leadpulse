@@ -55,4 +55,16 @@ describe('journey board + derived nudges', () => {
     expect(formatDerivedNudgeBadge(park)).toBe('~21d Suggest Park NG-004');
     expect(park.suggestPark).toBe(true);
   });
+
+  it('prefers last human touch over follow-up silence', () => {
+    const today = '2026-09-06';
+    const d = deal({ followup_date: '2026-08-10' });
+    const n = deriveNudge(d, today, { lastHumanTouch: '2026-09-02' });
+    expect(formatDerivedNudgeBadge(n!)).toBe('~3d Warm NG-001');
+  });
+
+  it('log touch today resets below Warm threshold', () => {
+    const today = '2026-09-06';
+    expect(deriveNudge(deal({ followup_date: '2026-08-01' }), today, { lastHumanTouch: today })).toBeNull();
+  });
 });

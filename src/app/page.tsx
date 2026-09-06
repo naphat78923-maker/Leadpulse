@@ -10,9 +10,10 @@ import { deals as dataDeals, contacts as dataContacts, companies as dataCompanie
 import CreateModal from '@/components/CreateModal';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import MascotSprite from '@/components/MascotSprite';
+import NudgeLadderRail from '@/components/NudgeLadderRail';
 import TaskActionSheet from '@/components/TaskActionSheet';
 import { Plus, ChevronRight, MessageCircle, Phone, Mail, Users, Package, Bell, Clock } from 'lucide-react';
-import { WORKFLOW_BY_ID, getWorkflowAction, deriveNudge, formatDerivedNudgeBadge, nudgeColorClass, addDaysToDateKey } from '@/utils/deal-workflow';
+import { WORKFLOW_BY_ID, getWorkflowAction, deriveNudge, formatDerivedNudgeBadge, nudgeColorClass, addDaysToDateKey, lastHumanTouchDateForDeal } from '@/utils/deal-workflow';
 import { dealNeedsReview } from '@/utils/deal-board';
 import { dealClientName } from '@/utils/dealLabel';
 import { formatBaht, bangkokDateKey, formatBangkokWeekdayDate, bangkokHour } from '@/utils/format';
@@ -83,20 +84,20 @@ function WhyNowCopy({ text }: { text: string }) {
 }
 
 function preferredChannel(deal: Deal, contacts: Contact[], meetings: Meeting[]): string | null {
+  // Human channels only: LINE / IG / WhatsApp / phone — not email.
   const linked = (deal.contact_ids || [])
     .map(id => contacts.find(c => c.id === id))
     .filter((c): c is Contact => Boolean(c));
   const primary = linked[0];
   if (primary?.line) return 'LINE';
   if (primary?.phone) return 'Call';
-  if (primary?.email) return 'Email';
 
   const touches = meetings
-    .filter(m => m.deal_id === deal.id && (m.type === 'dm' || m.type === 'call' || m.type === 'email'))
+    .filter(m => m.deal_id === deal.id && (m.type === 'dm' || m.type === 'call' || m.type === 'meeting'))
     .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   if (touches[0]?.type === 'dm') return 'DM';
   if (touches[0]?.type === 'call') return 'Call';
-  if (touches[0]?.type === 'email') return 'Email';
+  if (touches[0]?.type === 'meeting') return 'Meet';
   return null;
 }
 
@@ -199,7 +200,9 @@ export default function TodayPage() {
     d => (d.workflow_action === 'sample' || d.workflow_action === 'testing') && d.stage !== 'closed_won' && d.stage !== 'closed_lost'
   ).length;
   pulseCounts.nudge = deals.filter(d => {
-    const n = deriveNudge(d, todayKey);
+    const n = deriveNudge(d, todayKey, {
+      lastHumanTouch: lastHumanTouchDateForDeal(meetings, d.id),
+    });
     return Boolean(n) && d.stage !== 'closed_won' && d.stage !== 'closed_lost';
   }).length;
 
@@ -233,7 +236,11 @@ export default function TodayPage() {
 
   const heroChannel = startHere ? preferredChannel(startHere.deal, contacts, meetings) : null;
   const heroLane = startHere ? WORKFLOW_BY_ID[getWorkflowAction(startHere.deal)] : null;
-  const heroNudge = startHere ? deriveNudge(startHere.deal, todayKey) : null;
+  const heroNudge = startHere
+    ? deriveNudge(startHere.deal, todayKey, {
+        lastHumanTouch: lastHumanTouchDateForDeal(meetings, startHere.deal.id),
+      })
+    : null;
 
   return (
     <div className="p-4 md:p-6 max-w-3xl pb-20 lg:pb-6">
@@ -377,6 +384,14 @@ export default function TodayPage() {
                 Due today
               </span>
             )}
+            {heroNudge && (
+              <NudgeLadderRail
+                stage={heroNudge.stage}
+                silenceDays={heroNudge.silenceDays}
+                variant="mini"
+                className="basis-full max-w-[8rem] mt-0.5"
+              />
+            )}
           </div>
         )}
 
@@ -472,7 +487,9 @@ export default function TodayPage() {
                   : 0;
               const lane = WORKFLOW_BY_ID[getWorkflowAction(item.deal)];
               const verb = ACTION_VERBS[getWorkflowAction(item.deal)] || 'Follow up';
-              const nudge = deriveNudge(item.deal, todayKey);
+              const nudge = deriveNudge(item.deal, todayKey, {
+                lastHumanTouch: lastHumanTouchDateForDeal(meetings, item.deal.id),
+              });
               const channel = preferredChannel(item.deal, contacts, meetings);
               return (
                 <div key={item.deal.id} className="px-4 py-3 flex items-center gap-3 group">
@@ -519,6 +536,14 @@ export default function TodayPage() {
                         ? ` — ${item.deal.next_action}`
                         : ` · ${lane?.label?.toLowerCase() || 'next move'}`}
                     </p>
+                    {nudge && (
+                      <NudgeLadderRail
+                        stage={nudge.stage}
+                        silenceDays={nudge.silenceDays}
+                        variant="mini"
+                        className="mt-1.5 max-w-[7rem]"
+                      />
+                    )}
                   </button>
                   <button
                     onClick={() => {
