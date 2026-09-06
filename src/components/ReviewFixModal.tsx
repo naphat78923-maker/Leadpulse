@@ -1,17 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import {
-  Deal,
-  DealWorkflowAction,
-  NudgeStage,
-  SampleStatus,
-} from '@/types/crm';
-import {
-  NUDGE_OPTIONS,
-  SAMPLE_STATUS_OPTIONS,
-  WORKFLOW_BY_ID,
-} from '@/utils/deal-workflow';
+import { Deal, DealWorkflowAction, SampleStatus } from '@/types/crm';
+import { SAMPLE_STATUS_OPTIONS, WORKFLOW_BY_ID } from '@/utils/deal-workflow';
 import { REVIEW_LABEL, ReviewReason } from '@/utils/deal-board';
 import { X, Loader2, AlertCircle } from 'lucide-react';
 import clsx from 'clsx';
@@ -19,7 +10,6 @@ import clsx from 'clsx';
 export interface ReviewFixPayload {
   sample_status?: SampleStatus | null;
   followup_date?: string | null;
-  nudge_stage?: NudgeStage | null;
   reply_outcome?: string | null;
   reply_summary?: string | null;
   next_action?: string | null;
@@ -46,14 +36,15 @@ const fieldLabel = (label: string) => (
 export default function ReviewFixModal({ deal, reasons, onCancel, onConfirm }: ReviewFixModalProps) {
   const lane = WORKFLOW_BY_ID[getWorkflowActionFromReasons(deal, reasons)];
   const needsSample = reasons.includes('sample-status-missing');
-  const needsDate = reasons.includes('testing-date-missing') || reasons.includes('parked-revisit-missing') || reasons.includes('followup-date-or-nudge-missing');
-  const needsNudge = reasons.includes('followup-date-or-nudge-missing');
+  const needsDate =
+    reasons.includes('testing-date-missing') ||
+    reasons.includes('parked-revisit-missing') ||
+    reasons.includes('followup-date-missing');
   const needsReply = reasons.includes('reply-outcome-missing');
-  const needsNextAction = reasons.includes('success-step-missing') || reasons.includes('pre-contact-action');
+  const needsNextAction = reasons.includes('pre-contact-action');
 
   const [sampleStatus, setSampleStatus] = useState<SampleStatus | ''>(deal.sample_status || '');
   const [followupDate, setFollowupDate] = useState<string>(deal.followup_date || '');
-  const [nudgeStage, setNudgeStage] = useState<NudgeStage | ''>(deal.nudge_stage || '');
   const [replyOutcome, setReplyOutcome] = useState<string>('');
   const [replySummary, setReplySummary] = useState<string>('');
   const [nextAction, setNextAction] = useState<string>(deal.next_action || '');
@@ -63,7 +54,6 @@ export default function ReviewFixModal({ deal, reasons, onCancel, onConfirm }: R
   const validate = (): string | null => {
     if (needsSample && !sampleStatus) return 'Choose whether the sample was sent or received.';
     if (needsDate && !followupDate) return 'Add the required date before saving.';
-    if (needsNudge && !nudgeStage) return 'Choose one nudge level (Warm, Remind, Firm, Parking).';
     if (needsReply && !replyOutcome) return 'Capture the client response before saving.';
     if (needsNextAction && !nextAction.trim()) return 'Add the next action before saving.';
     return null;
@@ -81,7 +71,6 @@ export default function ReviewFixModal({ deal, reasons, onCancel, onConfirm }: R
       await onConfirm({
         sample_status: needsSample ? (sampleStatus as SampleStatus) : null,
         followup_date: needsDate ? followupDate : null,
-        nudge_stage: needsNudge ? (nudgeStage as NudgeStage) : null,
         reply_outcome: needsReply ? replyOutcome : null,
         reply_summary: needsReply && replySummary.trim() ? replySummary.trim() : null,
         next_action: needsNextAction && nextAction.trim() ? nextAction.trim() : null,
@@ -155,27 +144,6 @@ export default function ReviewFixModal({ deal, reasons, onCancel, onConfirm }: R
             </div>
           )}
 
-          {needsNudge && (
-            <div>
-              {fieldLabel('Nudge level')}
-              <div className="grid grid-cols-2 gap-2 mt-2">
-                {NUDGE_OPTIONS.map(opt => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setNudgeStage(opt.value)}
-                    className={clsx(
-                      'px-3 py-2.5 rounded-lg border text-xs font-medium transition-colors text-left',
-                      nudgeStage === opt.value ? 'border-clay-lavender bg-clay-lavender/20 text-clay-lavender' : 'border-clay-hairline text-clay-muted hover:border-clay-muted-soft'
-                    )}
-                  >
-                    {opt.label}
-                    <span className="block text-[10px] opacity-60 mt-0.5">+{opt.days} days</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
           {needsReply && (
             <>
               <div>
@@ -210,12 +178,12 @@ export default function ReviewFixModal({ deal, reasons, onCancel, onConfirm }: R
 
           {needsNextAction && (
             <div>
-              {fieldLabel(reasons.includes('success-step-missing') ? 'Next customer-success step' : 'Pre-contact research step')}
+              {fieldLabel('Pre-contact research step')}
               <input
                 type="text"
                 value={nextAction}
                 onChange={(e) => setNextAction(e.target.value)}
-                placeholder={reasons.includes('success-step-missing') ? 'e.g. Schedule quarterly reorder check-in' : 'e.g. Find R&D buyer before sample'}
+                placeholder="e.g. Find R&D buyer before sample"
                 className="w-full mt-2 px-3 py-3 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-clay-lavender/40"
               />
             </div>
@@ -238,12 +206,11 @@ export default function ReviewFixModal({ deal, reasons, onCancel, onConfirm }: R
 }
 
 function getWorkflowActionFromReasons(deal: Deal, reasons: ReviewReason[]): DealWorkflowAction {
-  // Re-derive the lane label from the reasons so the header matches the fix.
   if (reasons.includes('sample-status-missing')) return 'sample';
   if (reasons.includes('testing-date-missing')) return 'testing';
-  if (reasons.includes('followup-date-or-nudge-missing')) return 'reschedule';
+  if (reasons.includes('followup-date-missing')) return 'reschedule';
   if (reasons.includes('parked-revisit-missing')) return 'parked';
   if (reasons.includes('reply-outcome-missing')) return 'reply';
-  if (reasons.includes('success-step-missing') || reasons.includes('pre-contact-action')) return 'success';
+  if (reasons.includes('pre-contact-action')) return 'sample';
   return deal.workflow_action || 'outreach';
 }

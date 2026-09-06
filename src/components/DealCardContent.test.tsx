@@ -45,6 +45,24 @@ const presentation: DealCardPresentation = {
 afterEach(() => cleanup());
 
 describe('DealCardContent', () => {
+  it('keeps company identity independent from a long role and preserves full identity labels', () => {
+    const longRole = 'Regional purchasing and pastry development lead';
+    const longName = 'ประภัสสร จันทร์สุวรรณกุล';
+    render(
+      <DealCardContent
+        deal={deal}
+        presentation={{ ...presentation, contact: { ...presentation.contact, name: longName, role: longRole } }}
+        whyNow={null}
+        reviewLabels={[]}
+        nudge={null}
+        showGrip
+      />
+    );
+    expect(screen.getByText('Mello Vegan').getAttribute('title')).toBe('Mello Vegan');
+    expect(screen.getByText(longRole).getAttribute('title')).toBe(longRole);
+    expect(screen.getByRole('heading').getAttribute('title')).toBe(`${longName} +1`);
+  });
+
   it('renders contact first and keeps action context ahead of quiet footer metadata', () => {
     const { container } = render(
       <DealCardContent
@@ -57,7 +75,8 @@ describe('DealCardContent', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'Nok S. +1' })).toBeTruthy();
-    expect(screen.getByText('Pastry Chef · Mello Vegan')).toBeTruthy();
+    expect(screen.getByText('Mello Vegan')).toBeTruthy();
+    expect(screen.getByText('Pastry Chef')).toBeTruthy();
     expect(screen.getByText('Overdue')).toBeTruthy();
     expect(screen.getByText('25 Aug')).toBeTruthy();
     expect(screen.getByText('Butter + Condensed Milk')).toBeTruthy();
@@ -74,7 +93,7 @@ describe('DealCardContent', () => {
     expect(text).not.toContain(deal.title);
   });
 
-  it('renders an explicit missing-contact state', () => {
+  it('renders a quiet missing-contact warning with the known company as the primary identity', () => {
     render(
       <DealCardContent
         deal={{ ...deal, contact_ids: [] }}
@@ -94,8 +113,11 @@ describe('DealCardContent', () => {
       />
     );
 
-    expect(screen.getByRole('heading', { name: 'Contact not identified' })).toBeTruthy();
-    expect(screen.getByText('Mello Vegan')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Mello Vegan' })).toBeTruthy();
+    const warning = screen.getByText('Contact not identified');
+    expect(warning.tagName).toBe('P');
+    expect(warning.className).toContain('text-[10px]');
+    expect(screen.getByText('Mello Vegan').getAttribute('title')).toBe('Mello Vegan');
     expect(screen.getByText('?')).toBeTruthy();
   });
 

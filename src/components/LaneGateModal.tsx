@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Deal, DealWorkflowAction, MeetingType, NudgeStage, SampleStatus, Contact, Company } from '@/types/crm';
-import { WORKFLOW_BY_ID, LANE_MASCOT_PATHS, NUDGE_OPTIONS, SAMPLE_STATUS_OPTIONS } from '@/utils/deal-workflow';
+import { Deal, DealWorkflowAction, MeetingType, SampleStatus, Contact, Company } from '@/types/crm';
+import { WORKFLOW_BY_ID, LANE_MASCOT_PATHS, SAMPLE_STATUS_OPTIONS } from '@/utils/deal-workflow';
 import MascotSprite from '@/components/MascotSprite';
 import ContactPicker from '@/components/ContactPicker';
 import { X, Loader2, Phone, Mail, MessageCircle } from 'lucide-react';
@@ -12,12 +12,14 @@ export interface LaneGatePayload {
   workflow_action: DealWorkflowAction;
   sample_status?: SampleStatus | null;
   followup_date?: string | null;
-  nudge_stage?: NudgeStage | null;
   next_action?: string | null;
   reply_outcome?: string | null;
   reply_summary?: string | null;
   channel?: MeetingType | null;
   contact_ids?: string[];
+  address_confirmed?: boolean;
+  outreach_logged?: boolean;
+  feedback_touch?: boolean;
 }
 
 const CHANNEL_OPTIONS: { value: MeetingType; label: string; icon: React.ReactNode }[] = [
@@ -46,22 +48,39 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
   const lane = WORKFLOW_BY_ID[targetLane];
   const [sampleStatus, setSampleStatus] = useState<SampleStatus | ''>(deal.sample_status || '');
   const [followupDate, setFollowupDate] = useState<string>(deal.followup_date || '');
-  const [nudgeStage, setNudgeStage] = useState<NudgeStage | ''>('');
   const [nextAction, setNextAction] = useState<string>('');
   const [channel, setChannel] = useState<MeetingType>('call');
   const [replyOutcome, setReplyOutcome] = useState<string>('');
   const [replySummary, setReplySummary] = useState<string>('');
+  const [addressConfirmed, setAddressConfirmed] = useState(false);
+  const [outreachLogged, setOutreachLogged] = useState(Boolean(deal.last_outcome?.trim()));
+  const [feedbackTouch, setFeedbackTouch] = useState(false);
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>(deal.contact_ids || []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const validate = (): string | null => {
-    if (targetLane === 'sample' && !sampleStatus) return 'Choose whether the sample was sent or received.';
-    if (targetLane === 'testing' && !followupDate) return 'Set the client testing date before saving.';
-    if (targetLane === 'reschedule' && !followupDate) return 'Set the rescheduled follow-up date.';
-    if (targetLane === 'reschedule' && !nudgeStage) return 'Choose Warm, Remind, Firm, or Parking nudge.';
-    if (targetLane === 'parked' && !followupDate) return 'Parked deals need a revisit date.';
-    if (targetLane === 'reply' && !replyOutcome) return 'Capture the client response before moving on.';
+    // Outreach — no gate
+    if (targetLane === 'outreach') return null;
+    // Waiting on reply — last outreach logged
+    if (targetLane === 'reply' && !outreachLogged) return 'Confirm that the last outreach was logged.';
+    // Sample — address / send intent confirmed
+    if (targetLane === 'sample') {
+      if (!addressConfirmed) return 'Confirm address / send intent.';
+      if (!sampleStatus) return 'Choose whether the sample was sent or received.';
+    }
+    // Testing — sample delivered + testing date
+    if (targetLane === 'testing') {
+      if (!deal.sample_status && !sampleStatus) return 'Confirm sample was delivered (sent or received).';
+      if (!followupDate) return 'Set the client testing date before saving.';
+    }
+    // Follow-up — feedback touch logged or due
+    if (targetLane === 'reschedule') {
+      if (!followupDate) return 'Set the follow-up date.';
+      if (!feedbackTouch && !deal.last_outcome?.trim()) {
+        return 'Confirm feedback touch logged, or note that follow-up is due.';
+      }
+    }
     return null;
   };
 
@@ -74,16 +93,24 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
     setSaving(true);
     setError(null);
     try {
+      const effectiveSample =
+        targetLane === 'sample'
+          ? (sampleStatus as SampleStatus)
+          : targetLane === 'testing'
+            ? ((sampleStatus as SampleStatus) || deal.sample_status || null)
+            : null;
       await onConfirm({
         workflow_action: targetLane,
-        sample_status: targetLane === 'sample' ? (sampleStatus as SampleStatus) : null,
-        followup_date: ['testing', 'reschedule', 'parked'].includes(targetLane) ? followupDate : null,
-        nudge_stage: targetLane === 'reschedule' ? (nudgeStage as NudgeStage) : null,
+        sample_status: effectiveSample,
+        followup_date: ['testing', 'reschedule'].includes(targetLane) ? followupDate : null,
         next_action: targetLane === 'outreach' && nextAction.trim() ? nextAction.trim() : null,
-        reply_outcome: targetLane === 'reply' ? replyOutcome : null,
+        reply_outcome: targetLane === 'reply' && replyOutcome ? replyOutcome : null,
         reply_summary: targetLane === 'reply' && replySummary.trim() ? replySummary.trim() : null,
         channel: (targetLane === 'outreach' || targetLane === 'reply') ? channel : null,
         contact_ids: selectedContactIds,
+        address_confirmed: addressConfirmed,
+        outreach_logged: outreachLogged,
+        feedback_touch: feedbackTouch,
       });
     } catch (err2: any) {
       setError('Could not save: ' + (err2.message || 'Unknown error'));
@@ -101,7 +128,6 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
     <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center">
       <div className="absolute inset-0 bg-black/50" onClick={onCancel} />
       <div className="relative bg-white dark:bg-clay-card w-full sm:max-w-md rounded-t-2xl sm:rounded-lg animate-slide-up max-h-[90vh] overflow-y-auto">
-        {/* Header */}
         <div className="sticky top-0 bg-white dark:bg-clay-card border-b border-clay-hairline px-5 py-4 z-10">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -119,67 +145,118 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
           </div>
         </div>
 
-        {/* Body */}
         <div className="px-5 py-4 space-y-4">
           <p className="text-xs text-clay-muted bg-clay-surface rounded-lg px-3 py-2">{lane.description}</p>
 
           {targetLane === 'sample' && (
-            <div>
-              {fieldLabel('Sample status', true)}
-              <div className="flex gap-2 mt-2">
-                {SAMPLE_STATUS_OPTIONS.map(opt => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setSampleStatus(opt.value)}
-                    className={clsx(
-                      'flex-1 px-3 py-2.5 rounded-lg border text-xs font-medium transition-colors',
-                      sampleStatus === opt.value ? 'border-clay-lavender bg-clay-lavender/20 text-clay-lavender' : 'border-clay-hairline text-clay-muted hover:border-clay-muted-soft'
-                    )}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
+            <>
+              <label className="flex items-start gap-3 rounded-lg border border-clay-hairline px-3 py-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={addressConfirmed}
+                  onChange={e => setAddressConfirmed(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span className="text-xs text-clay-body">
+                  <span className="font-medium text-clay-ink">Address / send intent confirmed</span>
+                  <span className="block text-clay-muted mt-0.5">Ship-to address ready and client expects the sample.</span>
+                </span>
+              </label>
+              <div>
+                {fieldLabel('Sample status', true)}
+                <div className="flex gap-2 mt-2">
+                  {SAMPLE_STATUS_OPTIONS.map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setSampleStatus(opt.value)}
+                      className={clsx(
+                        'flex-1 px-3 py-2.5 rounded-lg border text-xs font-medium transition-colors',
+                        sampleStatus === opt.value ? 'border-clay-lavender bg-clay-lavender/20 text-clay-lavender' : 'border-clay-hairline text-clay-muted hover:border-clay-muted-soft'
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            </>
           )}
 
-          {(targetLane === 'testing' || targetLane === 'reschedule' || targetLane === 'parked') && (
-            <div>
-              {fieldLabel(targetLane === 'parked' ? 'Revisit date' : targetLane === 'testing' ? 'Testing date' : 'Follow-up date', true)}
-              <input
-                type="date"
-                value={followupDate}
-                onChange={(e) => setFollowupDate(e.target.value)}
-                className="w-full mt-2 px-3 py-3 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-clay-lavender/40"
-              />
-            </div>
+          {targetLane === 'testing' && (
+            <>
+              {!deal.sample_status && (
+                <div>
+                  {fieldLabel('Sample delivered', true)}
+                  <div className="flex gap-2 mt-2">
+                    {SAMPLE_STATUS_OPTIONS.map(opt => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setSampleStatus(opt.value)}
+                        className={clsx(
+                          'flex-1 px-3 py-2.5 rounded-lg border text-xs font-medium transition-colors',
+                          sampleStatus === opt.value ? 'border-clay-lavender bg-clay-lavender/20 text-clay-lavender' : 'border-clay-hairline text-clay-muted hover:border-clay-muted-soft'
+                        )}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div>
+                {fieldLabel('Testing date', true)}
+                <input
+                  type="date"
+                  value={followupDate}
+                  onChange={(e) => setFollowupDate(e.target.value)}
+                  className="w-full mt-2 px-3 py-3 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-clay-lavender/40"
+                />
+              </div>
+            </>
           )}
 
           {targetLane === 'reschedule' && (
-            <div>
-              {fieldLabel('Nudge level', true)}
-              <div className="grid grid-cols-2 gap-2 mt-2">
-                {NUDGE_OPTIONS.map(opt => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setNudgeStage(opt.value)}
-                    className={clsx(
-                      'px-3 py-2.5 rounded-lg border text-xs font-medium transition-colors text-left',
-                      nudgeStage === opt.value ? 'border-clay-lavender bg-clay-lavender/20 text-clay-lavender' : 'border-clay-hairline text-clay-muted hover:border-clay-muted-soft'
-                    )}
-                  >
-                    {opt.label}
-                    <span className="block text-[10px] opacity-60 mt-0.5">+{opt.days} days</span>
-                  </button>
-                ))}
+            <>
+              <div>
+                {fieldLabel('Follow-up date', true)}
+                <input
+                  type="date"
+                  value={followupDate}
+                  onChange={(e) => setFollowupDate(e.target.value)}
+                  className="w-full mt-2 px-3 py-3 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-clay-lavender/40"
+                />
               </div>
-            </div>
+              <label className="flex items-start gap-3 rounded-lg border border-clay-hairline px-3 py-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={feedbackTouch}
+                  onChange={e => setFeedbackTouch(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span className="text-xs text-clay-body">
+                  <span className="font-medium text-clay-ink">Feedback touch logged or due</span>
+                  <span className="block text-clay-muted mt-0.5">Nudges derive from this date + silence — no nudge stage to pick.</span>
+                </span>
+              </label>
+            </>
           )}
 
           {targetLane === 'reply' && (
             <>
+              <label className="flex items-start gap-3 rounded-lg border border-clay-hairline px-3 py-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={outreachLogged}
+                  onChange={e => setOutreachLogged(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span className="text-xs text-clay-body">
+                  <span className="font-medium text-clay-ink">Last outreach logged</span>
+                  <span className="block text-clay-muted mt-0.5">Required before waiting on a reply.</span>
+                </span>
+              </label>
               <div>
-                {fieldLabel('Channel', true)}
+                {fieldLabel('Channel', false)}
                 <div className="grid grid-cols-3 gap-2 mt-2">
                   {CHANNEL_OPTIONS.map(opt => (
                     <button
@@ -197,7 +274,7 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
                 </div>
               </div>
               <div>
-                {fieldLabel('Client response', true)}
+                {fieldLabel('Client response (optional)', false)}
                 <div className="grid grid-cols-2 gap-2 mt-2">
                   {OUTCOME_OPTIONS.map(opt => (
                     <button
@@ -219,7 +296,7 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
                   value={replySummary}
                   onChange={(e) => setReplySummary(e.target.value)}
                   rows={2}
-                  placeholder="What did they say?"
+                  placeholder="What did they say? Or note that you are waiting."
                   className="w-full mt-2 px-3 py-2.5 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-clay-lavender/40 resize-none"
                 />
               </div>
@@ -229,7 +306,7 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
           {targetLane === 'outreach' && (
             <>
               <div>
-                {fieldLabel('Channel', true)}
+                {fieldLabel('Channel', false)}
                 <div className="grid grid-cols-3 gap-2 mt-2">
                   {CHANNEL_OPTIONS.map(opt => (
                     <button
@@ -259,12 +336,6 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
             </>
           )}
 
-          {targetLane === 'success' && (
-            <div className="bg-clay-mint/20 border border-clay-mint/30 rounded-lg px-3 py-3 text-xs text-clay-teal">
-              🎉 This closes the deal as <strong>won</strong>. The card moves to the Successful lane and leaves the active pipeline.
-            </div>
-          )}
-
           {(targetLane === 'outreach' || targetLane === 'reply' || targetLane === 'sample') && (
             <ContactPicker
               contacts={contacts}
@@ -280,7 +351,6 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
           )}
         </div>
 
-        {/* Footer */}
         <div className="sticky bottom-0 bg-white dark:bg-clay-card border-t border-clay-hairline px-5 py-3 flex items-center justify-end gap-2 z-10">
           <button onClick={onCancel} className="clay-btn-outline">Cancel</button>
           <button

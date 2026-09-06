@@ -97,6 +97,10 @@ export interface Deal {
   workflow_action?: DealWorkflowAction | null;
   nudge_stage?: NudgeStage | null;
   sample_status?: SampleStatus | null;
+  /** Exit metadata — not journey lanes */
+  lost_reason?: 'price' | 'taste' | 'timing' | 'vendor_list' | 'no_reply' | 'other' | null;
+  park_reason?: string | null;
+  won_note?: string | null;
   created_at: string;
   updated_at: string;
 

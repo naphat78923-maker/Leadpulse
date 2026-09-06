@@ -159,6 +159,9 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
         workflow_action: el.workflow_action || undefined,
         nudge_stage: el.nudge_stage || null,
         sample_status: el.sample_status || null,
+        lost_reason: el.lost_reason || null,
+        park_reason: el.park_reason || null,
+        won_note: el.won_note || null,
         created_at: el.created_at || new Date().toISOString(),
         updated_at: el.updated_at || new Date().toISOString(),
       })) as any);

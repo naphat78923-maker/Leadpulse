@@ -10,8 +10,8 @@ export interface WorkflowLane {
 }
 
 /**
- * The Deal Action Board is the source of truth for *what Pat does next*.
- * Pipeline stage remains a separate sales-health signal (research → won/lost).
+ * Journey board columns only. Won / Lost / Park are exits (card menu), not lanes.
+ * Drag moves along this journey; exits never appear as drop targets.
  */
 export const WORKFLOW_LANES: WorkflowLane[] = [
   {
@@ -25,9 +25,9 @@ export const WORKFLOW_LANES: WorkflowLane[] = [
   {
     id: 'reply',
     icon: '💬',
-    label: 'Log client reply',
-    shortLabel: 'Client reply',
-    description: 'Capture the response and decide the next move.',
+    label: 'Waiting on reply',
+    shortLabel: 'Waiting on reply',
+    description: 'Outreach logged — waiting for the client to respond.',
     className: 'border-clay-mint/40 bg-clay-mint/10',
   },
   {
@@ -35,7 +35,7 @@ export const WORKFLOW_LANES: WorkflowLane[] = [
     icon: '📦',
     label: 'Track sample delivery',
     shortLabel: 'Sample',
-    description: 'Record the latest confirmed milestone. Only mark received after client confirmation.',
+    description: 'Address and send intent confirmed; track delivery.',
     className: 'border-clay-ochre/30 bg-clay-ochre/5',
   },
   {
@@ -43,40 +43,51 @@ export const WORKFLOW_LANES: WorkflowLane[] = [
     icon: '🧪',
     label: 'Set testing date',
     shortLabel: 'Testing',
-    description: 'Book the client kitchen test.',
+    description: 'Sample delivered — book the client kitchen test.',
     className: 'border-clay-lavender/40 bg-clay-lavender/10',
   },
   {
     id: 'reschedule',
     icon: '📅',
-    label: 'Reschedule follow-up',
+    label: 'Follow-up',
     shortLabel: 'Follow-up',
-    description: 'Set the next date and one nudge level.',
+    description: 'Feedback due or logged — schedule the next touch.',
     className: 'border-clay-hairline bg-clay-surface',
-  },
-  {
-    id: 'parked',
-    icon: '⏸',
-    label: 'Park deal',
-    shortLabel: 'Parked',
-    description: 'Pause the deal until its revisit date.',
-    className: 'border-clay-hairline bg-clay-card/60',
-  },
-  {
-    id: 'success',
-    icon: '🎉',
-    label: 'Deal successful / happy customer',
-    shortLabel: 'Successful',
-    description: 'Won customers and their next success step.',
-    className: 'border-clay-teal/30 bg-clay-mint/10',
   },
 ];
 
-export const WORKFLOW_BY_ID = Object.fromEntries(
-  WORKFLOW_LANES.map(lane => [lane.id, lane])
-) as Record<DealWorkflowAction, WorkflowLane>;
+/** Exit states kept for DB compatibility / filters — never journey columns. */
+export const EXIT_WORKFLOW_META: Record<'parked' | 'success', WorkflowLane> = {
+  parked: {
+    id: 'parked',
+    icon: '⏸',
+    label: 'Parked',
+    shortLabel: 'Parked',
+    description: 'Paused until a revisit date.',
+    className: 'border-clay-hairline bg-clay-card/60',
+  },
+  success: {
+    id: 'success',
+    icon: '🎉',
+    label: 'Won',
+    shortLabel: 'Won',
+    description: 'Closed won — first order recorded.',
+    className: 'border-clay-teal/30 bg-clay-mint/10',
+  },
+};
 
-/** Claymation mascot per lane. Success uses the trophy variant; celebrations randomize trophy/confetti. */
+export const WORKFLOW_BY_ID = {
+  ...Object.fromEntries(WORKFLOW_LANES.map(lane => [lane.id, lane])),
+  ...EXIT_WORKFLOW_META,
+} as Record<DealWorkflowAction, WorkflowLane>;
+
+export const JOURNEY_LANE_IDS: DealWorkflowAction[] = WORKFLOW_LANES.map(l => l.id);
+
+export function isJourneyLane(action: DealWorkflowAction): boolean {
+  return JOURNEY_LANE_IDS.includes(action);
+}
+
+/** Claymation mascot per lane / exit. */
 export const LANE_MASCOT_PATHS: Record<DealWorkflowAction, string> = {
   outreach: '/assets/mascots/mascot-outreach.png',
   reply: '/assets/mascots/mascot-reply.png',
@@ -87,23 +98,54 @@ export const LANE_MASCOT_PATHS: Record<DealWorkflowAction, string> = {
   success: '/assets/mascots/mascot-won-trophy.png',
 };
 
-export const NUDGE_OPTIONS: Array<{ value: NudgeStage; label: string; days: number }> = [
-  { value: 'warm', label: 'Warm nudge', days: 3 },
-  { value: 'remind', label: 'Remind nudge', days: 7 },
-  { value: 'firm', label: 'Firm nudge', days: 14 },
-  { value: 'parking', label: 'Parking nudge', days: 21 },
+/** Derived nudge thresholds (silence days past follow-up). Not editable stages. */
+export const DERIVED_NUDGE_OPTIONS: Array<{
+  value: NudgeStage;
+  label: string;
+  code: string;
+  minDays: number;
+}> = [
+  { value: 'warm', label: 'Warm', code: 'NG-001', minDays: 3 },
+  { value: 'remind', label: 'Remind', code: 'NG-002', minDays: 7 },
+  { value: 'firm', label: 'Firm', code: 'NG-003', minDays: 14 },
+  { value: 'parking', label: 'Suggest Park', code: 'NG-004', minDays: 21 },
 ];
+
+/** @deprecated Prefer DERIVED_NUDGE_OPTIONS — kept for legacy imports. */
+export const NUDGE_OPTIONS = DERIVED_NUDGE_OPTIONS.map(o => ({
+  value: o.value,
+  label: `${o.label} nudge`,
+  days: o.minDays,
+}));
 
 export const SAMPLE_STATUS_OPTIONS: Array<{ value: SampleStatus; label: string }> = [
   { value: 'sent', label: 'Sent to client' },
   { value: 'received', label: 'Received by client' },
 ];
 
+export const LOST_REASON_OPTIONS = [
+  { value: 'price', label: 'Price' },
+  { value: 'taste', label: 'Taste' },
+  { value: 'timing', label: 'Timing' },
+  { value: 'vendor_list', label: 'Vendor list' },
+  { value: 'no_reply', label: 'No reply' },
+  { value: 'other', label: 'Other' },
+] as const;
+
+export type LostReason = (typeof LOST_REASON_OPTIONS)[number]['value'];
+
+/** Active journey board membership (excludes exits). */
+export function isOnJourneyBoard(deal: Deal): boolean {
+  if (deal.stage === 'closed_won' || deal.stage === 'closed_lost') return false;
+  const action = getWorkflowAction(deal);
+  return action !== 'parked' && action !== 'success';
+}
+
 /** Keeps existing database records useful before they have been explicitly assigned. */
 export function getWorkflowAction(deal: Deal): DealWorkflowAction {
   if (deal.workflow_action) return deal.workflow_action;
   if (deal.stage === 'closed_won') return 'success';
-  if (deal.stage === 'closed_lost') return 'parked'; // archived/closed deals rest in Parked
+  if (deal.stage === 'closed_lost') return 'parked';
   if (deal.stage === 'negotiation') return 'testing';
   if (deal.stage === 'proposal') return 'sample';
   if (deal.stage === 'contacted') return 'reply';
@@ -111,60 +153,101 @@ export function getWorkflowAction(deal: Deal): DealWorkflowAction {
 }
 
 export function nudgeLabel(nudgeStage?: NudgeStage | null) {
-  return NUDGE_OPTIONS.find(option => option.value === nudgeStage)?.label || null;
+  const hit = DERIVED_NUDGE_OPTIONS.find(option => option.value === nudgeStage);
+  return hit ? `${hit.label} ${hit.code}` : null;
 }
 
 /**
- * Interaction log is the single source of truth. Logging an interaction against a
- * deal advances its workflow lane AND its derived pipeline stage in the same save.
- * These mappings keep stage in sync with workflow_action so both boards agree.
+ * Days of silence past the follow-up date (0 if not overdue / no date).
+ */
+export function silenceDaysPastFollowup(deal: Deal, today: string): number {
+  if (!deal.followup_date) return 0;
+  if (deal.stage === 'closed_won' || deal.stage === 'closed_lost') return 0;
+  if (getWorkflowAction(deal) === 'parked') return 0;
+  if (deal.followup_date >= today) return 0;
+  const a = new Date(`${deal.followup_date}T00:00:00`).getTime();
+  const b = new Date(`${today}T00:00:00`).getTime();
+  return Math.max(0, Math.round((b - a) / 86400000));
+}
+
+export interface DerivedNudge {
+  stage: NudgeStage;
+  label: string;
+  code: string;
+  silenceDays: number;
+  suggestPark: boolean;
+}
+
+/**
+ * Nudge badge derived from follow-up date + silence — never a stored editable stage.
+ */
+export function deriveNudge(deal: Deal, today: string): DerivedNudge | null {
+  const silence = silenceDaysPastFollowup(deal, today);
+  if (silence < 3) return null;
+  // Pick the strongest threshold met
+  let match = DERIVED_NUDGE_OPTIONS[0];
+  for (const opt of DERIVED_NUDGE_OPTIONS) {
+    if (silence >= opt.minDays) match = opt;
+  }
+  return {
+    stage: match.value,
+    label: match.label,
+    code: match.code,
+    silenceDays: silence,
+    suggestPark: match.value === 'parking',
+  };
+}
+
+/** Human chip like "~7d Remind NG-002". */
+export function formatDerivedNudgeBadge(n: DerivedNudge): string {
+  const approx =
+    n.stage === 'warm' ? 3 : n.stage === 'remind' ? 7 : n.stage === 'firm' ? 14 : 21;
+  return `~${approx}d ${n.label} ${n.code}`;
+}
+
+export function derivedNudgeChip(deal: Deal, today: string): string | null {
+  const n = deriveNudge(deal, today);
+  return n ? formatDerivedNudgeBadge(n) : null;
+}
+
+/**
+ * Interaction log is the single source of truth for derived pipeline stage.
+ * Journey moves no longer go straight to closed_won via drag.
  */
 export const STAGE_FROM_WORKFLOW: Record<DealWorkflowAction, Deal['stage']> = {
   outreach: 'research',
   reply: 'contacted',
   sample: 'proposal',
   testing: 'negotiation',
-  reschedule: 'contacted', // cadence touch — assume still in conversation
-  parked: 'research', // shelved
+  reschedule: 'contacted',
+  parked: 'research',
   success: 'closed_won',
 };
 
 export function stageFromWorkflow(action: DealWorkflowAction, current?: Deal['stage']): Deal['stage'] {
-  // reschedule / parked are cadence-only: keep the deal's current stage.
   if (action === 'reschedule' || action === 'parked') return current || STAGE_FROM_WORKFLOW[action];
   return STAGE_FROM_WORKFLOW[action];
 }
 
-/**
- * Nudge stage only applies at/after the sample-sent step. Earlier lanes
- * (outreach, reply) must NOT offer a nudge — per Pat's rule.
- */
-export function canNudge(workflow: DealWorkflowAction): boolean {
-  return ['sample', 'testing', 'reschedule', 'success'].includes(workflow);
+/** @deprecated Nudge is derived — never gated as an editable lane field. */
+export function canNudge(_workflow: DealWorkflowAction): boolean {
+  return false;
 }
 
 /**
- * Normal forward workflow lane. Logging an interaction never applies this
- * automatically; the Log modal may offer it as an explicit, validated choice.
+ * Normal forward journey. Testing advances to Follow-up, not Won.
+ * Won is an exit only.
  */
 export const NEXT_WORKFLOW: Partial<Record<DealWorkflowAction, DealWorkflowAction>> = {
   outreach: 'reply',
   reply: 'sample',
   sample: 'testing',
-  testing: 'success',
+  testing: 'reschedule',
   reschedule: 'reschedule',
   parked: 'parked',
   success: 'success',
 };
 
-/**
- * Coherent nudge-stage colors — one hue per stage, used everywhere
- * (chips, LaneGate, DealDetail, Nudges legend).
- *   warm    → butter/ochre  (gentle first tap)
- *   remind  → lavender      (the primary clay accent)
- *   firm    → coral         (escalating attention)
- *   parking → muted         (stepped-back / shelved)
- */
 export const NUDGE_COLOR_CLASS: Record<NudgeStage, string> = {
   warm: 'bg-clay-ochre/15 text-clay-ochre border-clay-ochre/30',
   remind: 'bg-clay-lavender/20 text-clay-lavender border-clay-lavender/30',
@@ -175,4 +258,13 @@ export const NUDGE_COLOR_CLASS: Record<NudgeStage, string> = {
 export function nudgeColorClass(nudgeStage?: NudgeStage | null): string {
   if (!nudgeStage) return 'bg-clay-card text-clay-muted-soft border-clay-hairline';
   return NUDGE_COLOR_CLASS[nudgeStage];
+}
+
+export function addDaysToDateKey(dateKey: string, days: number): string {
+  const d = new Date(`${dateKey}T12:00:00`);
+  d.setDate(d.getDate() + days);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }

@@ -86,9 +86,8 @@ describe('buildReviewFix', () => {
     expect(buildReviewFix(reasons('sample-status-missing'), { sample_status: 'sent' })).toEqual({ sample_status: 'sent' });
     expect(buildReviewFix(reasons('testing-date-missing'), { followup_date: '2026-09-01' })).toEqual({ followup_date: '2026-09-01' });
     expect(buildReviewFix(reasons('parked-revisit-missing'), { followup_date: '2026-09-01' })).toEqual({ followup_date: '2026-09-01' });
-    expect(buildReviewFix(reasons('followup-date-or-nudge-missing'), { followup_date: '2026-09-01', nudge_stage: 'firm' })).toEqual({ followup_date: '2026-09-01', nudge_stage: 'firm' });
+    expect(buildReviewFix(reasons('followup-date-missing'), { followup_date: '2026-09-01' })).toEqual({ followup_date: '2026-09-01' });
     expect(buildReviewFix(reasons('reply-outcome-missing'), { reply_outcome: 'positive', reply_summary: 'ok' })).toEqual({ last_outcome: '💬 Client replied — positive: ok' });
-    expect(buildReviewFix(reasons('success-step-missing'), { next_action: 'Quarterly check-in' })).toEqual({ next_action: 'Quarterly check-in' });
   });
 
   it('ignores inputs for reasons the deal does not have', () => {
@@ -124,27 +123,11 @@ describe('dealNeedsReview', () => {
       followup_date: '2026-08-27',
       next_action: 'Find central kitchen/R&D buyer or corporate procurement contact before approaching store-level staff',
     }))).toBe(true);
-    expect(dealNeedsReview(deal({ id: 'followup', client: 'Follow-up', workflow_action: 'reschedule', followup_date: today }))).toBe(true);
+    expect(dealNeedsReview(deal({ id: 'followup', client: 'Follow-up', workflow_action: 'reschedule' }))).toBe(true);
+    expect(dealNeedsReview(deal({ id: 'followup-ok', client: 'Follow-up OK', workflow_action: 'reschedule', followup_date: today }))).toBe(false);
     expect(dealNeedsReview(deal({ id: 'parked', client: 'Parked', workflow_action: 'parked' }))).toBe(true);
-    expect(dealNeedsReview(deal({ id: 'won', client: 'Won', workflow_action: 'success', stage: 'negotiation' }))).toBe(true);
 
     expect(dealNeedsReview(deal({ id: 'complete-sample', client: 'Complete', workflow_action: 'sample', sample_status: 'sent' }))).toBe(false);
-  });
-
-  it('flags a won account with no next customer-success step (case 5)', () => {
-    expect(dealNeedsReview(deal({
-      id: 'won-no-step',
-      client: 'Won No Step',
-      workflow_action: 'success',
-      stage: 'closed_won',
-    }))).toBe(true);
-    expect(dealNeedsReview(deal({
-      id: 'won-with-step',
-      client: 'Won With Step',
-      workflow_action: 'success',
-      stage: 'closed_won',
-      next_action: 'Schedule quarterly reorder check-in',
-    }))).toBe(false);
   });
 });
 
@@ -152,7 +135,7 @@ describe('reviewReasons', () => {
   it('returns stable reason codes for each broken-record case', () => {
     expect(reviewReasons(deal({ id: 's', client: 'Sample', workflow_action: 'sample' }))).toEqual(['sample-status-missing']);
     expect(reviewReasons(deal({ id: 't', client: 'Testing', workflow_action: 'testing' }))).toEqual(['testing-date-missing']);
-    expect(reviewReasons(deal({ id: 'f', client: 'Follow-up', workflow_action: 'reschedule', followup_date: today }))).toEqual(['followup-date-or-nudge-missing']);
+    expect(reviewReasons(deal({ id: 'f', client: 'Follow-up', workflow_action: 'reschedule' }))).toEqual(['followup-date-missing']);
     expect(reviewReasons(deal({ id: 'p', client: 'Parked', workflow_action: 'parked' }))).toEqual(['parked-revisit-missing']);
     expect(reviewReasons(deal({ id: 'r', client: 'Reply', workflow_action: 'reply' }))).toEqual(['reply-outcome-missing']);
   });
@@ -168,7 +151,7 @@ describe('buildReviewReport', () => {
     expect(report).toHaveLength(1);
     expect(report[0].deal.id).toBe('sample');
     expect(report[0].labels).toContain('Sample missing sent/received status');
-    expect(report[0].fix).toMatch(/Sample lane/);
+    expect(report[0].fix).toMatch(/address|send intent|sample/i);
     // Report must never mutate the source deals.
     expect(input[0].sample_status).toBeNull();
   });

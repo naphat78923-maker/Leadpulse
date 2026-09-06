@@ -71,13 +71,23 @@ describe('buildInteractionWorkflowUpdate', () => {
     })).toThrow(/testing date/i);
   });
 
-  it('requires explicit confirmation before closing a deal as won', () => {
-    const testingDeal = { ...baseDeal, workflow_action: 'testing' as const, stage: 'negotiation' as const };
+  it('advances Testing to Follow-up — won is never via log/drag', () => {
+    const testingDeal = { ...baseDeal, workflow_action: 'testing' as const, stage: 'negotiation' as const, followup_date: '2026-09-01' };
 
     expect(() => buildInteractionWorkflowUpdate(testingDeal, 'success', {
       outcome: 'positive',
       interactionDescription: 'Test completed',
-      confirmSuccess: false,
-    })).toThrow(/confirm/i);
+      confirmSuccess: true,
+    })).toThrow(/exit menu/i);
+
+    const updates = buildInteractionWorkflowUpdate(testingDeal, 'reschedule', {
+      outcome: 'positive',
+      interactionDescription: 'Feedback due Friday',
+      testingDate: '2026-09-05',
+    });
+    expect(updates).toMatchObject({
+      workflow_action: 'reschedule',
+      followup_date: '2026-09-05',
+    });
   });
 });

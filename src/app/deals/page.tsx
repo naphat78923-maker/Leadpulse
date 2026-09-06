@@ -29,20 +29,20 @@ import { Plus, TrendingUp, AlertCircle, Loader2, CalendarDays, ArrowRight, Searc
 import clsx from 'clsx';
 import { PRIORITY_CLASSES, PRIORITY_LABELS } from '@/utils/lead-scoring';
 import { formatBaht, sumLaneValues } from '@/utils/format';
-import { WORKFLOW_LANES, WORKFLOW_BY_ID, LANE_MASCOT_PATHS, getWorkflowAction, nudgeLabel } from '@/utils/deal-workflow';
+import { WORKFLOW_LANES, WORKFLOW_BY_ID, LANE_MASCOT_PATHS, getWorkflowAction, isOnJourneyBoard, isJourneyLane, deriveNudge, formatDerivedNudgeBadge } from '@/utils/deal-workflow';
+import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
+import LogInteractionModal from '@/components/LogInteractionModal';
 import { BoardAttentionFilter, dealNeedsReview, reviewReasons, REVIEW_LABEL, buildReviewReport, buildReviewFix, filterAndSortBoardDeals, getDoNowCounts, localDateKey } from '@/utils/deal-board';
 import { buildDealCardPresentation } from '@/utils/deal-card';
 
-type ViewMode = 'board' | 'closed' | 'table';
+type ViewMode = 'board' | 'parked' | 'won' | 'lost' | 'table';
 
-const LANE_CRITERIA: Record<DealWorkflowAction, string> = {
-  outreach: 'Optional: next action',
-  reply: 'Requires: outcome',
-  sample: 'Requires: sent / received',
-  testing: 'Requires: testing date',
-  reschedule: 'Requires: date + nudge',
-  parked: 'Requires: revisit date',
-  success: 'Closes deal as won',
+const LANE_CRITERIA: Record<string, string> = {
+  outreach: 'No gate',
+  reply: 'Requires: last outreach logged',
+  sample: 'Requires: address / send intent',
+  testing: 'Requires: sample delivered + date',
+  reschedule: 'Requires: follow-up date',
 };
 
 function timestampedEntry(text: string) {
@@ -77,7 +77,7 @@ function whyNow(deal: Deal, due: 'overdue' | 'today' | null): string | null {
   if (deal.priority === 'high') {
     return due === 'overdue' ? 'High-priority follow-up slipped' : 'High-priority follow-up due today';
   }
-  const lane = WORKFLOW_LANES.find(item => item.id === getWorkflowAction(deal));
+  const lane = WORKFLOW_BY_ID[getWorkflowAction(deal)];
   if (lane && lane.id !== 'outreach') {
     return `Scheduled ${lane.shortLabel.toLowerCase()} is ${due === 'overdue' ? 'overdue' : 'due today'}`;
   }
@@ -94,7 +94,7 @@ export default function DealsPage() {
   const [reviewFix, setReviewFix] = useState<{ deal: Deal; reasons: ReturnType<typeof reviewReasons> } | null>(null);
   const [celebrate, setCelebrate] = useState<{ dealId: string; laneId: DealWorkflowAction; sprite?: string } | null>(null);
   const [pickerDeal, setPickerDeal] = useState<Deal | null>(null);
-  const [attentionFilter, setAttentionFilter] = useState<BoardAttentionFilter>('all');
+  const [attentionFilter, setAttentionFilter] = useState<BoardAttentionFilter>('overdue');
   const [searchQuery, setSearchQuery] = useState('');
   const [productFilter, setProductFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<Deal['priority'] | 'all'>('all');
@@ -140,7 +140,7 @@ export default function DealsPage() {
   };
 
   const actionBoardDeals = useMemo(
-    () => deals.filter(deal => deal.stage !== 'closed_lost'),
+    () => deals.filter(deal => isOnJourneyBoard(deal)),
     [deals]
   );
 
@@ -185,16 +185,24 @@ export default function DealsPage() {
     [laneValues]
   );
 
-  const closedDeals = useMemo(
-    () => deals.filter(deal => deal.stage === 'closed_won' || deal.stage === 'closed_lost'),
+  const parkedDeals = useMemo(
+    () => deals.filter(deal => getWorkflowAction(deal) === 'parked' && deal.stage !== 'closed_won' && deal.stage !== 'closed_lost'),
     [deals]
   );
+  const wonDeals = useMemo(() => deals.filter(deal => deal.stage === 'closed_won'), [deals]);
+  const lostDeals = useMemo(() => deals.filter(deal => deal.stage === 'closed_lost'), [deals]);
+
+  const [exitModal, setExitModal] = useState<{ deal: Deal; kind: 'won' | 'lost' | 'park' } | null>(null);
+  const [logDealId, setLogDealId] = useState<string | null>(null);
 
   const stats = useMemo(() => {
-    const active = deals.filter(deal => !['closed_won', 'closed_lost'].includes(deal.stage));
-    const parked = actionBoardDeals.filter(deal => getWorkflowAction(deal) === 'parked');
-    return { active: active.length, parked: parked.length, dueToday: doNowCounts.today, won: deals.filter(deal => deal.stage === 'closed_won').length };
-  }, [actionBoardDeals, deals, doNowCounts.today]);
+    return {
+      active: actionBoardDeals.length,
+      parked: parkedDeals.length,
+      dueToday: doNowCounts.today,
+      won: wonDeals.length,
+    };
+  }, [actionBoardDeals, parkedDeals, wonDeals, doNowCounts.today]);
 
   const activeDeal = selectedDeal ? deals.find(deal => deal.id === selectedDeal) : null;
 
@@ -224,6 +232,7 @@ export default function DealsPage() {
     setActiveDragId(null);
     const over = event.over?.id as string | undefined;
     if (!over) return;
+    if (!isJourneyLane(over as DealWorkflowAction)) return; // exits are never drag targets
     const deal = deals.find(d => d.id === id);
     if (!deal) return;
     const current = getWorkflowAction(deal);
@@ -246,18 +255,22 @@ export default function DealsPage() {
     };
     const updates: Partial<Deal> = { workflow_action: target };
     if (target === 'sample') updates.sample_status = payload.sample_status || null;
-    if (target === 'testing' || target === 'parked' || target === 'reschedule') updates.followup_date = payload.followup_date || null;
-    if (target === 'reschedule') updates.nudge_stage = payload.nudge_stage || null;
-    if (target !== 'sample') updates.sample_status = null;
-    if (target !== 'reschedule') updates.nudge_stage = null;
+    if (target === 'testing' || target === 'reschedule') updates.followup_date = payload.followup_date || null;
+    if (target === 'testing' && payload.sample_status) updates.sample_status = payload.sample_status;
+    if (target !== 'sample' && target !== 'testing') {
+      /* keep existing sample_status on other lanes */
+    } else if (target === 'sample') {
+      updates.sample_status = payload.sample_status || null;
+    }
+    updates.nudge_stage = null; // nudges are derived — never stored from drag
     if (target === 'outreach' && payload.next_action) updates.next_action = payload.next_action;
     if (target === 'reply') {
-      const detail = payload.reply_summary ? `: ${payload.reply_summary}` : '';
-      updates.last_outcome = appendOutcome(deal.last_outcome, timestampedEntry(`💬 Client replied — ${payload.reply_outcome}${detail}`));
-    }
-    if (target === 'success') {
-      updates.stage = 'closed_won';
-      updates.followup_date = null;
+      if (payload.reply_outcome) {
+        const detail = payload.reply_summary ? `: ${payload.reply_summary}` : '';
+        updates.last_outcome = appendOutcome(deal.last_outcome, timestampedEntry(`💬 Client replied — ${payload.reply_outcome}${detail}`));
+      } else if (payload.outreach_logged) {
+        updates.last_outcome = appendOutcome(deal.last_outcome, timestampedEntry('✅ Outreach logged — waiting on reply'));
+      }
     }
     await crm.updateDeal(deal.id, updates);
     logActivity({
@@ -295,31 +308,10 @@ export default function DealsPage() {
     if (meetingToLog) {
       await addMeeting(meetingToLog as any);
     }
-    // Record the sale: app-side closed-won events feed unified_sales →
-    // reorder_signals, so every sale typed here advances that buyer's
-    // cycle + typical value immediately. Zero-value deals still record an
-    // event (flagged, excluded from math) to keep last_order accurate.
-    // Non-fatal: a failed write must never block closing the deal.
-    if (target === 'success' && deal.company_id) {
-      try {
-        await crm.createAccountEvent({
-          company_id: deal.company_id,
-          event_date: new Date().toISOString().split('T')[0],
-          amount: Number(deal.value) > 0 ? Number(deal.value) : 0,
-          product_line: deal.product || null,
-          order_id: `deal_${deal.id}`,
-        });
-      } catch (eventErr) {
-        console.error('Sale recorded for pipeline but not for signals:', eventErr);
-      }
-    }
     setGate(null);
-    const celebrationSprite = target === 'success'
-      ? (Math.random() < 0.5 ? '/assets/mascots/mascot-won-trophy.png' : '/assets/mascots/mascot-won-confetti.png')
-      : LANE_MASCOT_PATHS[target];
-    setCelebrate({ dealId: deal.id, laneId: target, sprite: celebrationSprite });
+    setCelebrate({ dealId: deal.id, laneId: target, sprite: LANE_MASCOT_PATHS[target] });
     setTimeout(() => setCelebrate(null), 900);
-    addToast(target === 'success' ? '🎉 Deal closed as won!' : `${lane.icon} Moved to ${lane.shortLabel}`);
+    addToast(`${lane.icon} Moved to ${lane.shortLabel}`);
     await refresh();
   };
 
@@ -363,8 +355,9 @@ export default function DealsPage() {
 
   const renderDealCard = (deal: Deal, opts?: { grip?: boolean; compact?: boolean }) => {
     const action = getWorkflowAction(deal);
-    const nudge = nudgeLabel(deal.nudge_stage);
-    const lane = WORKFLOW_LANES.find(item => item.id === action)!;
+    const derived = deriveNudge(deal, todayStr);
+    const nudge = derived ? formatDerivedNudgeBadge(derived) : null;
+    const lane = WORKFLOW_BY_ID[action];
     const due = dueStateFor(deal, todayStr);
     const reason = whyNow(deal, due);
     const reasons = reviewReasons(deal);
@@ -403,7 +396,7 @@ export default function DealsPage() {
         <div>
           <p className="zams-eyebrow mb-1">Pipeline · Action board</p>
           <h1 className="zams-display text-2xl md:text-[28px] leading-tight">Deal Action Board</h1>
-          <p className="text-xs md:text-sm text-clay-muted mt-1">Organise clients by the next customer action — pipeline stage stays on each deal.</p>
+          <p className="text-xs md:text-sm text-clay-muted mt-1">Journey only — Won / Lost / Park are exits, not columns. Nudges derive from follow-up + silence.</p>
         </div>
         <button
           onClick={() => setIsModalOpen(true)}
@@ -416,16 +409,18 @@ export default function DealsPage() {
 
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
-        <div className="bg-white dark:bg-clay-card border border-clay-hairline rounded-xl p-3"><p className="zams-eyebrow">Active</p><p className="text-xl font-semibold text-clay-ink">{stats.active}</p></div>
+        <button onClick={() => setView('board')} className="bg-white dark:bg-clay-card border border-clay-hairline rounded-xl p-3 text-left active:scale-[0.98]"><p className="zams-eyebrow">Active</p><p className="text-xl font-semibold text-clay-ink">{stats.active}</p></button>
         <button onClick={() => focusAttention('today')} className="bg-clay-ochre/10 border border-clay-ochre/20 rounded-xl p-3 text-left active:scale-[0.98] transition-transform"><p className="zams-eyebrow text-clay-ochre">Due today</p><p className="text-xl font-semibold text-clay-ochre">{stats.dueToday}</p></button>
-        <div className="bg-clay-card border border-clay-hairline rounded-xl p-3"><p className="zams-eyebrow">Parked</p><p className="text-xl font-semibold text-clay-ink">{stats.parked}</p></div>
-        <div className="bg-clay-mint/20 border border-clay-mint/30 rounded-xl p-3"><p className="zams-eyebrow text-clay-teal">Won</p><p className="text-xl font-semibold text-clay-teal">{stats.won}</p></div>
+        <button onClick={() => setView('parked')} className="bg-clay-card border border-clay-hairline rounded-xl p-3 text-left active:scale-[0.98]"><p className="zams-eyebrow">Parked</p><p className="text-xl font-semibold text-clay-ink">{stats.parked}</p></button>
+        <button onClick={() => setView('won')} className="bg-clay-mint/20 border border-clay-mint/30 rounded-xl p-3 text-left active:scale-[0.98]"><p className="zams-eyebrow text-clay-teal">Won</p><p className="text-xl font-semibold text-clay-teal">{stats.won}</p></button>
       </div>
 
-      <div className="flex bg-clay-card rounded-lg p-0.5 mb-4">
-        <button onClick={() => setView('board')} className={clsx('flex-1 px-3 py-2 text-xs font-medium rounded-md', view === 'board' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>Action board</button>
-        <button onClick={() => setView('closed')} className={clsx('flex-1 px-3 py-2 text-xs font-medium rounded-md', view === 'closed' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>Closed</button>
-        <button onClick={() => setView('table')} className={clsx('flex-1 px-3 py-2 text-xs font-medium rounded-md', view === 'table' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>Table</button>
+      <div className="flex bg-clay-card rounded-lg p-0.5 mb-4 overflow-x-auto">
+        <button onClick={() => setView('board')} className={clsx('flex-1 px-3 py-2 text-xs font-medium rounded-md whitespace-nowrap', view === 'board' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>Journey</button>
+        <button onClick={() => setView('parked')} className={clsx('flex-1 px-3 py-2 text-xs font-medium rounded-md whitespace-nowrap', view === 'parked' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>Parked</button>
+        <button onClick={() => setView('won')} className={clsx('flex-1 px-3 py-2 text-xs font-medium rounded-md whitespace-nowrap', view === 'won' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>Won</button>
+        <button onClick={() => setView('lost')} className={clsx('flex-1 px-3 py-2 text-xs font-medium rounded-md whitespace-nowrap', view === 'lost' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>Lost</button>
+        <button onClick={() => setView('table')} className={clsx('flex-1 px-3 py-2 text-xs font-medium rounded-md whitespace-nowrap', view === 'table' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>Table</button>
       </div>
 
       {view === 'board' && (
@@ -567,7 +562,7 @@ export default function DealsPage() {
           <div className="mb-3 rounded-xl border border-clay-hairline bg-clay-surface px-3 py-2 flex items-center justify-between gap-3">
             <div className="flex items-start gap-2 text-xs text-clay-muted min-w-0">
               <CalendarDays className="w-4 h-4 mt-0.5 text-clay-lavender shrink-0" />
-              <span>Drag a deal card into another lane. Each lane <strong className="text-clay-ink">gates the info it needs</strong> (dates, sample status, nudge level) before the move saves.</span>
+              <span>Drag along the journey only. Won / Lost / Park are exits from the card menu — never columns.</span>
             </div>
             <button
               onClick={() => setCompact(!compact)}
@@ -634,21 +629,21 @@ export default function DealsPage() {
               const lane = WORKFLOW_LANES.find(item => item.id === mobileLane)!;
               const laneDeals = dealsByAction[mobileLane];
               return (
-                <section className={clsx('rounded-2xl border p-3', lane.className)}>
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <div>
-                      <h2 className="text-base font-semibold text-clay-ink flex items-center gap-2">
-                        <MascotSprite src={LANE_MASCOT_PATHS[lane.id]} size={38} alt={lane.label} />
-                        {lane.label}
-                      </h2>
-                      <p className="text-xs text-clay-muted mt-1">{lane.description}</p>
+                <section data-lane-id={lane.id} className={clsx('rounded-2xl border p-3', lane.className)}>
+                  <div data-lane-header className="mb-2 space-y-1">
+                    <div data-lane-title className="flex min-w-0 items-center gap-2">
+                      <MascotSprite src={LANE_MASCOT_PATHS[lane.id]} size={32} alt={lane.label} />
+                      <h2 className="min-w-0 flex-1 text-base font-semibold text-clay-ink">{lane.label}</h2>
                     </div>
-                    <span className="text-sm text-clay-muted bg-white/70 dark:bg-clay-card px-2 py-1 rounded-full">{laneDeals.length} · {formatBaht(laneValues[lane.id])}</span>
+                    <p className="line-clamp-1 min-h-[1.25rem] text-[11px] text-clay-muted">{lane.description}</p>
+                    <div className="flex justify-end">
+                      <span data-lane-stats className="whitespace-nowrap text-sm text-clay-muted bg-white/70 dark:bg-clay-card px-2 py-1 rounded-full">{laneDeals.length} · {formatBaht(laneValues[lane.id])}</span>
+                    </div>
                   </div>
                   <div className="space-y-2">
                     {laneDeals.map(d => (
-                      <div key={d.id} className="flex items-stretch gap-1.5">
-                        <div className="flex-1 min-w-0">{renderDealCard(d, { compact })}</div>
+                      <div key={d.id} className="flex flex-wrap items-stretch gap-1.5">
+                        <div className="flex-1 min-w-[min(100%,12rem)]">{renderDealCard(d, { compact })}</div>
                         <button
                           onClick={() => setPickerDeal(d)}
                           className="w-11 shrink-0 flex flex-col items-center justify-center gap-0.5 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card text-clay-ink active:bg-clay-lavender/20"
@@ -671,16 +666,16 @@ export default function DealsPage() {
               <div ref={boardRef} className="flex gap-3 items-stretch overflow-x-auto pb-3 pr-1">
                 {WORKFLOW_LANES.map(lane => (
                   <DroppableLane key={lane.id} laneId={lane.id} className={lane.className}>
-                    <div className="flex items-start justify-between gap-2 mb-3 shrink-0">
-                      <div>
-                        <h2 className="text-sm font-semibold text-clay-ink flex items-center gap-2">
-                          <MascotSprite src={LANE_MASCOT_PATHS[lane.id]} size={38} alt={lane.shortLabel} />
-                          {lane.shortLabel}
-                        </h2>
-                        <p className="text-xs text-clay-muted mt-0.5 leading-snug">{lane.description}</p>
-                        <p className="zams-mono text-[9px] uppercase tracking-[0.14px] text-clay-muted-soft mt-1">{LANE_CRITERIA[lane.id]}</p>
+                    <div data-lane-header className="mb-2 shrink-0 space-y-1">
+                      <div data-lane-title className="flex min-w-0 items-center gap-2">
+                        <MascotSprite src={LANE_MASCOT_PATHS[lane.id]} size={32} alt={lane.shortLabel} />
+                        <h2 className="min-w-0 flex-1 text-sm font-semibold text-clay-ink">{lane.shortLabel}</h2>
                       </div>
-                      <span className="text-xs text-clay-muted bg-white/70 dark:bg-clay-card px-2 py-0.5 rounded-full shrink-0">{dealsByAction[lane.id].length} · {formatBaht(laneValues[lane.id])}</span>
+                      <p className="line-clamp-1 min-h-[1.25rem] text-[11px] leading-snug text-clay-muted">{lane.description}</p>
+                      <div className="flex min-w-0 items-center justify-between gap-2">
+                        <p className="zams-mono min-w-0 truncate text-[9px] uppercase tracking-[0.14px] text-clay-muted-soft">{LANE_CRITERIA[lane.id]}</p>
+                        <span data-lane-stats className="shrink-0 whitespace-nowrap text-xs text-clay-muted bg-white/70 dark:bg-clay-card px-2 py-0.5 rounded-full">{dealsByAction[lane.id].length} · {formatBaht(laneValues[lane.id])}</span>
+                      </div>
                     </div>
                     <div className="space-y-2 flex-1 pr-0.5">
                       {dealsByAction[lane.id].map(deal => (
@@ -694,14 +689,7 @@ export default function DealsPage() {
                         </DraggableCard>
                       ))}
                       {dealsByAction[lane.id].length === 0 && (
-                        lane.id === 'parked' ? (
-                          <div className="text-center py-6 rounded-lg border-2 border-dashed border-clay-hairline flex flex-col items-center gap-2 opacity-90">
-                            <MascotSprite src={LANE_MASCOT_PATHS.parked} size={44} alt="Sleepy parked mascot" />
-                            <p className="text-xs text-clay-muted-soft">Nothing parked — everything is moving.</p>
-                          </div>
-                        ) : (
-                          <div className="text-center py-6 text-xs text-clay-muted-soft border-2 border-dashed border-clay-hairline rounded-lg">Drop here</div>
-                        )
+                        <div className="text-center py-6 text-xs text-clay-muted-soft border-2 border-dashed border-clay-hairline rounded-lg">Drop here</div>
                       )}
                       {celebrate && celebrate.laneId === lane.id && (
                         <div className="flex justify-center">
@@ -758,13 +746,36 @@ export default function DealsPage() {
         </>
       )}
 
-      {view === 'closed' && (
+      {view === 'parked' && (
         <div className="flex-1 overflow-y-auto">
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            <div className="bg-clay-mint/20 rounded-xl border border-clay-mint/30 p-4"><div className="flex items-center gap-2 text-clay-teal mb-1"><TrendingUp className="w-4 h-4" /><span className="text-xs font-medium">Won</span></div><p className="text-2xl font-bold text-clay-teal">{closedDeals.filter(deal => deal.stage === 'closed_won').length}</p></div>
-            <div className="bg-clay-error/10 rounded-xl border border-clay-error/20 p-4"><div className="flex items-center gap-2 text-clay-error mb-1"><AlertCircle className="w-4 h-4" /><span className="text-xs font-medium">Lost</span></div><p className="text-2xl font-bold text-clay-error">{closedDeals.filter(deal => deal.stage === 'closed_lost').length}</p></div>
+          <p className="text-sm text-clay-muted mb-3">Parked queue — revisit dates, not a journey column.</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {parkedDeals.length === 0 ? (
+              <div className="col-span-full rounded-xl border border-dashed border-clay-hairline p-8 text-center text-sm text-clay-muted">Nothing parked.</div>
+            ) : parkedDeals.map(d => renderDealCard(d))}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">{closedDeals.map(d => renderDealCard(d))}</div>
+        </div>
+      )}
+
+      {view === 'won' && (
+        <div className="flex-1 overflow-y-auto">
+          <p className="text-sm text-clay-muted mb-3">Won filter — marked via exit, never by dragging to a column.</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {wonDeals.length === 0 ? (
+              <div className="col-span-full rounded-xl border border-dashed border-clay-hairline p-8 text-center text-sm text-clay-muted">No won deals yet.</div>
+            ) : wonDeals.map(d => renderDealCard(d))}
+          </div>
+        </div>
+      )}
+
+      {view === 'lost' && (
+        <div className="flex-1 overflow-y-auto">
+          <p className="text-sm text-clay-muted mb-3">Lost filter — reason captured on exit.</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {lostDeals.length === 0 ? (
+              <div className="col-span-full rounded-xl border border-dashed border-clay-hairline p-8 text-center text-sm text-clay-muted">No lost deals.</div>
+            ) : lostDeals.map(d => renderDealCard(d))}
+          </div>
         </div>
       )}
 
@@ -774,8 +785,9 @@ export default function DealsPage() {
             <thead><tr className="border-b border-clay-hairline text-left text-clay-muted text-xs uppercase tracking-wide"><th className="px-3 py-3 font-medium">Client</th><th className="px-3 py-3 font-medium">Action</th><th className="hidden sm:table-cell px-3 py-3 font-medium">Stage</th><th className="hidden sm:table-cell px-3 py-3 font-medium">Follow-up</th><th className="px-3 py-3 font-medium">Priority</th></tr></thead>
             <tbody>
               {deals.map(deal => {
-                const lane = WORKFLOW_LANES.find(item => item.id === getWorkflowAction(deal))!;
-                return <tr key={deal.id} onClick={() => setSelectedDeal(deal.id)} className="border-b border-clay-hairline active:bg-clay-surface cursor-pointer transition-colors"><td className="px-3 py-3"><p className="font-medium text-clay-ink">{deal.client}</p><p className="text-[10px] text-clay-muted truncate max-w-40">{deal.title}</p></td><td className="px-3 py-3"><span className="text-xs text-clay-body whitespace-nowrap">{lane.icon} {lane.shortLabel}</span>{deal.nudge_stage && <p className="text-[10px] text-clay-muted mt-0.5">{nudgeLabel(deal.nudge_stage)}</p>}</td><td className="hidden sm:table-cell px-3 py-3"><span className="text-[10px] font-medium bg-clay-card px-1.5 py-0.5 rounded text-clay-muted">{STAGE_LABELS[deal.stage]}</span></td><td className="hidden sm:table-cell px-3 py-3 text-xs text-clay-muted">{compactDate(deal.followup_date) || '—'}</td><td className="px-3 py-3"><span className={clsx('text-[10px] font-semibold px-2 py-0.5 rounded', PRIORITY_CLASSES[deal.priority])}>{PRIORITY_LABELS[deal.priority]}</span></td></tr>;
+                const lane = WORKFLOW_BY_ID[getWorkflowAction(deal)];
+                const derived = deriveNudge(deal, todayStr);
+                return <tr key={deal.id} onClick={() => setSelectedDeal(deal.id)} className="border-b border-clay-hairline active:bg-clay-surface cursor-pointer transition-colors"><td className="px-3 py-3"><p className="font-medium text-clay-ink">{deal.client}</p><p className="text-[10px] text-clay-muted truncate max-w-40">{deal.title}</p></td><td className="px-3 py-3"><span className="text-xs text-clay-body whitespace-nowrap">{lane.icon} {lane.shortLabel}</span>{derived && <p className="text-[10px] text-clay-muted mt-0.5">{formatDerivedNudgeBadge(derived)}</p>}</td><td className="hidden sm:table-cell px-3 py-3"><span className="text-[10px] font-medium bg-clay-card px-1.5 py-0.5 rounded text-clay-muted">{STAGE_LABELS[deal.stage]}</span></td><td className="hidden sm:table-cell px-3 py-3 text-xs text-clay-muted">{compactDate(deal.followup_date) || '—'}</td><td className="px-3 py-3"><span className={clsx('text-[10px] font-semibold px-2 py-0.5 rounded', PRIORITY_CLASSES[deal.priority])}>{PRIORITY_LABELS[deal.priority]}</span></td></tr>;
               })}
             </tbody>
           </table>
@@ -813,7 +825,93 @@ export default function DealsPage() {
             setPickerDeal(null);
             setGate({ deal: pickerDeal, target });
           }}
+          onExit={(kind) => {
+            const d = pickerDeal;
+            setPickerDeal(null);
+            setExitModal({ deal: d, kind });
+          }}
           onClose={() => setPickerDeal(null)}
+        />
+      )}
+
+      {exitModal && (
+        <ExitDealModal
+          deal={exitModal.deal}
+          kind={exitModal.kind}
+          onCancel={() => setExitModal(null)}
+          onConfirm={async (payload: ExitDealPayload) => {
+            const d = exitModal.deal;
+            const before: Partial<Deal> = {
+              stage: d.stage,
+              workflow_action: getWorkflowAction(d),
+              followup_date: d.followup_date,
+              value: d.value,
+              last_outcome: d.last_outcome,
+              close_date: d.close_date || null,
+              won_note: d.won_note || null,
+              lost_reason: d.lost_reason || null,
+              park_reason: d.park_reason || null,
+            };
+            if (payload.kind === 'won') {
+              await crm.updateDeal(d.id, {
+                stage: 'closed_won',
+                workflow_action: 'success',
+                followup_date: null,
+                close_date: payload.close_date || null,
+                won_note: payload.won_note || null,
+                value: payload.value != null ? payload.value : d.value,
+                nudge_stage: null,
+              });
+              if (d.company_id) {
+                try {
+                  await crm.createAccountEvent({
+                    company_id: d.company_id,
+                    event_date: payload.close_date || todayStr,
+                    amount: Number(payload.value ?? d.value) > 0 ? Number(payload.value ?? d.value) : 0,
+                    product_line: d.product || null,
+                    order_id: `deal_${d.id}`,
+                  });
+                } catch (e) {
+                  console.error(e);
+                }
+              }
+              logActivity({ type: 'edit', entity: 'deal', entityId: d.id, label: '🎉 Marked won', description: `${d.client} closed as won`, undoPayload: before });
+              addToast('Deal marked won');
+            } else if (payload.kind === 'lost') {
+              await crm.updateDeal(d.id, {
+                stage: 'closed_lost',
+                workflow_action: 'parked',
+                followup_date: null,
+                lost_reason: payload.lost_reason || null,
+                nudge_stage: null,
+              });
+              logActivity({ type: 'edit', entity: 'deal', entityId: d.id, label: '📉 Marked lost', description: `${d.client} closed as lost`, undoPayload: before });
+              addToast('Deal marked lost');
+            } else {
+              await crm.updateDeal(d.id, {
+                workflow_action: 'parked',
+                followup_date: payload.followup_date || null,
+                park_reason: payload.park_reason || null,
+                nudge_stage: null,
+              });
+              logActivity({ type: 'edit', entity: 'deal', entityId: d.id, label: '⏸ Parked', description: `${d.client} parked`, undoPayload: before });
+              addToast('Deal parked');
+            }
+            setExitModal(null);
+            await refresh();
+          }}
+        />
+      )}
+
+      {logDealId && (
+        <LogInteractionModal
+          isOpen={!!logDealId}
+          onClose={() => setLogDealId(null)}
+          onSave={async (meeting) => { await addMeeting(meeting); setLogDealId(null); await refresh(); }}
+          deals={deals}
+          contacts={contacts}
+          companies={companies}
+          selectedDealId={logDealId}
         />
       )}
 
@@ -863,8 +961,9 @@ function DroppableLane({
   return (
     <section
       ref={setNodeRef}
+      data-lane-id={laneId}
       className={clsx(
-        'flex-1 min-w-[200px] 2xl:min-w-[150px] rounded-2xl border p-3 flex flex-col transition-colors',
+        'flex-1 min-w-50 rounded-2xl border p-3 flex flex-col transition-colors',
         className,
         isOver && 'lane-drop-over'
       )}
@@ -876,12 +975,13 @@ function DroppableLane({
 
 /* ─── Mobile lane picker: tap Move, choose the lane, then the gate opens ─── */
 function LanePickerSheet({
-  deal, currentLane, counts, onPick, onClose,
+  deal, currentLane, counts, onPick, onExit, onClose,
 }: {
   deal: Deal;
   currentLane: DealWorkflowAction;
   counts: Record<string, Deal[]>;
   onPick: (target: DealWorkflowAction) => void;
+  onExit: (kind: 'won' | 'lost' | 'park') => void;
   onClose: () => void;
 }) {
   return (
@@ -898,6 +998,7 @@ function LanePickerSheet({
           </button>
         </div>
         <div className="p-3 space-y-1.5">
+          <p className="zams-mono text-[9px] uppercase tracking-[0.14px] text-clay-muted px-1">Journey</p>
           {WORKFLOW_LANES.map(lane => (
             <button
               key={lane.id}
@@ -915,6 +1016,20 @@ function LanePickerSheet({
                 <span className="block zams-mono text-[9px] uppercase tracking-[0.14px] text-clay-muted-soft mt-0.5">{LANE_CRITERIA[lane.id]}</span>
               </span>
               <span className="text-xs text-clay-muted-soft shrink-0">{counts[lane.id]?.length ?? 0}</span>
+            </button>
+          ))}
+          <p className="zams-mono text-[9px] uppercase tracking-[0.14px] text-clay-muted px-1 pt-2">Exits (not columns)</p>
+          {([
+            ['won', '🎉 Mark won'],
+            ['lost', '📉 Mark lost'],
+            ['park', '⏸ Park'],
+          ] as const).map(([kind, label]) => (
+            <button
+              key={kind}
+              onClick={() => onExit(kind)}
+              className="w-full flex items-center gap-3 px-3 py-3 rounded-lg border border-clay-hairline bg-white dark:bg-clay-card text-left active:bg-clay-surface"
+            >
+              <span className="text-sm font-medium text-clay-ink">{label}</span>
             </button>
           ))}
         </div>

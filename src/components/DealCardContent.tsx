@@ -40,8 +40,9 @@ export default function DealCardContent({
 
   return (
     <>
-      <div className={clsx('flex items-start justify-between gap-2', !compact && 'pb-2.5')}>
-        <div className="flex items-start gap-2.5 min-w-0">
+      <div className={clsx('min-w-0 space-y-2', !compact && 'pb-2.5')}>
+        {/* Identity and timing use separate rows so narrow lanes cannot squeeze the client away. */}
+        <div className="flex flex-wrap items-center gap-2.5 min-w-0">
           {contact.missing && companyLogoUrl ? (
             <CompanyLogo src={companyLogoUrl} name={companyName} size={36} className="shrink-0" />
           ) : (
@@ -52,24 +53,49 @@ export default function DealCardContent({
               {contact.initials}
             </span>
           )}
-          <div className="min-w-0 pt-0.5">
-            <h3
-              className={clsx(
-                'text-sm font-semibold leading-snug',
-                contact.missing ? 'text-clay-lavender' : 'text-clay-ink',
-                compact && 'truncate'
-              )}
-            >
-              {contact.name}{contact.additionalCount > 0 ? ` +${contact.additionalCount}` : ''}
-            </h3>
-            <p className={clsx('mt-0.5 text-[11px] leading-snug text-clay-muted', compact ? 'truncate' : 'line-clamp-2')}>
-              {contact.role ? `${contact.role} · ${companyName}` : companyName}
-            </p>
+          <div className="min-w-[min(100%,5rem)] flex-1">
+            {contact.missing ? (
+              <>
+                <p data-card-contact-warning className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-clay-lavender/85">
+                  Contact not identified
+                </p>
+                <h3
+                  title={companyName}
+                  className="line-clamp-2 text-sm font-semibold leading-snug text-clay-ink [overflow-wrap:anywhere]"
+                >
+                  {companyName}
+                </h3>
+              </>
+            ) : (
+              <h3
+                title={`${contact.name}${contact.additionalCount > 0 ? ` +${contact.additionalCount}` : ''}`}
+                className={clsx(
+                  'text-sm font-semibold leading-snug [overflow-wrap:anywhere]',
+                  'text-clay-ink',
+                  compact ? 'truncate' : 'line-clamp-2 min-h-[2.75em]'
+                )}
+              >
+                {contact.name}{contact.additionalCount > 0 ? ` +${contact.additionalCount}` : ''}
+              </h3>
+            )}
           </div>
         </div>
 
-        <div className="flex shrink-0 items-start gap-1.5">
-          <div className="flex flex-col items-end gap-0.5">
+        <div className="min-w-0 space-y-0.5 text-[11px] leading-snug text-clay-muted">
+          {!contact.missing && (
+            <p
+              data-card-company
+              title={companyName}
+              className={clsx('[overflow-wrap:anywhere]', compact ? 'truncate' : 'line-clamp-2')}
+            >
+              {companyName}
+            </p>
+          )}
+          {contact.role && <p title={contact.role} className="truncate">{contact.role}</p>}
+        </div>
+
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             <span
               className={clsx(
                 'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap',
@@ -89,9 +115,9 @@ export default function DealCardContent({
               ) : null}
               {timing.label}
             </span>
-            {timing.date && <span className="text-[10px] font-medium text-clay-muted">{timing.date}</span>}
+            {timing.date && <span className="whitespace-nowrap text-[10px] font-medium text-clay-muted">{timing.date}</span>}
           </div>
-          {showGrip && <GripVertical className="mt-0.5 h-3.5 w-3.5 text-clay-muted-soft" />}
+          {showGrip && <GripVertical className="h-3.5 w-3.5 shrink-0 text-clay-muted-soft" />}
         </div>
       </div>
 

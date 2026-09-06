@@ -13,18 +13,19 @@ import TaskActionSheet from '@/components/TaskActionSheet';
 import ReorderSignalsCard from '@/components/ReorderSignalsCard';
 import { Plus, TrendingUp, AlertCircle, ChevronRight, Loader2, MessageCircle, Phone, Mail, Users, Package, Bell } from 'lucide-react';
 import { calculateLeadScore, scoreToTier, TIER_LABELS, TIER_COLORS, TIER_BG, PRIORITY_CLASSES, PRIORITY_LABELS } from '@/utils/lead-scoring';
-import { WORKFLOW_LANES, getWorkflowAction, nudgeLabel } from '@/utils/deal-workflow';
+import { WORKFLOW_BY_ID, getWorkflowAction, deriveNudge, formatDerivedNudgeBadge } from '@/utils/deal-workflow';
+import { localDateKey } from '@/utils/deal-board';
 import { dealClientName } from '@/utils/dealLabel';
 
 // One-line action verbs for the queue (brief item 5: "Call, DM, Send sample, Find buyer")
 const ACTION_VERBS: Record<string, string> = {
   outreach: 'Send outreach',
-  reply: 'Reply',
+  reply: 'Waiting on reply',
   sample: 'Send sample',
   testing: 'Confirm test',
-  reschedule: 'Reschedule',
+  reschedule: 'Follow up',
   parked: 'Revisit',
-  success: 'Congratulate',
+  success: 'Won',
 };
 
 const PULSE_ITEMS = [
@@ -434,9 +435,9 @@ export default function TodayPage() {
             <div className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline divide-y divide-clay-hairline overflow-hidden">
               {actionQueue.slice(0, 4).map(item => {
                 const days = item.kind === 'overdue' && item.deal.followup_date ? daysOverdue(item.deal.followup_date) : 0;
-                const lane = WORKFLOW_LANES.find(l => l.id === getWorkflowAction(item.deal))!;
+                const lane = WORKFLOW_BY_ID[getWorkflowAction(item.deal)];
                 const verb = ACTION_VERBS[getWorkflowAction(item.deal)] || 'Follow up';
-                const nudgeChip = item.deal.nudge_stage ? nudgeLabel(item.deal.nudge_stage) : null;
+                const nudgeChip = (() => { const d = deriveNudge(item.deal, localDateKey()); return d ? formatDerivedNudgeBadge(d) : null; })();
                 return (
                   <div key={item.deal.id} className="px-4 py-3 flex items-center gap-3 group">
                     {/* Left-edge urgency marker — the clay stamp, not a red box */}
