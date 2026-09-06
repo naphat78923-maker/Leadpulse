@@ -182,19 +182,10 @@ export default function StakeholderMiniMap({
     >
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold tracking-wider text-clay-muted uppercase">Who must say yes</p>
-          <p className="text-xs font-semibold text-clay-ink truncate">{subtitle}</p>
+          <h3 className="text-base font-bold tracking-tight text-clay-ink">Who must say yes</h3>
+          <p className="text-[11px] font-medium text-clay-muted mt-0.5">Empty node = CTA — not a blank form field</p>
+          <p className="text-[10px] font-semibold tracking-wider text-clay-muted uppercase mt-1.5 truncate">{subtitle}</p>
         </div>
-        <span
-          className={clsx(
-            'shrink-0 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border',
-            status === 'complete' && 'border-clay-mint/50 bg-clay-mint/15 text-clay-teal',
-            status === 'partial' && 'border-clay-ochre/40 bg-clay-ochre/15 text-clay-ochre',
-            status === 'unknown' && 'border-clay-hairline bg-white/70 text-clay-muted'
-          )}
-        >
-          {mapStatusLabel(status)}
-        </span>
       </div>
 
       <div className="relative">
@@ -214,7 +205,7 @@ export default function StakeholderMiniMap({
 
           {/* champion → DM influence */}
           <path
-            className={clsx('sm-edge', champion && dm && 'sm-edge-strong')}
+            className={clsx('sm-edge', champion && 'sm-edge-strong')}
             d="M150 110 C240 110, 280 110, 320 110"
           />
           {/* DM ↔ blocker friction (dashed red when set) */}
@@ -246,12 +237,12 @@ export default function StakeholderMiniMap({
           )}
           <rect
             x="250" y="78" width="140" height="64" rx="16"
-            fill={dm ? '#1c1917' : '#1c1917'}
-            stroke={dm ? '#1c1917' : '#1c1917'}
+            fill={dm ? '#fff' : '#1c1917'}
+            stroke={dm ? '#d6d3d1' : '#1c1917'}
             strokeWidth="1.5"
           />
-          <text x="268" y="102" fontSize="11" fontWeight="800" fill="#a8a29e">DECISION MAKER</text>
-          <text x="268" y="122" fontSize="14" fontWeight="800" fill="#fff">
+          <text x="268" y="102" fontSize="11" fontWeight="800" fill={dm ? '#78716c' : '#a8a29e'}>DECISION MAKER</text>
+          <text x="268" y="122" fontSize="14" fontWeight="800" fill={dm ? '#1c1917' : '#fff'}>
             {dm ? shortName(dm.name) : 'DM unknown'}
           </text>
 
@@ -268,7 +259,7 @@ export default function StakeholderMiniMap({
               ? shortName(blockerContact.name)
               : blockerLabel
                 ? blockerLabel.slice(0, 14)
-                : 'Optional'}
+                : 'Add blocker'}
           </text>
         </svg>
       </div>
@@ -303,7 +294,32 @@ export default function StakeholderMiniMap({
         >
           {hasBlocker ? 'Edit blocker' : 'Add blocker'}
         </button>
+        <span
+          className={clsx(
+            'rounded-full px-3 py-2 text-xs font-extrabold min-h-[40px] inline-flex items-center border',
+            status === 'complete'
+              ? 'border-clay-mint/50 bg-clay-mint/15 text-clay-teal'
+              : 'border-clay-hairline bg-white dark:bg-clay-card text-clay-body'
+          )}
+        >
+          Map status: {mapStatusLabel(status === 'complete' ? 'complete' : 'partial')}
+        </span>
         {saving && <Loader2 className="w-4 h-4 animate-spin text-clay-muted self-center" />}
+      </div>
+
+      <div className="mt-2 flex flex-wrap gap-3 text-[11px] font-semibold text-[#57534e]">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block w-2 h-2 rounded-full bg-[#166534]" aria-hidden />
+          Active path
+        </span>
+        <span className="inline-flex items-center gap-1.5 text-[#b91c1c]">
+          <span className="inline-block w-2 h-2 rounded-full bg-[#b91c1c]" aria-hidden />
+          Blocker
+        </span>
+        <span className="inline-flex items-center gap-1.5 text-[#b45309]">
+          <span className="inline-block w-2 h-2 rounded-full border-2 border-[#b45309] bg-transparent" aria-hidden />
+          Unknown = CTA
+        </span>
       </div>
 
       {picker && (
