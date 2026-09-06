@@ -19,7 +19,9 @@ import {
   nudgeColorClass,
   addDaysToDateKey,
   DERIVED_NUDGE_OPTIONS,
-  lastHumanTouchDateForDeal,
+  outboundSendCountForDeal,
+  SEND_LADDER_RUNGS,
+  NUDGE_SEND_LIMIT,
 } from '@/utils/deal-workflow';
 import { localDateKey } from '@/utils/deal-board';
 import * as crm from '@/lib/crm';
@@ -173,7 +175,7 @@ export default function NudgesPage() {
             const overdue = seg === 'overdue' && deal.followup_date ? daysOverdue(deal.followup_date) : 0;
             const lane = WORKFLOW_BY_ID[getWorkflowAction(deal)];
             const derived = deriveNudge(deal, today, {
-              lastHumanTouch: lastHumanTouchDateForDeal(meetings, deal.id),
+              sendCount: outboundSendCountForDeal(meetings, deal.id),
             });
             return (
               <div key={deal.id} className="px-4 py-3 space-y-2">
@@ -215,7 +217,7 @@ export default function NudgesPage() {
                   <div className="pl-0 sm:pl-2 pr-1">
                     <NudgeLadderRail
                       stage={derived.stage}
-                      silenceDays={derived.silenceDays}
+                      rungs={SEND_LADDER_RUNGS}
                       variant="full"
                     />
                   </div>
@@ -252,14 +254,14 @@ export default function NudgesPage() {
         </div>
       )}
 
-      {/* Read-only ladder — derived thresholds, not editable stage config */}
+      {/* Read-only ladder — derived from outbound sends, stops at 4 → park */}
       <div className="mt-5 rounded-xl border border-clay-hairline bg-clay-surface px-4 py-3 space-y-3">
-        <p className="text-[11px] font-medium text-clay-muted-soft uppercase tracking-wide">Nudge ladder · days since last human touch</p>
-        <NudgeLadderRail stage="firm" silenceDays={14} variant="full" />
+        <p className="text-[11px] font-medium text-clay-muted-soft uppercase tracking-wide">Nudge ladder · sends to the client (stops at {NUDGE_SEND_LIMIT} → park)</p>
+        <NudgeLadderRail stage="remind" rungs={SEND_LADDER_RUNGS} variant="full" />
         <div className="flex flex-wrap gap-2">
           {DERIVED_NUDGE_OPTIONS.map(opt => (
             <span key={opt.value} className={clsx('text-[11px] font-medium px-2 py-1 rounded-full border', nudgeColorClass(opt.value))}>
-              ~{opt.minDays}d {opt.label} {opt.code}
+              {opt.minSends} send{opt.minSends > 1 ? 's' : ''} {opt.label} {opt.code}
             </span>
           ))}
         </div>

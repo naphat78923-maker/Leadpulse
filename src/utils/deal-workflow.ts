@@ -98,18 +98,26 @@ export const LANE_MASCOT_PATHS: Record<DealWorkflowAction, string> = {
   success: '/assets/mascots/mascot-won-trophy.png',
 };
 
-/** Derived nudge thresholds (silence days past follow-up). Not editable stages. */
+/**
+ * Nudge thresholds by OUTBOUND SEND count (call / email / DM sent to the client).
+ * NG-001..004 — the sequence stops at 4 sends; after that the deal should be parked.
+ * Not editable stages.
+ */
 export const DERIVED_NUDGE_OPTIONS: Array<{
   value: NudgeStage;
   label: string;
   code: string;
-  minDays: number;
+  minSends: number;
 }> = [
-  { value: 'warm', label: 'Warm', code: 'NG-001', minDays: 3 },
-  { value: 'remind', label: 'Remind', code: 'NG-002', minDays: 7 },
-  { value: 'firm', label: 'Firm', code: 'NG-003', minDays: 14 },
-  { value: 'parking', label: 'Suggest Park', code: 'NG-004', minDays: 21 },
+  { value: 'warm', label: 'Warm', code: 'NG-001', minSends: 1 },
+  { value: 'remind', label: 'Remind', code: 'NG-002', minSends: 2 },
+  { value: 'firm', label: 'Firm', code: 'NG-003', minSends: 3 },
+  { value: 'parking', label: 'Suggest Park', code: 'NG-004', minSends: 4 },
 ];
+
+/** A send = outbound call, email, or DM logged against the deal. */
+export const NUDGE_SEND_CHANNELS = ['call', 'email', 'dm'] as const;
+export const NUDGE_SEND_LIMIT = 4;
 
 /** Soft HexFace kind per lane (SVG faces — replaces PNG mascots on the board chrome). */
 export type DealHexKind = 'call' | 'message' | 'package' | 'search' | 'pause' | 'success';
@@ -128,7 +136,7 @@ export const LANE_HEX_KIND: Record<DealWorkflowAction, DealHexKind> = {
 export const NUDGE_OPTIONS = DERIVED_NUDGE_OPTIONS.map(o => ({
   value: o.value,
   label: `${o.label} nudge`,
-  days: o.minDays,
+  days: o.minSends,
 }));
 
 export const SAMPLE_STATUS_OPTIONS: Array<{ value: SampleStatus; label: string }> = [
@@ -172,6 +180,7 @@ export function nudgeLabel(nudgeStage?: NudgeStage | null) {
 
 /**
  * Days of silence past the follow-up date (0 if not overdue / no date).
+ * Kept for the Nudges overdue view — not for the send gauge.
  */
 export function silenceDaysPastFollowup(deal: Deal, today: string): number {
   if (!deal.followup_date) return 0;
@@ -187,78 +196,65 @@ export interface DerivedNudge {
   stage: NudgeStage;
   label: string;
   code: string;
-  silenceDays: number;
+  sendCount: number;
   suggestPark: boolean;
 }
 
-/** Human channels only: phone / LINE / IG / WhatsApp (call + dm + meeting). Not email. */
-export const HUMAN_TOUCH_MEETING_TYPES = ['call', 'dm', 'meeting'] as const;
-
-export function isHumanTouchMeetingType(type: string): boolean {
-  return (HUMAN_TOUCH_MEETING_TYPES as readonly string[]).includes(type);
-}
-
-/** Latest human-touch date (YYYY-MM-DD) for a deal. */
-export function lastHumanTouchDateForDeal(
-  meetings: Array<{ deal_id?: string | null; type: string; date: string }>,
-  dealId: string
-): string | null {
-  const touches = meetings
-    .filter(m => m.deal_id === dealId && isHumanTouchMeetingType(m.type) && m.date)
-    .map(m => m.date.slice(0, 10))
-    .sort((a, b) => b.localeCompare(a));
-  return touches[0] || null;
-}
-
-function daysBetweenKeys(earlier: string, later: string): number {
-  const a = new Date(`${earlier.slice(0, 10)}T00:00:00`).getTime();
-  const b = new Date(`${later.slice(0, 10)}T00:00:00`).getTime();
-  return Math.max(0, Math.round((b - a) / 86400000));
-}
-
 /**
- * Silence for the ladder — prefer last human touch; fall back to overdue follow-up.
- * Log touch resets toward Warm by advancing lastHumanTouch to today.
+ * Count of outbound sends (call / email / DM) logged against a deal.
+ * Direction `inbound` (a captured customer reply) never counts; legacy rows
+ * without a direction count as sends — they were outreach logs.
  */
-export function silenceDaysForLadder(
-  deal: Deal,
-  today: string,
-  lastHumanTouch?: string | null
+export function outboundSendCountForDeal(
+  meetings: Array<{ deal_id?: string | null; type: string; direction?: string | null }>,
+  dealId: string
 ): number {
-  if (deal.stage === 'closed_won' || deal.stage === 'closed_lost') return 0;
-  if (getWorkflowAction(deal) === 'parked') return 0;
-  if (lastHumanTouch) return daysBetweenKeys(lastHumanTouch, today);
-  return silenceDaysPastFollowup(deal, today);
+  return meetings.filter(
+    m =>
+      m.deal_id === dealId &&
+      (NUDGE_SEND_CHANNELS as readonly string[]).includes(m.type) &&
+      m.direction !== 'inbound'
+  ).length;
+}
+
+/** Map total outbound sends to a ladder stage (null before the first send). */
+export function stageFromSendCount(sendCount: number): NudgeStage | null {
+  if (sendCount <= 0) return null;
+  let match: NudgeStage = 'warm';
+  for (const opt of DERIVED_NUDGE_OPTIONS) {
+    if (sendCount >= opt.minSends) match = opt.value;
+  }
+  return match;
 }
 
 /**
- * Nudge badge derived from last human touch (preferred) or follow-up silence — never editable.
+ * Nudge badge derived from outbound send count — never editable.
+ * 1st send → Warm NG-001 … 4th send → Suggest Park NG-004 (stops at 4).
  */
 export function deriveNudge(
   deal: Deal,
-  today: string,
-  opts?: { lastHumanTouch?: string | null }
+  _today: string,
+  opts?: { sendCount?: number }
 ): DerivedNudge | null {
-  const silence = silenceDaysForLadder(deal, today, opts?.lastHumanTouch);
-  if (silence < 3) return null;
-  let match = DERIVED_NUDGE_OPTIONS[0];
-  for (const opt of DERIVED_NUDGE_OPTIONS) {
-    if (silence >= opt.minDays) match = opt;
-  }
+  if (deal.stage === 'closed_won' || deal.stage === 'closed_lost') return null;
+  if (getWorkflowAction(deal) === 'parked') return null;
+  const sendCount = opts?.sendCount ?? 0;
+  const stage = stageFromSendCount(sendCount);
+  if (!stage) return null;
+  const match = DERIVED_NUDGE_OPTIONS.find(o => o.value === stage)!;
   return {
-    stage: match.value,
+    stage,
     label: match.label,
     code: match.code,
-    silenceDays: silence,
-    suggestPark: match.value === 'parking',
+    sendCount,
+    suggestPark: stage === 'parking',
   };
 }
 
-/** Human chip like "~7d Remind NG-002". */
+/** Chip like "2/4 Remind NG-002" — send count out of the 4-nudge limit. */
 export function formatDerivedNudgeBadge(n: DerivedNudge): string {
-  const approx =
-    n.stage === 'warm' ? 3 : n.stage === 'remind' ? 7 : n.stage === 'firm' ? 14 : 21;
-  return `~${approx}d ${n.label} ${n.code}`;
+  const shown = Math.min(n.sendCount, NUDGE_SEND_LIMIT);
+  return `${shown}/${NUDGE_SEND_LIMIT} ${n.label} ${n.code}`;
 }
 
 export function derivedNudgeChip(deal: Deal, today: string): string | null {
@@ -341,6 +337,25 @@ export const NUDGE_LADDER_RUNGS: Array<{
   { stage: 'remind', label: 'Remind 7d', shortLabel: 'Remind', days: 7, code: 'NG-002', color: '#d97706', track: 'rgba(217,119,6,0.22)' },
   { stage: 'firm', label: 'Firm 14d', shortLabel: 'Firm', days: 14, code: 'NG-003', color: '#c2410c', track: 'rgba(194,65,12,0.22)' },
   { stage: 'parking', label: 'Parking 21d', shortLabel: 'Parking', days: 21, code: 'NG-004', color: '#78716c', track: 'rgba(120,113,108,0.28)' },
+];
+
+/**
+ * Deal nudge gauge rungs — one rung per outbound SEND (stops at 4 → park).
+ * Same clay colors as the day ladder; labels read as send counts.
+ */
+export const SEND_LADDER_RUNGS: Array<{
+  stage: NudgeStage;
+  label: string;
+  shortLabel: string;
+  count: number;
+  code: string;
+  color: string;
+  track: string;
+}> = [
+  { stage: 'warm', label: '1st send', shortLabel: '1st', count: 1, code: 'NG-001', color: '#3daf7a', track: 'rgba(61,175,122,0.22)' },
+  { stage: 'remind', label: '2nd send', shortLabel: '2nd', count: 2, code: 'NG-002', color: '#d97706', track: 'rgba(217,119,6,0.22)' },
+  { stage: 'firm', label: '3rd send', shortLabel: '3rd', count: 3, code: 'NG-003', color: '#c2410c', track: 'rgba(194,65,12,0.22)' },
+  { stage: 'parking', label: '4th send → Park', shortLabel: '4th', count: 4, code: 'NG-004', color: '#78716c', track: 'rgba(120,113,108,0.28)' },
 ];
 
 export function nudgeLadderIndex(stage?: NudgeStage | null): number {

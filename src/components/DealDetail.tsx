@@ -15,7 +15,8 @@ import {
   getWorkflowAction,
   deriveNudge,
   formatDerivedNudgeBadge,
-  lastHumanTouchDateForDeal,
+  outboundSendCountForDeal,
+  SEND_LADDER_RUNGS,
   nudgeColorClass,
 } from '@/utils/deal-workflow';
 import { localDateKey } from '@/utils/deal-board';
@@ -54,8 +55,8 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
   const { logActivity, deleteEntity, companies, contacts, meetings = [], addMeeting } = useCrm();
   const currentWorkflow = getWorkflowAction(deal);
   const today = localDateKey();
-  const lastHumanTouchKey = useMemo(() => lastHumanTouchDateForDeal(meetings, deal.id), [meetings, deal.id]);
-  const derived = deriveNudge(deal, today, { lastHumanTouch: lastHumanTouchKey });
+  const sendCount = useMemo(() => outboundSendCountForDeal(meetings, deal.id), [meetings, deal.id]);
+  const derived = deriveNudge(deal, today, { sendCount });
   const dealCompany = useMemo(() => (deal.company_id ? companies.find(c => c.id === deal.company_id) : undefined), [deal.company_id, companies]);
 
   const [editing, setEditing] = useState(false);
@@ -468,7 +469,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
                       <p className={clsx('inline-flex max-w-full text-[11px] font-semibold px-2 py-0.5 rounded-full border', nudgeColorClass(derived.stage))}>
                         {formatDerivedNudgeBadge(derived)}
                       </p>
-                      <NudgeLadderRail stage={derived.stage} silenceDays={derived.silenceDays} variant="full" />
+                      <NudgeLadderRail stage={derived.stage} rungs={SEND_LADDER_RUNGS} variant="full" />
                     </div>
                   )}
                 </div>

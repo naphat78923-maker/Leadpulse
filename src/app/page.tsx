@@ -14,7 +14,7 @@ import NudgeLadderRail from '@/components/NudgeLadderRail';
 import TaskActionSheet from '@/components/TaskActionSheet';
 import ReorderSignalsCard from '@/components/ReorderSignalsCard';
 import { Plus, ChevronRight, MessageCircle, Phone, Mail, Users, Package, Bell, Clock } from 'lucide-react';
-import { WORKFLOW_BY_ID, WORKFLOW_LANES, getWorkflowAction, deriveNudge, formatDerivedNudgeBadge, nudgeColorClass, addDaysToDateKey, lastHumanTouchDateForDeal, nudgeLabel } from '@/utils/deal-workflow';
+import { WORKFLOW_BY_ID, WORKFLOW_LANES, getWorkflowAction, deriveNudge, formatDerivedNudgeBadge, nudgeColorClass, addDaysToDateKey, outboundSendCountForDeal, SEND_LADDER_RUNGS, nudgeLabel } from '@/utils/deal-workflow';
 import { dealNeedsReview } from '@/utils/deal-board';
 import { dealClientName } from '@/utils/dealLabel';
 import { formatBaht, bangkokDateKey, formatBangkokWeekdayDate, bangkokHour } from '@/utils/format';
@@ -55,9 +55,9 @@ function daysUntil(dateStr: string): number {
   return Math.max(0, daysBetween(today, dateStr));
 }
 
-function whyNowLine(deal: Deal, kind: 'overdue' | 'today' | 'attention', todayKey: string): string {
+function whyNowLine(deal: Deal, kind: 'overdue' | 'today' | 'attention', todayKey: string, sendCount: number): string {
   const lane = WORKFLOW_BY_ID[getWorkflowAction(deal)];
-  const nudge = deriveNudge(deal, todayKey);
+  const nudge = deriveNudge(deal, todayKey, { sendCount });
   if (kind === 'overdue' && deal.followup_date) {
     const days = Math.abs(daysBetween(deal.followup_date, todayKey));
     if (nudge) return `${days}d overdue · ${formatDerivedNudgeBadge(nudge)}`;
@@ -210,7 +210,7 @@ export default function TodayPage() {
   ).length;
   pulseCounts.nudge = deals.filter(d => {
     const n = deriveNudge(d, todayKey, {
-      lastHumanTouch: lastHumanTouchDateForDeal(meetings, d.id),
+      sendCount: outboundSendCountForDeal(meetings, d.id),
     });
     return Boolean(n) && d.stage !== 'closed_won' && d.stage !== 'closed_lost';
   }).length;
@@ -255,7 +255,7 @@ export default function TodayPage() {
   const heroLane = startHere ? WORKFLOW_BY_ID[getWorkflowAction(startHere.deal)] : null;
   const heroNudge = startHere
     ? deriveNudge(startHere.deal, todayKey, {
-        lastHumanTouch: lastHumanTouchDateForDeal(meetings, startHere.deal.id),
+        sendCount: outboundSendCountForDeal(meetings, startHere.deal.id),
       })
     : null;
 
@@ -352,7 +352,7 @@ export default function TodayPage() {
                 </h2>
                 <WhyNowCopy
                   text={[
-                    whyNowLine(startHere.deal, startHere.kind, todayKey),
+                    whyNowLine(startHere.deal, startHere.kind, todayKey, outboundSendCountForDeal(meetings, startHere.deal.id)),
                     startHere.deal.next_action || null,
                   ]
                     .filter(Boolean)
@@ -410,7 +410,7 @@ export default function TodayPage() {
             {heroNudge && (
               <NudgeLadderRail
                 stage={heroNudge.stage}
-                silenceDays={heroNudge.silenceDays}
+                rungs={SEND_LADDER_RUNGS}
                 variant="mini"
                 className="basis-full max-w-[8rem] mt-0.5"
               />
@@ -636,7 +636,7 @@ export default function TodayPage() {
               const lane = WORKFLOW_BY_ID[getWorkflowAction(item.deal)];
               const verb = ACTION_VERBS[getWorkflowAction(item.deal)] || 'Follow up';
               const nudge = deriveNudge(item.deal, todayKey, {
-                lastHumanTouch: lastHumanTouchDateForDeal(meetings, item.deal.id),
+                sendCount: outboundSendCountForDeal(meetings, item.deal.id),
               });
               const channel = preferredChannel(item.deal, contacts, meetings);
               return (
@@ -687,7 +687,7 @@ export default function TodayPage() {
                     {nudge && (
                       <NudgeLadderRail
                         stage={nudge.stage}
-                        silenceDays={nudge.silenceDays}
+                        rungs={SEND_LADDER_RUNGS}
                         variant="mini"
                         className="mt-1.5 max-w-[7rem]"
                       />

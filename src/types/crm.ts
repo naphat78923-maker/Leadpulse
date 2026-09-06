@@ -141,6 +141,7 @@ export interface Deal {
 
 // ─── Meetings ───
 export type MeetingType = 'call' | 'email' | 'dm' | 'meeting' | 'sample_sent' | 'note' | 'nudge' | 'reward';
+export type MeetingDirection = 'inbound' | 'outbound' | 'internal' | 'unknown';
 
 export interface Meeting {
   id: string;
@@ -154,6 +155,8 @@ export interface Meeting {
   summary: string | null;
   outcome: 'positive' | 'neutral' | 'negative' | 'no_response' | null;
   followup_date: string | null;
+  /** Who initiated the touch: outbound send, inbound customer reply, internal note/meeting. */
+  direction?: MeetingDirection | null;
   created_at: string;
 }
 

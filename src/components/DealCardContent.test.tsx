@@ -188,12 +188,12 @@ describe('DealCardContent', () => {
         presentation={presentation}
         whyNow={null}
         reviewLabels={[]}
-        nudge="~7d Remind NG-002"
+        nudge="2/4 Remind NG-002"
         nudgeStage="remind"
         compact
       />
     );
-    const badge = screen.getByText('~7d Remind NG-002');
+    const badge = screen.getByText('2/4 Remind NG-002');
     expect(badge.hasAttribute('data-nudge-badge')).toBe(true);
     expect(badge.className).toMatch(/text-\[11px\]/);
     expect(badge.className).toMatch(/font-semibold/);
