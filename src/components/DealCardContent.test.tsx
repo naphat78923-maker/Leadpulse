@@ -180,4 +180,23 @@ describe('DealCardContent', () => {
     expect(screen.queryByText('Next action')).toBeNull();
     expect(screen.queryByText('Why now · Follow-up is overdue')).toBeNull();
   });
+
+  it('renders a high-contrast nudge badge on compact cards', () => {
+    render(
+      <DealCardContent
+        deal={deal}
+        presentation={presentation}
+        whyNow={null}
+        reviewLabels={[]}
+        nudge="~7d Remind NG-002"
+        nudgeStage="remind"
+        compact
+      />
+    );
+    const badge = screen.getByText('~7d Remind NG-002');
+    expect(badge.hasAttribute('data-nudge-badge')).toBe(true);
+    expect(badge.className).toMatch(/text-\[11px\]/);
+    expect(badge.className).toMatch(/font-semibold/);
+  });
+
 });

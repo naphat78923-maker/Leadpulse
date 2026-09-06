@@ -111,7 +111,7 @@ export default function DealsPage() {
 
   /* ─── Board overflow indicator ─── */
   const boardRef = useRef<HTMLDivElement>(null);
-  const [compact, setCompact] = useState(false);
+  const [compact, setCompact] = useState(true); // denser default so five journey lanes fit mid-width better
   const [boardScroll, setBoardScroll] = useState({ canScrollRight: false, canScrollLeft: false });
   const todayStr = localDateKey();
 
@@ -125,13 +125,15 @@ export default function DealsPage() {
       });
     };
     update();
+    const raf = requestAnimationFrame(update);
     el.addEventListener('scroll', update);
     window.addEventListener('resize', update);
     return () => {
+      cancelAnimationFrame(raf);
       el.removeEventListener('scroll', update);
       window.removeEventListener('resize', update);
     };
-  }, [view]);
+  }, [view, compact]);
 
   const scrollBoard = (dir: 1 | -1) => {
     const el = boardRef.current;
@@ -357,6 +359,7 @@ export default function DealsPage() {
     const action = getWorkflowAction(deal);
     const derived = deriveNudge(deal, todayStr);
     const nudge = derived ? formatDerivedNudgeBadge(derived) : null;
+    const nudgeStage = derived?.stage ?? null;
     const lane = WORKFLOW_BY_ID[action];
     const due = dueStateFor(deal, todayStr);
     const reason = whyNow(deal, due);
@@ -382,6 +385,7 @@ export default function DealsPage() {
           whyNow={reason}
           reviewLabels={reasons.map(item => REVIEW_LABEL[item])}
           nudge={nudge}
+          nudgeStage={nudgeStage}
           compact={isCompact}
           showGrip={opts?.grip}
         />
@@ -663,7 +667,7 @@ export default function DealsPage() {
 
           <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
             <div className="hidden md:block relative">
-              <div ref={boardRef} className="flex gap-3 items-stretch overflow-x-auto pb-3 pr-1">
+              <div ref={boardRef} className="flex gap-2.5 items-stretch overflow-x-auto pb-3 pl-0.5 pr-8 scroll-smooth snap-x snap-mandatory [scrollbar-gutter:stable]">
                 {WORKFLOW_LANES.map(lane => (
                   <DroppableLane key={lane.id} laneId={lane.id} className={lane.className}>
                     <div data-lane-header className="mb-2 shrink-0 space-y-1">
@@ -706,13 +710,13 @@ export default function DealsPage() {
                 ))}
               </div>
 
-              {/* Overflow indicators: fade + scroll arrows */}
+              {/* Overflow indicators: wider fades + scroll arrows so mid-width clipping is obvious */}
               {boardScroll.canScrollRight && (
                 <>
-                  <div className="absolute right-0 top-0 bottom-3 w-14 bg-gradient-to-l from-clay-canvas to-transparent pointer-events-none rounded-r-xl" />
+                  <div className="absolute right-0 top-0 bottom-3 w-24 bg-gradient-to-l from-clay-canvas via-clay-canvas/85 to-transparent pointer-events-none rounded-r-xl" />
                   <button
                     onClick={() => scrollBoard(1)}
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 z-20 w-9 h-9 rounded-full bg-white dark:bg-clay-card border border-clay-hairline shadow-sm flex items-center justify-center text-clay-ink hover:border-clay-lavender hover:text-clay-lavender transition-colors"
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-clay-ink text-clay-canvas border border-clay-ink shadow-md flex items-center justify-center hover:opacity-90 transition-opacity"
                     aria-label="Scroll to more lanes"
                   >
                     <ArrowRight className="w-4 h-4" />
@@ -720,13 +724,16 @@ export default function DealsPage() {
                 </>
               )}
               {boardScroll.canScrollLeft && (
-                <button
-                  onClick={() => scrollBoard(-1)}
-                  className="absolute left-1.5 top-1/2 -translate-y-1/2 z-20 w-9 h-9 rounded-full bg-white dark:bg-clay-card border border-clay-hairline shadow-sm flex items-center justify-center text-clay-ink hover:border-clay-lavender hover:text-clay-lavender transition-colors"
-                  aria-label="Scroll back"
-                >
-                  <ArrowRight className="w-4 h-4 rotate-180" />
-                </button>
+                <>
+                  <div className="absolute left-0 top-0 bottom-3 w-16 bg-gradient-to-r from-clay-canvas via-clay-canvas/80 to-transparent pointer-events-none rounded-l-xl" />
+                  <button
+                    onClick={() => scrollBoard(-1)}
+                    className="absolute left-1.5 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-clay-ink text-clay-canvas border border-clay-ink shadow-md flex items-center justify-center hover:opacity-90 transition-opacity"
+                    aria-label="Scroll back"
+                  >
+                    <ArrowRight className="w-4 h-4 rotate-180" />
+                  </button>
+                </>
               )}
             </div>
             <DragOverlay>
@@ -963,7 +970,7 @@ function DroppableLane({
       ref={setNodeRef}
       data-lane-id={laneId}
       className={clsx(
-        'flex-1 min-w-50 rounded-2xl border p-3 flex flex-col transition-colors',
+        'flex-1 min-w-[11.5rem] max-w-[18rem] snap-start rounded-2xl border p-2.5 flex flex-col transition-colors',
         className,
         isOver && 'lane-drop-over'
       )}

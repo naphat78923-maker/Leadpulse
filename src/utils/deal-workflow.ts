@@ -249,10 +249,10 @@ export const NEXT_WORKFLOW: Partial<Record<DealWorkflowAction, DealWorkflowActio
 };
 
 export const NUDGE_COLOR_CLASS: Record<NudgeStage, string> = {
-  warm: 'bg-clay-ochre/15 text-clay-ochre border-clay-ochre/30',
-  remind: 'bg-clay-lavender/20 text-clay-lavender border-clay-lavender/30',
-  firm: 'bg-clay-coral/15 text-clay-coral border-clay-coral/30',
-  parking: 'bg-clay-card text-clay-muted-soft border-clay-hairline',
+  warm: 'bg-clay-ochre/25 text-clay-ochre border-clay-ochre/45',
+  remind: 'bg-clay-lavender/30 text-clay-lavender border-clay-lavender/50',
+  firm: 'bg-clay-coral/25 text-clay-coral border-clay-coral/45',
+  parking: 'bg-clay-ink/90 text-clay-canvas border-clay-ink',
 };
 
 export function nudgeColorClass(nudgeStage?: NudgeStage | null): string {

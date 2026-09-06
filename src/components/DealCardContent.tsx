@@ -1,8 +1,9 @@
 import { AlertCircle, GripVertical, Package } from 'lucide-react';
 import clsx from 'clsx';
-import type { Deal } from '@/types/crm';
+import type { Deal, NudgeStage } from '@/types/crm';
 import { STAGE_LABELS } from '@/types/crm';
 import type { DealCardPresentation } from '@/utils/deal-card';
+import { nudgeColorClass } from '@/utils/deal-workflow';
 import CompanyLogo from '@/components/CompanyLogo';
 
 interface DealCardContentProps {
@@ -11,6 +12,7 @@ interface DealCardContentProps {
   whyNow: string | null;
   reviewLabels: string[];
   nudge: string | null;
+  nudgeStage?: NudgeStage | null;
   compact?: boolean;
   showGrip?: boolean;
 }
@@ -33,10 +35,25 @@ export default function DealCardContent({
   whyNow,
   reviewLabels,
   nudge,
+  nudgeStage = null,
   compact = false,
   showGrip = false,
 }: DealCardContentProps) {
   const { contact, companyName, companyLogoUrl, product, nextAction, timing } = presentation;
+
+  const nudgeChip = nudge ? (
+    <span
+      data-nudge-badge
+      title={nudge}
+      className={clsx(
+        'inline-flex max-w-full items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-tight [overflow-wrap:anywhere]',
+        compact ? 'line-clamp-2' : 'whitespace-nowrap',
+        nudgeColorClass(nudgeStage)
+      )}
+    >
+      {nudge}
+    </span>
+  ) : null;
 
   return (
     <>
@@ -72,7 +89,9 @@ export default function DealCardContent({
                 className={clsx(
                   'text-sm font-semibold leading-snug [overflow-wrap:anywhere]',
                   'text-clay-ink',
-                  compact ? 'truncate' : 'line-clamp-2 min-h-[2.75em]'
+                  // Compact still allows 2 lines — single-line truncate was too aggressive in narrow lanes.
+                  'line-clamp-2',
+                  !compact && 'min-h-[2.75em]'
                 )}
               >
                 {contact.name}{contact.additionalCount > 0 ? ` +${contact.additionalCount}` : ''}
@@ -86,15 +105,19 @@ export default function DealCardContent({
             <p
               data-card-company
               title={companyName}
-              className={clsx('[overflow-wrap:anywhere]', compact ? 'truncate' : 'line-clamp-2')}
+              className="line-clamp-2 [overflow-wrap:anywhere]"
             >
               {companyName}
             </p>
           )}
-          {contact.role && <p title={contact.role} className="truncate">{contact.role}</p>}
+          {contact.role && (
+            <p title={contact.role} className="line-clamp-2 [overflow-wrap:anywhere]">
+              {contact.role}
+            </p>
+          )}
         </div>
 
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-start justify-between gap-2">
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             <span
               className={clsx(
@@ -116,6 +139,7 @@ export default function DealCardContent({
               {timing.label}
             </span>
             {timing.date && <span className="whitespace-nowrap text-[10px] font-medium text-clay-muted">{timing.date}</span>}
+            {compact && nudgeChip}
           </div>
           {showGrip && <GripVertical className="h-3.5 w-3.5 shrink-0 text-clay-muted-soft" />}
         </div>
@@ -125,7 +149,7 @@ export default function DealCardContent({
         <>
           <div className="flex items-center gap-2 border-t border-clay-hairline/70 py-2 text-[11px] text-clay-muted">
             <Package className="h-3.5 w-3.5 shrink-0 text-clay-muted-soft" aria-hidden="true" />
-            <span className="truncate">{product}</span>
+            <span className="line-clamp-2 [overflow-wrap:anywhere]">{product}</span>
           </div>
 
           <div className="border-t border-clay-hairline/70 py-2.5">
@@ -154,7 +178,7 @@ export default function DealCardContent({
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-t border-clay-hairline/70 pt-2 text-[10px] text-clay-muted">
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 border-t border-clay-hairline/70 pt-2 text-[10px] text-clay-muted">
             <span className="inline-flex items-center gap-1">
               <span className={clsx('h-1.5 w-1.5 rounded-full', PRIORITY_TONE[deal.priority])} aria-hidden="true" />
               {PRIORITY_COPY[deal.priority]}
@@ -170,7 +194,7 @@ export default function DealCardContent({
               </span>
             )}
             {deal.sample_status && <span>{deal.sample_status === 'sent' ? 'Sample sent' : 'Sample received'}</span>}
-            {nudge && <span>{nudge}</span>}
+            {nudgeChip}
           </div>
         </>
       )}

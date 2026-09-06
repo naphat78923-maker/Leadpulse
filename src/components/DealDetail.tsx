@@ -446,7 +446,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
                     </p>
                   )}
                   {derived && (
-                    <p className={clsx('mt-1 inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded border', nudgeColorClass(derived.stage))}>
+                    <p className={clsx('mt-1.5 inline-flex max-w-full text-[11px] font-semibold px-2 py-0.5 rounded-full border', nudgeColorClass(derived.stage))}>
                       {formatDerivedNudgeBadge(derived)}
                     </p>
                   )}
@@ -497,7 +497,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
             <button
               type="button"
               onClick={() => setLogOpen(true)}
-              className="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-xl border border-clay-lavender bg-clay-lavender/15 text-sm font-semibold text-clay-lavender active:opacity-85"
+              className="clay-btn-primary w-full flex items-center justify-center gap-2 h-auto py-3.5 text-[15px] shadow-sm"
             >
               <MessageCircle className="w-4 h-4" />
               Log touch
