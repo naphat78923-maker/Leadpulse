@@ -9,6 +9,7 @@ import { useCrm } from '@/components/CrmProvider';
 import * as crm from '@/lib/crm';
 import { resizeImageToSquare, validateLogoFile } from '@/lib/image';
 import CompanyLogo from '@/components/CompanyLogo';
+import StakeholderMiniMap from '@/components/StakeholderMiniMap';
 
 const statusOptions: CompanyStatus[] = ['prospect', 'active_customer', 'inactive', 'lost'];
 
@@ -447,6 +448,10 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
                 </button>
               </div>
             )}
+          </div>
+
+          <div className="mt-4">
+            <StakeholderMiniMap company={company} companyName={company.name} onUpdated={onSaved} />
           </div>
 
           {/* Contacts Section */}

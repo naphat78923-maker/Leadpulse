@@ -21,6 +21,7 @@ import { localDateKey } from '@/utils/deal-board';
 import { outreachLanguageLabel, outreachLanguageBadgeColor, outreachLanguageBasisLabel } from '@/utils/contact-identity';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
+import StakeholderMiniMap from '@/components/StakeholderMiniMap';
 import type { OutreachLanguage } from '@/types/crm';
 
 interface DealDetailProps {
@@ -50,6 +51,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
   const currentWorkflow = getWorkflowAction(deal);
   const today = localDateKey();
   const derived = deriveNudge(deal, today);
+  const dealCompany = useMemo(() => (deal.company_id ? companies.find(c => c.id === deal.company_id) : undefined), [deal.company_id, companies]);
 
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -510,6 +512,15 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
               {['dm', 'call', 'email'].includes(lastTouch.type) ? ` · ${lastTouch.date}` : ` · ${lastTouch.date}`}
               {lastTouch.type === 'dm' ? ' (LINE/IG/WhatsApp)' : ''}
             </p>
+          )}
+
+          {dealCompany && (
+            <StakeholderMiniMap
+              company={dealCompany}
+              companyName={dealCompany.name}
+              productHint={deal.product}
+              onUpdated={onSaved}
+            />
           )}
 
           {!isClosed && currentWorkflow !== 'parked' && (

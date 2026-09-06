@@ -120,6 +120,11 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
         updated_at: el.updated_at || new Date().toISOString(),
         last_human_touch: el.last_human_touch ?? null,
         next_touch_due: el.next_touch_due ?? null,
+        champion_contact_id: el.champion_contact_id ?? null,
+        decision_maker_contact_id: el.decision_maker_contact_id ?? null,
+        blocker_contact_id: el.blocker_contact_id ?? null,
+        blocker_label: el.blocker_label ?? null,
+        map_status: el.map_status ?? 'unknown',
       })) as any);
 
       setContacts(mContacts.map((el: any) => ({

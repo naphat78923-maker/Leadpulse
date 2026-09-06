@@ -23,6 +23,13 @@ export interface Company {
   /** Retention cadence (Slice 5, Phase 2): last logged human touch + derived next due. */
   last_human_touch?: string | null;
   next_touch_due?: string | null;
+
+  // Stakeholder mini-map (company-level; deals inherit)
+  champion_contact_id?: string | null;
+  decision_maker_contact_id?: string | null;
+  blocker_contact_id?: string | null;
+  blocker_label?: string | null;
+  map_status?: 'unknown' | 'partial' | 'complete';
 }
 
 // ─── Contacts ───
