@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Loader2, UserPlus, X } from 'lucide-react';
 import clsx from 'clsx';
 import type { Company, Contact } from '@/types/crm';
@@ -45,6 +45,16 @@ export default function StakeholderMiniMap({
   const [newName, setNewName] = useState('');
   const [blockerTextMode, setBlockerTextMode] = useState(false);
   const [blockerLabelDraft, setBlockerLabelDraft] = useState(company.blocker_label || '');
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const apply = () => setPrefersReducedMotion(mq.matches);
+    apply();
+    mq.addEventListener?.('change', apply);
+    return () => mq.removeEventListener?.('change', apply);
+  }, []);
 
   const companyContacts = useMemo(
     () => contacts.filter(c => c.company_id === company.id && (c.name || '').trim()),
@@ -229,7 +239,9 @@ export default function StakeholderMiniMap({
           {/* DM node — dark when empty */}
           {!dm && (
             <circle cx="320" cy="110" r="28" fill="rgba(28,25,23,.08)">
-              <animate attributeName="r" values="24;30;24" dur="2s" repeatCount="indefinite" className="sm-pulse" />
+              {!prefersReducedMotion && (
+                <animate attributeName="r" values="24;30;24" dur="2s" repeatCount="indefinite" />
+              )}
             </circle>
           )}
           <rect
