@@ -23,6 +23,11 @@ export function buildInteractionWorkflowUpdate(
   const currentAction = getWorkflowAction(deal);
   if (targetAction === currentAction) return null;
 
+  // Won / Park are exits — never offered as a post-log next lane.
+  if (targetAction === 'success' || targetAction === 'parked') {
+    throw new Error('Mark won or park from the deal exit menu — not by logging a touch.');
+  }
+
   const expectedNextAction = NEXT_WORKFLOW[currentAction];
   if (!expectedNextAction || targetAction !== expectedNextAction) {
     throw new Error('Choose either the current lane or the next workflow action.');
@@ -57,16 +62,16 @@ export function buildInteractionWorkflowUpdate(
     updates.followup_date = details.testingDate;
   }
 
-  if (targetAction === 'success') {
-    if (!details.confirmSuccess) {
-      throw new Error('Confirm that this deal is won before moving it to Successful.');
+  if (targetAction === 'reschedule') {
+    if (!details.testingDate && !deal.followup_date) {
+      throw new Error('Set a follow-up date before moving this deal to Follow-up.');
     }
-    updates.followup_date = null;
+    if (details.testingDate) updates.followup_date = details.testingDate;
   }
 
-  if (details.nudgeStage && canNudge(targetAction)) {
-    updates.nudge_stage = details.nudgeStage;
-  }
+  // Nudges are derived from follow-up + silence; never written from the log modal.
+  void details.nudgeStage;
+  void canNudge;
 
   return updates;
 }

@@ -1,4 +1,4 @@
-import type { ContactIdentityQuality } from '@/types/crm';
+import type { ContactIdentityQuality, OutreachLanguage, OutreachLanguageBasis } from '@/types/crm';
 
 export const CONTACT_IDENTITY_OPTIONS: { value: ContactIdentityQuality; label: string }[] = [
   { value: 'unknown', label: 'Unknown' },
@@ -6,6 +6,24 @@ export const CONTACT_IDENTITY_OPTIONS: { value: ContactIdentityQuality; label: s
   { value: 'role_only', label: 'Role only · name unknown' },
   { value: 'company_route', label: 'Company route only' },
 ];
+
+export const OUTREACH_LANGUAGE_OPTIONS: { value: OutreachLanguage; label: string }[] = [
+  { value: 'autodetect', label: 'Auto-detect' },
+  { value: 'thai', label: '🇹🇭 Thai' },
+  { value: 'english', label: '🇬🇧 English' },
+];
+
+const LANGUAGE_LABELS: Record<OutreachLanguage, string> = {
+  autodetect: '🔄 Auto-detect',
+  thai: '🇹🇭 Thai',
+  english: '🇬🇧 English',
+};
+
+const BASIS_LABELS: Record<OutreachLanguageBasis, string> = {
+  autodetect: 'Auto-detect',
+  last_inbound: 'From last inbound',
+  pat_override: 'Pat override',
+};
 
 const NAME_FIELD_COPY: Record<ContactIdentityQuality, { label: string; placeholder: string }> = {
   unknown: {
@@ -32,4 +50,21 @@ export function contactNameFieldCopy(identityQuality: ContactIdentityQuality) {
 
 export function contactIdentityLabel(identityQuality?: ContactIdentityQuality | null) {
   return CONTACT_IDENTITY_OPTIONS.find(option => option.value === (identityQuality ?? 'unknown'))?.label ?? 'Unknown';
+}
+
+export function outreachLanguageLabel(language?: OutreachLanguage | null) {
+  return LANGUAGE_LABELS[language ?? 'autodetect'] ?? '🔄 Auto-detect';
+}
+
+export function outreachLanguageBasisLabel(basis?: OutreachLanguageBasis | null) {
+  return BASIS_LABELS[basis ?? 'autodetect'] ?? 'Auto-detect';
+}
+
+export function outreachLanguageBadgeColor(language?: OutreachLanguage | null) {
+  switch (language) {
+    case 'thai': return 'border-clay-ochre/30 bg-clay-ochre/10 text-clay-ochre';
+    case 'english': return 'border-clay-lavender/30 bg-clay-lavender/10 text-clay-lavender';
+    case 'autodetect':
+    default: return 'border-clay-coral/30 bg-clay-coral/10 text-clay-coral';
+  }
 }

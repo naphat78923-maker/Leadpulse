@@ -9,6 +9,7 @@ import { useCrm } from '@/components/CrmProvider';
 import * as crm from '@/lib/crm';
 import { resizeImageToSquare, validateLogoFile } from '@/lib/image';
 import CompanyLogo from '@/components/CompanyLogo';
+import StakeholderMiniMap from '@/components/StakeholderMiniMap';
 import { motion } from 'framer-motion';
 import { overlayVariants, panelVariants, tweenBase, tweenSlow } from '@/lib/motion';
 
@@ -466,6 +467,10 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
                 </button>
               </div>
             )}
+          </div>
+
+          <div className="mt-4">
+            <StakeholderMiniMap company={company} companyName={company.name} onUpdated={onSaved} />
           </div>
 
           {/* Contacts Section */}

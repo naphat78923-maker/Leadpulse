@@ -36,7 +36,7 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
   function getInitialState(t: ModalType) {
     switch (t) {
       case 'company': return { name: '', status: 'prospect', lead_source: '', account_owner: 'Pat', tags: '', industry: '', size: 'B', address: '', website: '', notes: '' };
-      case 'contact': return { name: '', identity_quality: 'unknown', email: '', phone: '', phone_second: '', line: '', job_title: '', company_id: '', status: 'active', notes: '' };
+      case 'contact': return { name: '', identity_quality: 'unknown', outreach_language: 'autodetect', email: '', phone: '', phone_second: '', line: '', job_title: '', company_id: '', status: 'active', notes: '' };
       // title + client are auto-derived from Product + Company on submit (no manual entry)
       case 'deal': return { stage: 'research', product: 'Butter', company_id: '', contact_ids: [] as string[], value: '', priority: 'medium', next_action: '', draft_primary_ask: '', followup_date: '', workflow_action: 'outreach', nudge_stage: '', sample_status: '', notes: '' };
       case 'meeting': return { description: '', type: 'call', date: new Date().toISOString().split('T')[0], company_id: '', contact_ids: [] as string[], deal_id: '', product: 'Butter', summary: '', outcome: '', followup_date: '' };
@@ -176,9 +176,6 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
               {form.workflow_action === 'sample' && (
                 <Select label="Sample Status" name="sample_status" value={form.sample_status} onChange={handleChange} options={[{ value: '', label: '— Choose status —' }, ...SAMPLE_STATUS_OPTIONS.map(option => ({ value: option.value, label: option.label }))]} />
               )}
-              {form.workflow_action === 'reschedule' && (
-                <Select label="Nudge Stage" name="nudge_stage" value={form.nudge_stage} onChange={handleChange} options={[{ value: '', label: '— Choose nudge —' }, ...NUDGE_OPTIONS.map(option => ({ value: option.value, label: `${option.label} · ${option.days} days` }))]} />
-              )}
               <Field label="CRM next action" name="next_action" value={form.next_action} onChange={handleChange} placeholder="What needs to happen internally?" />
               {showDraftingBrief && (
                 <section className="rounded-xl border border-clay-lavender/30 bg-clay-lavender/10 p-3">
@@ -230,7 +227,6 @@ function validateDealWorkflow(form: Record<string, any>): string | null {
   if (lane === 'sample' && !form.sample_status) return 'Choose whether the sample was sent or received.';
   if (lane === 'testing' && !form.followup_date) return 'Set the client testing date before saving.';
   if (lane === 'reschedule' && !form.followup_date) return 'Set the rescheduled follow-up date.';
-  if (lane === 'reschedule' && !form.nudge_stage) return 'Choose Warm, Remind, Firm, or Parking nudge.';
   if (lane === 'parked' && !form.followup_date) return 'Parked deals need a revisit date.';
   return null;
 }

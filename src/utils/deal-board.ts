@@ -1,5 +1,5 @@
-import type { Deal, DealWorkflowAction, SampleStatus, NudgeStage } from '@/types/crm';
-import { getWorkflowAction } from '@/utils/deal-workflow';
+import type { Deal, SampleStatus } from '@/types/crm';
+import { getWorkflowAction, isOnJourneyBoard } from '@/utils/deal-workflow';
 
 export type BoardAttentionFilter = 'all' | 'overdue' | 'today' | 'needs-review';
 
@@ -27,6 +27,7 @@ export function localDateKey(date = new Date()): string {
 
 export function dealDueState(deal: Deal, today: string): 'overdue' | 'today' | 'upcoming' | 'none' {
   if (!deal.followup_date || deal.stage === 'closed_won' || deal.stage === 'closed_lost') return 'none';
+  if (getWorkflowAction(deal) === 'parked') return 'none';
   if (deal.followup_date < today) return 'overdue';
   if (deal.followup_date === today) return 'today';
   return 'upcoming';
@@ -35,38 +36,30 @@ export function dealDueState(deal: Deal, today: string): 'overdue' | 'today' | '
 const WAITING_FOR_RESPONSE_PATTERN = /\b(waiting|awaiting)\b.{0,80}\b(reply|response|feedback)\b|\bno response\b/i;
 const PRE_CONTACT_ACTION_PATTERN = /\b(find|locate|identify|research|map)\b.{0,120}\b(buyer|contact|procurement|purchasing|r&d|decision.?maker|route)\b|before\s+(approach|outreach|contact)/i;
 
-/**
- * Each broken-record case has a stable reason code. The codes are the single
- * source of truth for both the card badge and the dry-run repair list, so the
- * UI and the audit report can never drift apart.
- */
 export type ReviewReason =
   | 'sample-status-missing'
   | 'testing-date-missing'
-  | 'followup-date-or-nudge-missing'
+  | 'followup-date-missing'
   | 'parked-revisit-missing'
   | 'reply-outcome-missing'
-  | 'pre-contact-action'
-  | 'success-step-missing';
+  | 'pre-contact-action';
 
 export const REVIEW_LABEL: Record<ReviewReason, string> = {
   'sample-status-missing': 'Sample missing sent/received status',
   'testing-date-missing': 'Testing missing a testing date',
-  'followup-date-or-nudge-missing': 'Follow-up missing date or nudge level',
+  'followup-date-missing': 'Follow-up missing a date',
   'parked-revisit-missing': 'Parked missing a revisit date',
-  'reply-outcome-missing': 'Reply lane missing an outcome',
+  'reply-outcome-missing': 'Waiting-on-reply missing last outreach confirmation',
   'pre-contact-action': 'Sample/testing started before contact researched',
-  'success-step-missing': 'Won account missing a next success step',
 };
 
 export const REVIEW_FIX: Record<ReviewReason, string> = {
-  'sample-status-missing': 'Set sample status to Sent or Received in the Sample lane.',
+  'sample-status-missing': 'Confirm address / send intent (sample status Sent or Received).',
   'testing-date-missing': 'Add a testing date in the Testing lane.',
-  'followup-date-or-nudge-missing': 'Add a follow-up date and pick one nudge level in the Follow-up lane.',
-  'parked-revisit-missing': 'Add a revisit date in the Parked lane.',
-  'reply-outcome-missing': 'Log the client reply outcome, or clear a "waiting for reply" next action.',
+  'followup-date-missing': 'Add a follow-up date in the Follow-up lane.',
+  'parked-revisit-missing': 'Add a revisit date when parking.',
+  'reply-outcome-missing': 'Confirm last outreach was logged, or clear a "waiting for reply" next action.',
   'pre-contact-action': 'Resolve the pre-contact research step (find buyer/contact) before sample/testing.',
-  'success-step-missing': 'Add a next customer-success step (next action) for the won account.',
 };
 
 export function reviewReasons(deal: Deal): ReviewReason[] {
@@ -91,15 +84,12 @@ export function reviewReasons(deal: Deal): ReviewReason[] {
       if (!deal.followup_date) reasons.push('testing-date-missing');
       break;
     case 'reschedule':
-      if (!deal.followup_date || !deal.nudge_stage) reasons.push('followup-date-or-nudge-missing');
+      if (!deal.followup_date) reasons.push('followup-date-missing');
       break;
     case 'parked':
       if (!deal.followup_date) reasons.push('parked-revisit-missing');
       break;
     case 'success':
-      // A won account still needs a planned next customer-success step.
-      if (deal.stage !== 'closed_won' || !nextAction) reasons.push('success-step-missing');
-      break;
     case 'outreach':
     default:
       break;
@@ -114,17 +104,12 @@ export function dealNeedsReview(deal: Deal): boolean {
 
 export interface ReviewItem {
   deal: Deal;
-  lane: DealWorkflowAction;
+  lane: ReturnType<typeof getWorkflowAction>;
   reasons: ReviewReason[];
   labels: string[];
   fix: string;
 }
 
-/**
- * Dry-run repair list. Pure + read-only: it groups flagged deals with a
- * human-readable reason and a suggested fix. It never writes to the CRM —
- * callers decide whether to act on the output.
- */
 export function buildReviewReport(deals: Deal[]): ReviewItem[] {
   return deals
     .filter(deal => dealNeedsReview(deal))
@@ -140,18 +125,11 @@ export function buildReviewReport(deals: Deal[]): ReviewItem[] {
     });
 }
 
-/**
- * Maps the flagged deal's reasons + the user's fix inputs to a minimal set of
- * deal fields to update. Pure and testable — the modal collects inputs, this
- * function decides which fields they satisfy. Only the fields actually needed
- * to clear the flags are written; nothing else is touched.
- */
 export function buildReviewFix(
   reasons: ReviewReason[],
   input: {
     sample_status?: SampleStatus | null;
     followup_date?: string | null;
-    nudge_stage?: NudgeStage | null;
     reply_outcome?: string | null;
     reply_summary?: string | null;
     next_action?: string | null;
@@ -163,19 +141,12 @@ export function buildReviewFix(
   if (has('sample-status-missing') && input.sample_status) {
     updates.sample_status = input.sample_status;
   }
-  if ((has('testing-date-missing') || has('parked-revisit-missing')) && input.followup_date) {
+  if ((has('testing-date-missing') || has('parked-revisit-missing') || has('followup-date-missing')) && input.followup_date) {
     updates.followup_date = input.followup_date;
-  }
-  if (has('followup-date-or-nudge-missing')) {
-    if (input.followup_date) updates.followup_date = input.followup_date;
-    if (input.nudge_stage) updates.nudge_stage = input.nudge_stage;
   }
   if (has('reply-outcome-missing') && input.reply_outcome) {
     const detail = input.reply_summary ? `: ${input.reply_summary}` : '';
     updates.last_outcome = `💬 Client replied — ${input.reply_outcome}${detail}`;
-  }
-  if (has('success-step-missing') && input.next_action?.trim()) {
-    updates.next_action = input.next_action.trim();
   }
   if (has('pre-contact-action') && input.next_action?.trim()) {
     updates.next_action = input.next_action.trim();
@@ -228,6 +199,7 @@ export function filterAndSortBoardDeals(deals: Deal[], filters: DealBoardFilters
   const search = filters.search.trim().toLocaleLowerCase();
 
   const filtered = deals.filter(deal => {
+    void isOnJourneyBoard;
     const dueState = dealDueState(deal, filters.today);
     if (filters.attention === 'overdue' && dueState !== 'overdue') return false;
     if (filters.attention === 'today' && dueState !== 'today') return false;

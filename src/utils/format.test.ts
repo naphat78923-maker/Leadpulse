@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { formatBaht, sumLaneValues } from './format';
+import {
+  formatBaht,
+  sumLaneValues,
+  bangkokDateKey,
+  formatBangkokWeekdayDate,
+  bangkokHour,
+  APP_TIMEZONE,
+} from './format';
 
 describe('formatBaht', () => {
   it('formats a plain number with thousands separators', () => {
@@ -35,5 +42,29 @@ describe('sumLaneValues', () => {
       outreach: [{ value: null }, { value: 800 }],
     };
     expect(sumLaneValues(lanes, byAction).outreach).toBe(800);
+  });
+});
+
+describe('bangkokDateKey', () => {
+  it('returns Asia/Bangkok calendar day even when UTC is still the previous day', () => {
+    // Sat Sep 5 20:00 UTC == Sun Sep 6 03:00 Bangkok
+    const utcSatEvening = new Date('2026-09-05T20:00:00Z');
+    expect(APP_TIMEZONE).toBe('Asia/Bangkok');
+    expect(bangkokDateKey(utcSatEvening)).toBe('2026-09-06');
+    expect(formatBangkokWeekdayDate(utcSatEvening)).toBe('Sunday · Sep 6');
+  });
+
+  it('keeps Saturday when Bangkok is still Saturday', () => {
+    // Sat Sep 5 10:00 UTC == Sat Sep 5 17:00 Bangkok
+    const utcSat = new Date('2026-09-05T10:00:00Z');
+    expect(bangkokDateKey(utcSat)).toBe('2026-09-05');
+    expect(formatBangkokWeekdayDate(utcSat)).toBe('Saturday · Sep 5');
+  });
+});
+
+describe('bangkokHour', () => {
+  it('reads Bangkok wall-clock hour', () => {
+    // 2026-09-06T02:30:00Z == 09:30 Bangkok
+    expect(bangkokHour(new Date('2026-09-06T02:30:00Z'))).toBe(9);
   });
 });

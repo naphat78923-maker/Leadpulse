@@ -4,9 +4,12 @@ import type { Deal } from '@/types/crm';
 
 const crmMocks = vi.hoisted(() => ({
   updateDeal: vi.fn(),
+  updateContact: vi.fn(),
+  createAccountEvent: vi.fn(),
 }));
 const addToast = vi.fn();
 const logActivity = vi.fn();
+const addMeeting = vi.fn();
 
 vi.mock('@/lib/crm', () => crmMocks);
 vi.mock('@/components/ToastProvider', () => ({
@@ -18,7 +21,15 @@ vi.mock('@/components/CrmProvider', () => ({
     deleteEntity: vi.fn(),
     companies: [],
     contacts: [],
+    meetings: [],
+    addMeeting,
   }),
+}));
+vi.mock('@/components/LogInteractionModal', () => ({
+  default: () => null,
+}));
+vi.mock('@/components/ExitDealModal', () => ({
+  default: () => null,
 }));
 
 import DealDetail from './DealDetail';
@@ -45,7 +56,7 @@ const deal: Deal = {
   updated_at: '2026-08-25T10:00:00Z',
 };
 
-describe('DealDetail primary client ask', () => {
+describe('DealDetail journey modal', () => {
   beforeEach(() => {
     crmMocks.updateDeal.mockReset().mockResolvedValue({
       ...deal,
@@ -57,66 +68,64 @@ describe('DealDetail primary client ask', () => {
 
   afterEach(cleanup);
 
-  it('saves the primary client ask independently from the CRM next action', async () => {
+  it('shows first-screen fields: lane, next action, follow-up, Log touch — not Open/Won/Lost', () => {
+    render(<DealDetail deal={deal} onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    expect(screen.getByText('ACTION LANE')).toBeTruthy();
+    expect(screen.getByText('NEXT ACTION')).toBeTruthy();
+    expect(screen.getByText('Follow-up date')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Log touch/i })).toBeTruthy();
+    expect(screen.queryByText('DEAL STATUS')).toBeNull();
+    expect(screen.queryByRole('button', { name: /● Open/ })).toBeNull();
+  });
+
+  it('does not expand drafting brief by default', () => {
+    render(<DealDetail deal={deal} onClose={vi.fn()} onSaved={vi.fn()} />);
+    const summary = screen.getByText('Ebimaru drafting brief');
+    expect(summary).toBeTruthy();
+    const details = summary.closest('details');
+    expect(details).toBeTruthy();
+    expect(details?.open).toBe(false);
+  });
+
+  it('keeps sample milestone visible and has exit actions without won column', () => {
+    render(
+      <DealDetail
+        deal={{
+          ...deal,
+          stage: 'proposal',
+          workflow_action: 'sample',
+          sample_status: 'received',
+          next_action: 'Confirm kitchen test slot',
+        }}
+        onClose={vi.fn()}
+        onSaved={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('Track sample delivery')).toBeTruthy();
+    expect(screen.getByText(/Received by client/)).toBeTruthy();
+    expect(screen.getByText('EXITS (not columns)')).toBeTruthy();
+  });
+
+  it('saves next action and drafting brief when editing', async () => {
     render(<DealDetail deal={deal} onClose={vi.fn()} onSaved={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit deal' }));
-    fireEvent.change(screen.getByLabelText('Primary client ask'), {
-      target: { value: 'Ask only for first trial feedback' },
-    });
+    // Expand drafting brief
+    fireEvent.click(screen.getByText('Ebimaru drafting brief'));
+    const ask = screen.getByPlaceholderText('What one thing should the client answer?');
+    fireEvent.change(ask, { target: { value: 'Ask only for first trial feedback' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save deal' }));
 
     await waitFor(() => expect(crmMocks.updateDeal).toHaveBeenCalledTimes(1));
-    expect(crmMocks.updateDeal).toHaveBeenCalledWith('deal-1', expect.objectContaining({
-      next_action: 'Capture feedback and send application notes',
-      draft_primary_ask: 'Ask only for first trial feedback',
-    }));
-  });
-
-  it('removes the generated deal-name row and hides an empty drafting brief outside messaging lanes', () => {
-    render(
-      <DealDetail
-        deal={{ ...deal, workflow_action: 'testing', draft_primary_ask: null }}
-        onClose={vi.fn()}
-        onSaved={vi.fn()}
-      />
+    expect(crmMocks.updateDeal).toHaveBeenCalledWith(
+      'deal-1',
+      expect.objectContaining({
+        next_action: 'Capture feedback and send application notes',
+        draft_primary_ask: 'Ask only for first trial feedback',
+        nudge_stage: null,
+      })
     );
-
-    expect(screen.queryByText(/^Deal name/)).toBeNull();
-    expect(screen.getByText('Commercial details')).toBeTruthy();
-    expect(screen.queryByText('Primary client ask')).toBeNull();
-  });
-
-  it('keeps a stored client ask visible after a deal moves out of a messaging lane', () => {
-    render(
-      <DealDetail
-        deal={{ ...deal, workflow_action: 'testing' }}
-        onClose={vi.fn()}
-        onSaved={vi.fn()}
-      />
-    );
-
-    expect(screen.getByText('Primary client ask')).toBeTruthy();
-    expect(screen.getByText("Ask for the team's first feedback")).toBeTruthy();
-  });
-
-  it('keeps a newly entered ask visible when the action lane changes before save', () => {
-    render(
-      <DealDetail
-        deal={{ ...deal, draft_primary_ask: null }}
-        onClose={vi.fn()}
-        onSaved={vi.fn()}
-      />
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Edit deal' }));
-    fireEvent.change(screen.getByLabelText('Primary client ask'), {
-      target: { value: 'Ask for a test date' },
-    });
-    fireEvent.change(screen.getByLabelText('Action lane'), {
-      target: { value: 'testing' },
-    });
-
-    expect(screen.getByLabelText('Primary client ask')).toBeTruthy();
   });
 });

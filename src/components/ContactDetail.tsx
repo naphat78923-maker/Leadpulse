@@ -1,13 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { Contact, CONTACT_STATUS_LABELS, ContactIdentityQuality, ContactStatus, Company } from '@/types/crm';
+import { Contact, CONTACT_STATUS_LABELS, ContactIdentityQuality, ContactStatus, Company, OutreachLanguage } from '@/types/crm';
 import { Mail, Phone, X, Edit2, Loader2, Check, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
 import { useToast } from '@/components/ToastProvider';
 import * as crm from '@/lib/crm';
 import { useCrm } from '@/components/CrmProvider';
-import { CONTACT_IDENTITY_OPTIONS, contactIdentityLabel, contactNameFieldCopy } from '@/utils/contact-identity';
+import { CONTACT_IDENTITY_OPTIONS, contactIdentityLabel, contactNameFieldCopy, OUTREACH_LANGUAGE_OPTIONS, outreachLanguageBadgeColor, outreachLanguageBasisLabel, outreachLanguageLabel } from '@/utils/contact-identity';
 import InteractionThread from '@/components/InteractionThread';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import { Plus } from 'lucide-react';
@@ -43,6 +43,7 @@ export default function ContactDetail({ contact, onClose, onSaved, companies }: 
     company_id: contact.company_id || '',
     status: contact.status,
     identity_quality: contact.identity_quality ?? 'unknown',
+    outreach_language: contact.outreach_language ?? 'autodetect',
     notes: contact.notes || '',
   });
   const contactNameCopy = contactNameFieldCopy(editData.identity_quality);
@@ -63,6 +64,7 @@ export default function ContactDetail({ contact, onClose, onSaved, companies }: 
         company_id: updated.company_id || '',
         status: updated.status,
         identity_quality: updated.identity_quality || 'unknown',
+        outreach_language: updated.outreach_language ?? 'autodetect',
         notes: updated.notes || '',
       });
       setEditing(false);
@@ -285,6 +287,28 @@ export default function ContactDetail({ contact, onClose, onSaved, companies }: 
             ) : (
               <span className="block mt-1 text-clay-body">
                 {contactIdentityLabel(contact.identity_quality)}
+              </span>
+            )}
+          </label>
+
+          <label className="block text-clay-body">
+            Outreach language
+            {editing ? (
+              <select
+                value={editData.outreach_language}
+                onChange={e => setEditData(prev => ({ ...prev, outreach_language: e.target.value as OutreachLanguage }))}
+                className="block w-full mt-1 px-2 py-2 border border-clay-hairline rounded text-base bg-white dark:bg-clay-card"
+              >
+                {OUTREACH_LANGUAGE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            ) : (
+              <span className="block mt-1 text-clay-body">
+                <span className={`inline-block px-2 py-0.5 rounded-full text-xs border ${outreachLanguageBadgeColor(contact.outreach_language)}`}>
+                  {outreachLanguageLabel(contact.outreach_language)}
+                </span>
+                <span className="ml-2 text-xs text-clay-muted">
+                  {outreachLanguageBasisLabel(contact.outreach_language_basis)}
+                </span>
               </span>
             )}
           </label>

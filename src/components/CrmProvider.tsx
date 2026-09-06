@@ -120,6 +120,11 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
         updated_at: el.updated_at || new Date().toISOString(),
         last_human_touch: el.last_human_touch ?? null,
         next_touch_due: el.next_touch_due ?? null,
+        champion_contact_id: el.champion_contact_id ?? null,
+        decision_maker_contact_id: el.decision_maker_contact_id ?? null,
+        blocker_contact_id: el.blocker_contact_id ?? null,
+        blocker_label: el.blocker_label ?? null,
+        map_status: el.map_status ?? 'unknown',
       })) as any);
 
       setContacts(mContacts.map((el: any) => ({
@@ -133,6 +138,8 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
         company_id: el.company_id,
         status: el.status,
         identity_quality: el.identity_quality ?? 'unknown',
+        outreach_language: el.outreach_language ?? 'autodetect',
+        outreach_language_basis: el.outreach_language_basis ?? 'autodetect',
         notes: el.notes,
         last_contacted_date: el.last_contacted_date,
         created_at: el.created_at || new Date().toISOString(),
@@ -157,6 +164,9 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
         workflow_action: el.workflow_action || undefined,
         nudge_stage: el.nudge_stage || null,
         sample_status: el.sample_status || null,
+        lost_reason: el.lost_reason || null,
+        park_reason: el.park_reason || null,
+        won_note: el.won_note || null,
         created_at: el.created_at || new Date().toISOString(),
         updated_at: el.updated_at || new Date().toISOString(),
       })) as any);

@@ -12,6 +12,8 @@ import * as crm from '@/lib/crm';
 import { Search, HeartPulse, ShieldAlert, Activity, CalendarClock, TrendingDown, Loader2, AlertTriangle, Gift, BellRing } from 'lucide-react';
 import clsx from 'clsx';
 import MascotSprite from '@/components/MascotSprite';
+import NudgeLadderRail from '@/components/NudgeLadderRail';
+import { stageFromSilenceDays } from '@/utils/deal-workflow';
 
 // ── Tier visual tokens (static strings so Tailwind scans them) ──
 const TIER_STYLE: Record<HealthTier, { text: string; bg: string; ring: string; dot: string }> = {
@@ -320,6 +322,14 @@ export default function RetentionPage() {
                   <button onClick={() => setSelectedCompanyId(company.id)} className="flex-1 min-w-0 text-left active:opacity-70">
                     <p className="text-sm font-medium text-clay-ink truncate">{company.name}</p>
                     <p className="text-[10px] text-clay-muted">overdue {Math.abs(touch.daysUntil)}d · {tierLabel(res.tier)}</p>
+                    {Math.abs(touch.daysUntil) >= 3 && (
+                      <NudgeLadderRail
+                        stage={stageFromSilenceDays(Math.abs(touch.daysUntil))}
+                        silenceDays={Math.abs(touch.daysUntil)}
+                        variant="mini"
+                        className="mt-1 max-w-[6.5rem]"
+                      />
+                    )}
                   </button>
                   <button
                     onClick={() => openWinBack(company.id)}
@@ -370,7 +380,7 @@ export default function RetentionPage() {
                       <h4 className="text-sm font-semibold text-clay-ink truncate">{company.name}</h4>
                       <span className={clsx('text-[10px] font-medium px-1.5 py-0.5 rounded', t.bg, t.text)}>{tierLabel(res.tier)}</span>
                     </div>
-                    <p className="text-[11px] text-clay-muted mt-0.5 flex items-center gap-1.5">
+                    <p className="text-[11px] text-clay-muted mt-0.5 flex items-center gap-1.5 flex-wrap">
                       <span className={clsx('w-1.5 h-1.5 rounded-full', t.dot)} />
                       {COMPANY_STATUS_LABELS[company.status]}
                       {lastTouch ? (
@@ -385,6 +395,14 @@ export default function RetentionPage() {
                         {touch.daysUntil <= 0 ? `touch overdue ${Math.abs(touch.daysUntil)}d` : touch.daysUntil === 0 ? 'touch due today' : `touch in ${touch.daysUntil}d`}
                       </span>
                     </p>
+                    {typeof daysSilent === 'number' && daysSilent >= 3 && (
+                      <NudgeLadderRail
+                        stage={stageFromSilenceDays(daysSilent)}
+                        silenceDays={daysSilent}
+                        variant="mini"
+                        className="mt-1.5 max-w-[7rem]"
+                      />
+                    )}
                   </button>
 
                   {/* Win-back action */}
