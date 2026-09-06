@@ -8,15 +8,20 @@ describe('deriveMapStatus', () => {
     expect(deriveMapStatus(null)).toBe('unknown');
   });
 
-  it('partial when any of the three is missing (but something tagged)', () => {
+  it('partial when champion or DM missing but something tagged', () => {
     expect(deriveMapStatus({ champion_contact_id: 'c1' })).toBe('partial');
     expect(deriveMapStatus({ decision_maker_contact_id: 'd1' })).toBe('partial');
     expect(deriveMapStatus({ blocker_label: 'Procurement' })).toBe('partial');
-    expect(deriveMapStatus({ champion_contact_id: 'c1', decision_maker_contact_id: 'd1' })).toBe('partial');
     expect(deriveMapStatus({ champion_contact_id: 'c1', blocker_contact_id: 'b1' })).toBe('partial');
   });
 
-  it('complete when champion + DM + blocker are all set', () => {
+  it('complete when champion + DM set (blocker optional)', () => {
+    expect(
+      deriveMapStatus({
+        champion_contact_id: 'c1',
+        decision_maker_contact_id: 'd1',
+      })
+    ).toBe('complete');
     expect(
       deriveMapStatus({
         champion_contact_id: 'c1',

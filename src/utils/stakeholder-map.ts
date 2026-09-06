@@ -4,8 +4,9 @@ export type StakeholderMapStatus = 'unknown' | 'partial' | 'complete';
 
 export type StakeholderRole = 'champion' | 'decision_maker' | 'blocker';
 
-/** Derive map completeness.
- *  Unknown = nothing tagged; Partial = some roles; Complete = champion + DM + blocker.
+/** Derive map completeness (CRM):
+ *  Unknown = nothing tagged; Partial = some but DM or champion missing;
+ *  Complete = champion + DM (blocker optional).
  */
 export function deriveMapStatus(company: Pick<
   Company,
@@ -17,7 +18,7 @@ export function deriveMapStatus(company: Pick<
   const blocker = !!company.blocker_contact_id || !!(company.blocker_label || '').trim();
   const any = champion || dm || blocker;
   if (!any) return 'unknown';
-  if (champion && dm && blocker) return 'complete';
+  if (champion && dm) return 'complete';
   return 'partial';
 }
 
