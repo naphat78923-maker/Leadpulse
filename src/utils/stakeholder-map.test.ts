@@ -2,12 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { deriveMapStatus, mapStatusLabel } from './stakeholder-map';
 
 describe('deriveMapStatus', () => {
-  it('partial when nothing set', () => {
-    expect(deriveMapStatus({})).toBe('partial');
-    expect(deriveMapStatus({ champion_contact_id: null, decision_maker_contact_id: null })).toBe('partial');
+  it('unknown when nothing set', () => {
+    expect(deriveMapStatus({})).toBe('unknown');
+    expect(deriveMapStatus({ champion_contact_id: null, decision_maker_contact_id: null })).toBe('unknown');
+    expect(deriveMapStatus(null)).toBe('unknown');
   });
 
-  it('partial when any of the three is missing', () => {
+  it('partial when any of the three is missing (but something tagged)', () => {
     expect(deriveMapStatus({ champion_contact_id: 'c1' })).toBe('partial');
     expect(deriveMapStatus({ decision_maker_contact_id: 'd1' })).toBe('partial');
     expect(deriveMapStatus({ blocker_label: 'Procurement' })).toBe('partial');
@@ -32,9 +33,10 @@ describe('deriveMapStatus', () => {
     ).toBe('complete');
   });
 
-  it('labels', () => {
+  it('labels prefer Partial/Complete; soft Unknown (not shouting)', () => {
     expect(mapStatusLabel('partial')).toBe('Partial');
     expect(mapStatusLabel('complete')).toBe('Complete');
-    expect(mapStatusLabel('unknown')).toBe('Partial');
+    expect(mapStatusLabel('unknown')).toBe('Unknown');
+    expect(mapStatusLabel('unknown')).not.toBe('UNKNOWN');
   });
 });

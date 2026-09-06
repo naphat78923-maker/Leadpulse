@@ -191,9 +191,9 @@ export default function StakeholderMiniMap({
       <div className="relative">
         <svg viewBox="0 0 640 200" className="w-full h-auto block" role="img" aria-label="Stakeholder map">
           <style>{`
-            .sm-edge { fill: none; stroke: #a8a29e; stroke-width: 2; stroke-dasharray: 5 7; }
-            .sm-edge-strong { stroke: #166534; stroke-dasharray: 4 6; stroke-width: 2.5; }
-            .sm-edge-block { stroke: #b91c1c; stroke-dasharray: 3 6; }
+            .sm-edge { fill: none; stroke: #57534e; stroke-width: 2.5; stroke-dasharray: 5 7; }
+            .sm-edge-strong { stroke: #14532d; stroke-dasharray: 4 6; stroke-width: 2.75; }
+            .sm-edge-block { stroke: #991b1b; stroke-dasharray: 3 6; stroke-width: 2.5; }
             @media (prefers-reduced-motion: no-preference) {
               .sm-edge { animation: sm-dash 1.5s linear infinite; }
               @keyframes sm-dash { to { stroke-dashoffset: -24; } }
@@ -202,17 +202,30 @@ export default function StakeholderMiniMap({
               .sm-edge { animation: none; }
             }
           `}</style>
+          <defs>
+            <marker id="sm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" fill="#14532d" />
+            </marker>
+            <marker id="sm-arrow-muted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" fill="#57534e" />
+            </marker>
+            <marker id="sm-arrow-block" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" fill="#991b1b" />
+            </marker>
+          </defs>
 
           {/* champion → DM influence */}
           <path
             className={clsx('sm-edge', champion && 'sm-edge-strong')}
-            d="M150 110 C240 110, 280 110, 320 110"
+            d="M180 110 C210 110, 230 110, 250 110"
+            markerEnd={champion ? 'url(#sm-arrow)' : 'url(#sm-arrow-muted)'}
           />
-          {/* DM ↔ blocker friction (dashed red when set) */}
+          {/* blocker → DM friction (dashed red when set) */}
           <path
             className={clsx('sm-edge', hasBlocker && 'sm-edge-block')}
-            d="M470 55 C420 55, 360 90, 330 105"
-            opacity={hasBlocker ? 1 : 0.22}
+            d="M460 60 C420 55, 360 90, 340 100"
+            opacity={hasBlocker ? 1 : 0.35}
+            markerEnd={hasBlocker ? 'url(#sm-arrow-block)' : 'url(#sm-arrow-muted)'}
           />
 
           {/* Champion node */}
@@ -299,10 +312,12 @@ export default function StakeholderMiniMap({
             'rounded-full px-3 py-2 text-xs font-extrabold min-h-[40px] inline-flex items-center border',
             status === 'complete'
               ? 'border-clay-mint/50 bg-clay-mint/15 text-clay-teal'
-              : 'border-clay-hairline bg-white dark:bg-clay-card text-clay-body'
+              : status === 'partial'
+                ? 'border-clay-hairline bg-white dark:bg-clay-card text-clay-body'
+                : 'border-clay-hairline/70 bg-transparent text-clay-muted font-semibold'
           )}
         >
-          Map status: {mapStatusLabel(status === 'complete' ? 'complete' : 'partial')}
+          Map status: {mapStatusLabel(status)}
         </span>
         {saving && <Loader2 className="w-4 h-4 animate-spin text-clay-muted self-center" />}
       </div>
