@@ -62,6 +62,26 @@ function whyNowLine(deal: Deal, kind: 'overdue' | 'today' | 'attention', todayKe
   return `No follow-up date · ${lane?.shortLabel || 'Set next move'}`;
 }
 
+/** Clamp hero why-now to ~2 lines; expand on demand so next_action never blows the card. */
+function WhyNowCopy({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const longEnough = text.length > 90;
+  return (
+    <div className="text-sm text-clay-muted">
+      <p className={clsx(!expanded && 'line-clamp-2')}>{text}</p>
+      {longEnough && (
+        <button
+          type="button"
+          onClick={() => setExpanded(v => !v)}
+          className="mt-1 text-[11px] font-semibold text-clay-lavender hover:text-clay-ink transition-colors"
+        >
+          {expanded ? 'Show less' : 'More'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function preferredChannel(deal: Deal, contacts: Contact[], meetings: Meeting[]): string | null {
   const linked = (deal.contact_ids || [])
     .map(id => contacts.find(c => c.id === id))
@@ -89,12 +109,14 @@ export default function TodayPage() {
   const [startOpen, setStartOpen] = useState(false);
   const [snoozing, setSnoozing] = useState(false);
   const startButtonRef = useRef<HTMLButtonElement>(null);
-  const { deals: dbDeals, contacts: dbContacts, companies: dbCompanies, meetings: dbMeetings, createDeal, addMeeting, refresh, logActivity } = useCrm();
+  const { deals: dbDeals, contacts: dbContacts, companies: dbCompanies, meetings: dbMeetings, loading, createDeal, addMeeting, refresh, logActivity } = useCrm();
 
-  const deals = dbDeals.length > 0 ? dbDeals : (dataDeals as Deal[]);
-  const contacts = dbContacts.length > 0 ? dbContacts : (dataContacts as Contact[]);
-  const companies = dbCompanies.length > 0 ? dbCompanies : (dataCompanies as any);
-  const meetings = dbMeetings.length > 0 ? dbMeetings : (dataMeetings as Meeting[]);
+  // Never paint mock CRM while loading — that caused hero flicker (April's Bakery → real deal).
+  // After load, keep the offline mock fallback only when the DB truly returned empty.
+  const deals = dbDeals.length > 0 ? dbDeals : loading ? [] : (dataDeals as Deal[]);
+  const contacts = dbContacts.length > 0 ? dbContacts : loading ? [] : (dataContacts as Contact[]);
+  const companies = dbCompanies.length > 0 ? dbCompanies : loading ? [] : (dataCompanies as any);
+  const meetings = dbMeetings.length > 0 ? dbMeetings : loading ? [] : (dataMeetings as Meeting[]);
 
   const todayKey = bangkokDateKey();
   const headerDate = formatBangkokWeekdayDate();
@@ -120,10 +142,12 @@ export default function TodayPage() {
       else if (diffDays <= 7) thisWeek.push(deal);
     });
 
-    const byDate = (a: Deal, b: Deal) => (a.followup_date || '').localeCompare(b.followup_date || '');
-    overdue.sort(byDate);
-    dueToday.sort(byDate);
-    thisWeek.sort(byDate);
+    const byDateThenId = (a: Deal, b: Deal) =>
+      (a.followup_date || '').localeCompare(b.followup_date || '') || a.id.localeCompare(b.id);
+    overdue.sort(byDateThenId);
+    dueToday.sort(byDateThenId);
+    thisWeek.sort(byDateThenId);
+    needsAttention.sort((a, b) => a.id.localeCompare(b.id));
 
     return { needsAttention, overdue, dueToday, thisWeek };
   }, [deals, todayKey]);
@@ -147,7 +171,9 @@ export default function TodayPage() {
     pool.sort(
       (a, b) =>
         a.rank - b.rank ||
-        (priorityRank[a.d.priority || 'medium'] ?? 1) - (priorityRank[b.d.priority || 'medium'] ?? 1)
+        (priorityRank[a.d.priority || 'medium'] ?? 1) - (priorityRank[b.d.priority || 'medium'] ?? 1) ||
+        (a.d.followup_date || '').localeCompare(b.d.followup_date || '') ||
+        a.d.id.localeCompare(b.d.id)
     );
     return { deal: pool[0].d, kind: pool[0].kind };
   }, [sortedOverdue, dealFollowUps.dueToday, dealFollowUps.needsAttention]);
@@ -244,49 +270,64 @@ export default function TodayPage() {
 
       {/* Whisper counters — not a competing metric strip */}
       <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1.5 px-0.5" aria-label="Today counters">
-        <span className="zams-mono text-[10px] uppercase tracking-[0.14px]">
-          <span className="text-clay-error font-semibold">{dealFollowUps.overdue.length} overdue</span>
-        </span>
-        <span className="text-clay-muted-soft/60 text-[10px]" aria-hidden>·</span>
-        <span className="zams-mono text-[10px] uppercase tracking-[0.14px] text-clay-ochre">
-          {dealFollowUps.dueToday.length} due today
-        </span>
-        <span className="text-clay-muted-soft/60 text-[10px]" aria-hidden>·</span>
-        <span className="zams-mono text-[10px] uppercase tracking-[0.14px] text-clay-muted">
-          {needsReviewCount} needs review
-        </span>
-        <span className="text-clay-muted-soft/60 text-[10px]" aria-hidden>·</span>
-        <span className="zams-mono text-[10px] uppercase tracking-[0.14px] text-clay-muted-soft">
-          {wonCount} won
-        </span>
+        {loading ? (
+          <div className="flex items-center gap-3 animate-pulse" aria-busy="true">
+            <div className="h-3 w-16 rounded bg-clay-surface" />
+            <div className="h-3 w-20 rounded bg-clay-surface/80" />
+            <div className="h-3 w-24 rounded bg-clay-surface/60" />
+          </div>
+        ) : (
+          <>
+            <span className="zams-mono text-[10px] uppercase tracking-[0.14px]">
+              <span className="text-clay-error font-semibold">{dealFollowUps.overdue.length} overdue</span>
+            </span>
+            <span className="text-clay-muted-soft/60 text-[10px]" aria-hidden>·</span>
+            <span className="zams-mono text-[10px] uppercase tracking-[0.14px] text-clay-ochre">
+              {dealFollowUps.dueToday.length} due today
+            </span>
+            <span className="text-clay-muted-soft/60 text-[10px]" aria-hidden>·</span>
+            <span className="zams-mono text-[10px] uppercase tracking-[0.14px] text-clay-muted">
+              {needsReviewCount} needs review
+            </span>
+            <span className="text-clay-muted-soft/60 text-[10px]" aria-hidden>·</span>
+            <span className="zams-mono text-[10px] uppercase tracking-[0.14px] text-clay-muted-soft">
+              {wonCount} won
+            </span>
+          </>
+        )}
       </div>
 
       {/* Hero — Do this next */}
       <div className="mb-6 rounded-2xl border border-clay-hairline bg-white dark:bg-clay-card p-5 md:p-6 relative overflow-hidden shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_8px_24px_-12px_rgba(43,33,26,0.28)]">
         <div className="flex items-start gap-3 mb-4">
           <MascotSprite
-            src={startHere ? '/assets/mascots/mascot-teardrop.png' : '/assets/mascots/mascot-outreach.png'}
+            src={loading || startHere ? '/assets/mascots/mascot-teardrop.png' : '/assets/mascots/mascot-outreach.png'}
             size={48}
-            alt={startHere ? 'Planner mascot' : 'Scout mascot'}
+            alt={loading || startHere ? 'Planner mascot' : 'Scout mascot'}
           />
           <div className="flex-1 min-w-0">
             <p className="zams-mono text-[10px] uppercase tracking-[0.16px] text-clay-lavender font-semibold mb-1.5">
               Do this next
             </p>
-            {startHere ? (
+            {loading ? (
+              <div className="space-y-2 animate-pulse" aria-busy="true" aria-label="Loading next move">
+                <div className="h-7 md:h-8 w-2/3 max-w-[240px] rounded-md bg-clay-surface" />
+                <div className="h-4 w-full max-w-[320px] rounded bg-clay-surface/80" />
+                <div className="h-4 w-4/5 max-w-[260px] rounded bg-clay-surface/60" />
+              </div>
+            ) : startHere ? (
               <>
                 <h2 className="zams-display text-xl md:text-2xl leading-tight mb-1.5">
                   {dealClientName(startHere.deal, companies, contacts)}
                 </h2>
-                <p className="text-sm text-clay-muted">
-                  {whyNowLine(startHere.deal, startHere.kind, todayKey)}
-                  {startHere.deal.next_action ? (
-                    <>
-                      {' · '}
-                      <span className="text-clay-body">{startHere.deal.next_action}</span>
-                    </>
-                  ) : null}
-                </p>
+                <WhyNowCopy
+                  text={[
+                    whyNowLine(startHere.deal, startHere.kind, todayKey),
+                    startHere.deal.next_action || null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                />
               </>
             ) : (
               <>
@@ -299,7 +340,7 @@ export default function TodayPage() {
           </div>
         </div>
 
-        {startHere && (
+        {!loading && startHere && (
           <div className="flex flex-wrap items-center gap-1.5 mb-5">
             {heroLane && (
               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border border-clay-hairline bg-clay-surface text-clay-ink">
@@ -340,7 +381,12 @@ export default function TodayPage() {
         )}
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-          {startHere ? (
+          {loading ? (
+            <div className="flex gap-2 animate-pulse w-full" aria-hidden>
+              <div className="h-11 flex-1 sm:w-36 sm:flex-none rounded-lg bg-clay-surface" />
+              <div className="h-11 flex-1 sm:w-28 sm:flex-none rounded-lg bg-clay-surface/70" />
+            </div>
+          ) : startHere ? (
             <>
               <button
                 onClick={() => {
@@ -380,14 +426,28 @@ export default function TodayPage() {
           <div>
             <h2 className="zams-display text-lg leading-tight">Up next</h2>
             <p className="text-[11px] text-clay-muted">
-              {upNext.length === 0
-                ? 'Queue empty after this move'
-                : `${upNext.length} waiting after you finish`}
+              {loading
+                ? 'Loading queue…'
+                : upNext.length === 0
+                  ? 'Queue empty after this move'
+                  : `${upNext.length} waiting after you finish`}
             </p>
           </div>
         </div>
 
-        {upNext.length === 0 ? (
+        {loading ? (
+          <div className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline divide-y divide-clay-hairline overflow-hidden animate-pulse" aria-busy="true">
+            {[0, 1, 2].map(i => (
+              <div key={i} className="px-4 py-3 flex items-center gap-3">
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 w-40 max-w-[50%] rounded bg-clay-surface" />
+                  <div className="h-3 w-56 max-w-[70%] rounded bg-clay-surface/70" />
+                </div>
+                <div className="h-9 w-16 rounded-lg bg-clay-surface/80" />
+              </div>
+            ))}
+          </div>
+        ) : upNext.length === 0 ? (
           <div className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline p-6 flex flex-col items-center gap-2">
             <MascotSprite src="/assets/mascots/mascot-parked.png" size={36} alt="Sleepy mascot" />
             <p className="text-sm text-clay-muted">
@@ -486,7 +546,7 @@ export default function TodayPage() {
           </button>
         )}
 
-        {deals.filter((d: Deal) => d.stage !== 'closed_won' && d.stage !== 'closed_lost').length === 0 && (
+        {!loading && deals.filter((d: Deal) => d.stage !== 'closed_won' && d.stage !== 'closed_lost').length === 0 && (
           <div className="mt-4 text-center py-10 bg-white dark:bg-clay-card rounded-xl border border-clay-hairline">
             <div className="relative mx-auto mb-4 w-28 h-28">
               <div className="absolute inset-0 rounded-full bg-clay-lavender/20" />
