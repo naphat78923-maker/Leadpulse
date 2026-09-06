@@ -19,3 +19,41 @@ export function sumLaneValues(
   }
   return sums;
 }
+
+/** LeadPulse runs on Asia/Bangkok — never trust host/UTC calendar day for "today". */
+export const APP_TIMEZONE = 'Asia/Bangkok';
+
+/** YYYY-MM-DD in Asia/Bangkok for the given instant (defaults to now). */
+export function bangkokDateKey(date: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: APP_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
+/** e.g. "Sunday · Sep 6" for headers — always Bangkok wall clock. */
+export function formatBangkokWeekdayDate(date: Date = new Date()): string {
+  const weekday = new Intl.DateTimeFormat('en-US', {
+    timeZone: APP_TIMEZONE,
+    weekday: 'long',
+  }).format(date);
+  const monthDay = new Intl.DateTimeFormat('en-US', {
+    timeZone: APP_TIMEZONE,
+    month: 'short',
+    day: 'numeric',
+  }).format(date);
+  return `${weekday} · ${monthDay}`;
+}
+
+/** Hour 0–23 in Asia/Bangkok (for greetings). */
+export function bangkokHour(date: Date = new Date()): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: APP_TIMEZONE,
+    hour: 'numeric',
+    hour12: false,
+  }).formatToParts(date);
+  const hour = parts.find(p => p.type === 'hour')?.value;
+  return hour ? Number(hour) % 24 : date.getHours();
+}
