@@ -3,7 +3,7 @@ import clsx from 'clsx';
 import type { Deal, NudgeStage } from '@/types/crm';
 import { STAGE_LABELS } from '@/types/crm';
 import type { DealCardPresentation } from '@/utils/deal-card';
-import { nudgeColorClass } from '@/utils/deal-workflow';
+import { nudgeColorClass, SEND_LADDER_RUNGS } from '@/utils/deal-workflow';
 import CompanyLogo from '@/components/CompanyLogo';
 import NudgeLadderRail from '@/components/NudgeLadderRail';
 import EntityAvatar from '@/components/EntityAvatar';
@@ -15,7 +15,6 @@ interface DealCardContentProps {
   reviewLabels: string[];
   nudge: string | null;
   nudgeStage?: NudgeStage | null;
-  silenceDays?: number | null;
   compact?: boolean;
   showGrip?: boolean;
 }
@@ -39,7 +38,6 @@ export default function DealCardContent({
   reviewLabels,
   nudge,
   nudgeStage = null,
-  silenceDays = null,
   compact = false,
   showGrip = false,
 }: DealCardContentProps) {
@@ -149,7 +147,7 @@ export default function DealCardContent({
             {compact && nudgeStage && (
               <NudgeLadderRail
                 stage={nudgeStage}
-                silenceDays={silenceDays}
+                rungs={SEND_LADDER_RUNGS}
                 variant="mini"
                 className="mt-0.5 basis-full max-w-[6.5rem]"
               />
@@ -212,7 +210,7 @@ export default function DealCardContent({
           </div>
           {nudgeStage && (
             <div className="mt-2 pt-2 border-t border-clay-hairline/50">
-              <NudgeLadderRail stage={nudgeStage} silenceDays={silenceDays} variant="full" />
+              <NudgeLadderRail stage={nudgeStage} rungs={SEND_LADDER_RUNGS} variant="full" />
             </div>
           )}
         </>

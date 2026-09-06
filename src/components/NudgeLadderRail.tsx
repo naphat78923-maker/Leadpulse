@@ -10,44 +10,36 @@ import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion';
 
 export type NudgeLadderVariant = 'full' | 'mini';
 
+interface LadderRung {
+  stage: NudgeStage;
+  label: string;
+  shortLabel: string;
+  code: string;
+  color: string;
+  track: string;
+}
+
 export interface NudgeLadderRailProps {
   /** Current rung — head position. Null hides the rail. */
   stage: NudgeStage | null | undefined;
-  /** Optional silence days for continuous fill between rungs. */
-  silenceDays?: number | null;
+  /** Rung definitions. Defaults to the day-based ladder (retention cadence);
+   *  deal cards pass SEND_LADDER_RUNGS so the head advances per outbound send. */
+  rungs?: readonly LadderRung[];
   variant?: NudgeLadderVariant;
   className?: string;
-  /** Show Warm 3d / Remind 7d / … labels under the full rail (default true for full). */
+  /** Show rung labels under the full rail (default true for full). */
   showLabels?: boolean;
 }
 
-function fillRatio(stage: NudgeStage, silenceDays?: number | null): number {
-  const idx = nudgeLadderIndex(stage);
-  if (idx < 0) return 0;
-  const n = NUDGE_LADDER_RUNGS.length;
-  // Segment centers at (i + 0.5) / n — fill through active rung
-  const throughRung = (idx + 1) / n;
-  if (silenceDays == null || Number.isNaN(silenceDays)) return throughRung;
-
-  const cur = NUDGE_LADDER_RUNGS[idx];
-  const next = NUDGE_LADDER_RUNGS[idx + 1];
-  if (!next) return 1;
-  const span = next.days - cur.days;
-  const t = Math.min(1, Math.max(0, (silenceDays - cur.days) / span));
-  // From end of current rung toward next
-  const start = idx / n;
-  const end = (idx + 1) / n;
-  return start + (end - start) * (0.55 + 0.45 * t);
-}
-
 /**
- * Shared Nudge ladder rail — Design Concept 3.
- * Warm (3d) → Remind (7d) → Firm (14d) → Parking (21d).
+ * Shared Nudge ladder rail.
+ * Deal gauge: 1st → 2nd → 3rd → 4th send (then park) — head advances per send.
+ * Retention rail: Warm 3d → Remind 7d → Firm 14d → Parking 21d (silence days).
  * Motion = head position on the ladder. Presentation only.
  */
 export default function NudgeLadderRail({
   stage,
-  silenceDays = null,
+  rungs = NUDGE_LADDER_RUNGS,
   variant = 'full',
   className,
   showLabels,
@@ -58,8 +50,9 @@ export default function NudgeLadderRail({
   const idx = nudgeLadderIndex(stage);
   if (idx < 0) return null;
 
-  const active = NUDGE_LADDER_RUNGS[idx];
-  const ratio = fillRatio(stage, silenceDays);
+  const active = rungs[idx];
+  if (!active) return null;
+
   const labels = showLabels ?? variant === 'full';
   const isMini = variant === 'mini';
   const transition = reduceMotion ? 'none' : 'width 420ms cubic-bezier(0.22, 1, 0.36, 1), left 420ms cubic-bezier(0.22, 1, 0.36, 1), background-color 280ms ease';
@@ -69,11 +62,11 @@ export default function NudgeLadderRail({
       <div
         data-nudge-ladder="mini"
         role="img"
-        aria-label={`Nudge ladder: ${active.shortLabel} (~${active.days}d)`}
+        aria-label={`Nudge ladder: ${active.shortLabel} (${active.code})`}
         className={clsx('flex items-center gap-0.5 w-full max-w-[7.5rem]', className)}
         title={`${active.label} · ${active.code}`}
       >
-        {NUDGE_LADDER_RUNGS.map((rung, i) => {
+        {rungs.map((rung, i) => {
           const on = i <= idx;
           const isHead = i === idx;
           return (
@@ -94,8 +87,8 @@ export default function NudgeLadderRail({
     );
   }
 
-  // Full: continuous fill + segmented tick marks + head + labels
-  const headPct = ((idx + 0.5) / NUDGE_LADDER_RUNGS.length) * 100;
+  // Full: segmented track + fill through current rung + head + labels
+  const headPct = ((idx + 0.5) / rungs.length) * 100;
 
   return (
     <div
@@ -107,22 +100,22 @@ export default function NudgeLadderRail({
       <div className="relative h-2.5 rounded-full overflow-hidden" style={{ background: 'rgba(168,152,128,0.18)' }}>
         {/* Segmented color wash under the fill */}
         <div className="absolute inset-0 flex" aria-hidden>
-          {NUDGE_LADDER_RUNGS.map(rung => (
+          {rungs.map(rung => (
             <span key={rung.stage} className="flex-1 h-full" style={{ backgroundColor: rung.track }} />
           ))}
         </div>
-        {/* Continuous fill through current rung */}
+        {/* Fill through current rung */}
         <div
           className="absolute inset-y-0 left-0 rounded-full"
           style={{
-            width: `${Math.round(ratio * 1000) / 10}%`,
-            background: `linear-gradient(90deg, ${NUDGE_LADDER_RUNGS.slice(0, idx + 1).map(r => r.color).join(', ')})`,
+            width: `${Math.round(((idx + 1) / rungs.length) * 1000) / 10}%`,
+            background: `linear-gradient(90deg, ${rungs.slice(0, idx + 1).map(r => r.color).join(', ')})`,
             transition,
           }}
         />
         {/* Segment dividers */}
         <div className="absolute inset-0 flex pointer-events-none" aria-hidden>
-          {NUDGE_LADDER_RUNGS.map((rung, i) =>
+          {rungs.map((rung, i) =>
             i === 0 ? (
               <span key={rung.stage} className="flex-1" />
             ) : (
@@ -146,7 +139,7 @@ export default function NudgeLadderRail({
 
       {labels && (
         <div className="mt-1.5 flex justify-between gap-1">
-          {NUDGE_LADDER_RUNGS.map((rung, i) => (
+          {rungs.map((rung, i) => (
             <span
               key={rung.stage}
               className={clsx(

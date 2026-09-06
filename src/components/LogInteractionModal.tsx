@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { MeetingType, Meeting, Deal, Contact, Company, NudgeStage, SampleStatus, DealWorkflowAction } from '@/types/crm';
+import { MeetingType, Meeting, Deal, Contact, Company, NudgeStage, SampleStatus, DealWorkflowAction, MeetingDirection } from '@/types/crm';
 import { X, MessageCircle, Phone, Mail, Users, FileText, ArrowRight, AlertTriangle, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
 import ContactPicker from '@/components/ContactPicker';
@@ -175,6 +175,14 @@ export default function LogInteractionModal({
       const selectedContacts = contacts.filter(contact => selectedContactIds.includes(contact.id));
       const companyId = selectedContacts[0]?.company_id || deal?.company_id || initialCompanyId || null;
 
+      // Direction drives the nudge gauge: only outbound call/email/DM are sends.
+      // A captured customer reply (Move forward → Waiting on reply) is inbound.
+      const isCustomerReply = !!deal && selectedAction === 'reply' && isChangingLane;
+      const direction: MeetingDirection =
+        isCustomerReply ? 'inbound'
+        : type === 'meeting' || type === 'note' ? 'internal'
+        : 'outbound';
+
       await onSave({
         description: description.trim(),
         type,
@@ -186,6 +194,7 @@ export default function LogInteractionModal({
         summary: summary.trim() || null,
         outcome,
         followup_date: followupDate || null,
+        direction,
       });
       interactionSavedThisAttempt = true;
 

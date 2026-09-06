@@ -321,7 +321,6 @@ export default function RetentionPage() {
                     {Math.abs(touch.daysUntil) >= 3 && (
                       <NudgeLadderRail
                         stage={stageFromSilenceDays(Math.abs(touch.daysUntil))}
-                        silenceDays={Math.abs(touch.daysUntil)}
                         variant="mini"
                         className="mt-1 max-w-[6.5rem]"
                       />
@@ -394,7 +393,6 @@ export default function RetentionPage() {
                     {typeof daysSilent === 'number' && daysSilent >= 3 && (
                       <NudgeLadderRail
                         stage={stageFromSilenceDays(daysSilent)}
-                        silenceDays={daysSilent}
                         variant="mini"
                         className="mt-1.5 max-w-[7rem]"
                       />

@@ -183,6 +183,7 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
         summary: el.summary,
         outcome: el.outcome,
         followup_date: el.followup_date,
+        direction: el.direction ?? null,
         created_at: el.created_at || new Date().toISOString(),
         updated_at: el.updated_at || new Date().toISOString(),
       })) as any);

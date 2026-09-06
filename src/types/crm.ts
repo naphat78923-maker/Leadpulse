@@ -152,6 +152,7 @@ export interface Deal {
 
 // ─── Meetings ───
 export type MeetingType = 'call' | 'email' | 'dm' | 'meeting' | 'sample_sent' | 'note' | 'nudge' | 'reward';
+export type MeetingDirection = 'inbound' | 'outbound' | 'internal' | 'unknown';
 
 export interface Meeting {
   id: string;
@@ -164,10 +165,17 @@ export interface Meeting {
   product: string | null;
   summary: string | null;
   outcome: 'positive' | 'neutral' | 'negative' | 'no_response' | null;
-  /** Present in the database and returned by getMeetings() (`select '*'`), but missing
-   *  from this type until now. Evidence tiers depend on it: without direction every
-   *  logged row is indistinguishable from internal workflow activity. */
-  direction?: 'inbound' | 'outbound' | 'internal' | 'unknown' | null;
+  /**
+   * Who initiated the touch: outbound send, inbound customer reply, internal note/meeting.
+   * Present in the database and returned by getMeetings() (`select '*'`). Evidence tiers
+   * depend on it: without direction every logged row is indistinguishable from internal
+   * workflow activity.
+   *
+   * Declared ONCE. main and the send-gauge branch each added this field independently;
+   * the two declarations were type-equivalent (`MeetingDirection | null`), so the
+   * duplicate was removed without choosing either variant's semantics.
+   */
+  direction?: MeetingDirection | null;
   followup_date: string | null;
   created_at: string;
 }
