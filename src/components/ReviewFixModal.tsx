@@ -6,6 +6,8 @@ import { SAMPLE_STATUS_OPTIONS, WORKFLOW_BY_ID } from '@/utils/deal-workflow';
 import { REVIEW_LABEL, ReviewReason } from '@/utils/deal-board';
 import { X, Loader2, AlertCircle } from 'lucide-react';
 import clsx from 'clsx';
+import { motion } from 'framer-motion';
+import { overlayVariants, panelVariants, tweenBase, tweenSlow } from '@/lib/motion';
 
 export interface ReviewFixPayload {
   sample_status?: SampleStatus | null;
@@ -83,8 +85,23 @@ export default function ReviewFixModal({ deal, reasons, onCancel, onConfirm }: R
 
   return (
     <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/50" onClick={onCancel} />
-      <div className="relative bg-white dark:bg-clay-card w-full sm:max-w-md rounded-t-2xl sm:rounded-lg animate-slide-up max-h-[90vh] overflow-y-auto">
+      <motion.div
+        className="absolute inset-0 bg-black/50"
+        variants={overlayVariants}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+        transition={tweenBase}
+        onClick={onCancel}
+      />
+      <motion.div
+        className="relative bg-white dark:bg-clay-card w-full sm:max-w-md rounded-t-2xl sm:rounded-lg max-h-[90vh] overflow-y-auto"
+        variants={panelVariants}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+        transition={tweenSlow}
+      >
         <div className="sticky top-0 bg-white dark:bg-clay-card border-b border-clay-hairline px-5 py-4 z-10">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -200,7 +217,7 @@ export default function ReviewFixModal({ deal, reasons, onCancel, onConfirm }: R
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save fix'}
           </button>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

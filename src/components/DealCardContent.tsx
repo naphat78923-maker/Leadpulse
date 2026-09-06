@@ -6,6 +6,7 @@ import type { DealCardPresentation } from '@/utils/deal-card';
 import { nudgeColorClass } from '@/utils/deal-workflow';
 import CompanyLogo from '@/components/CompanyLogo';
 import NudgeLadderRail from '@/components/NudgeLadderRail';
+import EntityAvatar from '@/components/EntityAvatar';
 
 interface DealCardContentProps {
   deal: Deal;
@@ -66,12 +67,14 @@ export default function DealCardContent({
           {contact.missing && companyLogoUrl ? (
             <CompanyLogo src={companyLogoUrl} name={companyName} size={36} className="shrink-0" />
           ) : (
-            <span
-              aria-hidden="true"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#4a4037] bg-[#2b211a] text-[11px] font-semibold tracking-wide text-[#fdf6e9] dark:bg-[#332b24] dark:text-[#f6f3ea]"
-            >
-              {contact.initials}
-            </span>
+            <EntityAvatar
+              kind="person"
+              name={contact.name}
+              initials={contact.initials}
+              size={36}
+              className="shrink-0"
+              interactive={false}
+            />
           )}
           <div className="min-w-[min(100%,5rem)] flex-1">
             {contact.missing ? (

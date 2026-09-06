@@ -4,7 +4,7 @@ import { useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Deal, Contact, Meeting } from '@/types/crm';
+import { Deal, Contact, Meeting, STAGE_LABELS, DealStage } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
 import { deals as dataDeals, contacts as dataContacts, companies as dataCompanies, meetings as dataMeetings } from '@/data/crmData';
 import CreateModal from '@/components/CreateModal';
@@ -12,14 +12,18 @@ import LogInteractionModal from '@/components/LogInteractionModal';
 import MascotSprite from '@/components/MascotSprite';
 import NudgeLadderRail from '@/components/NudgeLadderRail';
 import TaskActionSheet from '@/components/TaskActionSheet';
+import ReorderSignalsCard from '@/components/ReorderSignalsCard';
 import { Plus, ChevronRight, MessageCircle, Phone, Mail, Users, Package, Bell, Clock } from 'lucide-react';
-import { WORKFLOW_BY_ID, getWorkflowAction, deriveNudge, formatDerivedNudgeBadge, nudgeColorClass, addDaysToDateKey, lastHumanTouchDateForDeal } from '@/utils/deal-workflow';
+import { WORKFLOW_BY_ID, WORKFLOW_LANES, getWorkflowAction, deriveNudge, formatDerivedNudgeBadge, nudgeColorClass, addDaysToDateKey, lastHumanTouchDateForDeal, nudgeLabel } from '@/utils/deal-workflow';
 import { dealNeedsReview } from '@/utils/deal-board';
 import { dealClientName } from '@/utils/dealLabel';
 import { formatBaht, bangkokDateKey, formatBangkokWeekdayDate, bangkokHour } from '@/utils/format';
 import * as crm from '@/lib/crm';
 import { useToast } from '@/components/ToastProvider';
 import clsx from 'clsx';
+import { calculateLeadScore, scoreToTier, TIER_LABELS, TIER_COLORS, TIER_BG, PRIORITY_CLASSES, PRIORITY_LABELS } from '@/utils/lead-scoring';
+import { PageTransition, StaggerList, StaggerItem, HexFace } from '@/components/motion';
+import type { ClayKind } from '@/components/motion';
 
 const ACTION_VERBS: Record<string, string> = {
   outreach: 'Send outreach',
@@ -31,19 +35,24 @@ const ACTION_VERBS: Record<string, string> = {
   success: 'Won',
 };
 
-const PULSE_ITEMS = [
-  { key: 'call', label: 'Calls', icon: <Phone className="w-3.5 h-3.5 text-clay-teal" /> },
-  { key: 'email', label: 'Emails', icon: <Mail className="w-3.5 h-3.5 text-clay-pink" /> },
-  { key: 'dm', label: 'DMs', icon: <MessageCircle className="w-3.5 h-3.5 text-clay-lavender" /> },
-  { key: 'meeting', label: 'Meetings', icon: <Users className="w-3.5 h-3.5 text-clay-lavender" /> },
-  { key: 'sample_sent', label: 'Samples', icon: <Package className="w-3.5 h-3.5 text-clay-ochre" /> },
-  { key: 'nudge', label: 'Nudges', icon: <Bell className="w-3.5 h-3.5 text-clay-coral" /> },
+const PULSE_ITEMS: { key: string; label: string; clay: ClayKind }[] = [
+  { key: 'call', label: 'Calls', clay: 'call' },
+  { key: 'email', label: 'Emails', clay: 'message' },
+  { key: 'dm', label: 'DMs', clay: 'message' },
+  { key: 'meeting', label: 'Meetings', clay: 'search' },
+  { key: 'sample_sent', label: 'Samples', clay: 'package' },
+  { key: 'nudge', label: 'Nudges', clay: 'pause' },
 ];
 
 function daysBetween(a: string, b: string): number {
   const msA = new Date(`${a}T12:00:00`).getTime();
   const msB = new Date(`${b}T12:00:00`).getTime();
   return Math.round((msB - msA) / 86400000);
+}
+
+function daysUntil(dateStr: string): number {
+  const today = bangkokDateKey();
+  return Math.max(0, daysBetween(today, dateStr));
 }
 
 function whyNowLine(deal: Deal, kind: 'overdue' | 'today' | 'attention', todayKey: string): string {
@@ -206,6 +215,14 @@ export default function TodayPage() {
     return Boolean(n) && d.stage !== 'closed_won' && d.stage !== 'closed_lost';
   }).length;
 
+  // Today's pulse (featured strip under the hero)
+  const todayLocal = bangkokDateKey();
+  const todayMeetings = meetings.filter((m: Meeting) => m.date === todayLocal);
+  const todayCounts: Record<string, number> = { call: 0, email: 0, dm: 0, meeting: 0, sample_sent: 0, nudge: 0, note: 0 };
+  todayMeetings.forEach((m: Meeting) => { if (todayCounts[m.type] !== undefined) todayCounts[m.type]++; });
+  todayCounts.sample_sent = deals.filter(d => (d.workflow_action === 'sample' || d.workflow_action === 'testing') && d.stage !== 'closed_won' && d.stage !== 'closed_lost').length;
+  todayCounts.nudge = deals.filter(d => d.nudge_stage && d.stage !== 'closed_won' && d.stage !== 'closed_lost').length;
+
   const handleCreate = async (data: any) => {
     await createDeal(data);
   };
@@ -243,11 +260,11 @@ export default function TodayPage() {
     : null;
 
   return (
-    <div className="p-4 md:p-6 max-w-3xl pb-20 lg:pb-6">
+    <PageTransition className="p-4 md:p-6 max-w-6xl pb-20 lg:pb-6">
       {/* Header — weekday · Bangkok, big Today */}
       <div className="flex items-start justify-between mb-5 md:mb-6 gap-3">
         <div className="flex items-start gap-3 min-w-0">
-          <MascotSprite src="/assets/mascot-teardrop.png" size={46} alt="LeadPulse mascot" />
+          <HexFace kind="call" size={48} alt="LeadPulse hex face" />
           <div className="min-w-0">
             <p className="zams-eyebrow mb-1">
               {headerDate} · Bangkok
@@ -273,6 +290,12 @@ export default function TodayPage() {
             <Plus className="w-4 h-4" /> New deal
           </button>
         </div>
+        <button
+          onClick={() => setIsLogModalOpen(true)}
+          className="clay-btn-primary motion-press"
+        >
+          <MessageCircle className="w-4 h-4" /> <span className="hidden sm:inline">Log interaction</span>
+        </button>
       </div>
 
       {/* Whisper counters — not a competing metric strip */}
@@ -434,6 +457,135 @@ export default function TodayPage() {
         </div>
       </div>
 
+      {/* Due today / this week — the day's commitments at a glance */}
+      <section className="mb-6">
+        <div className="grid gap-4 sm:grid-cols-2">
+          {/* Due today */}
+          <div className="rounded-2xl border border-clay-ochre/30 bg-clay-ochre/5 p-4">
+            <button
+              onClick={() => router.push('/deals')}
+              className="w-full flex items-center gap-2 mb-3 text-left group"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-clay-ochre" aria-hidden />
+              <h2 className="zams-display text-base leading-tight group-hover:text-clay-ochre transition-colors">Due today</h2>
+              <span className="ml-auto text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-clay-ochre/15 text-clay-ochre">
+                {dealFollowUps.dueToday.length}
+              </span>
+            </button>
+            {dealFollowUps.dueToday.length === 0 ? (
+              <p className="text-xs text-clay-muted flex items-center gap-1.5">
+                <HexFace kind="pause" size={18} framed={false} instant alt="" />
+                Nothing scheduled for today.
+              </p>
+            ) : (
+              <>
+                <ul className="space-y-1.5">
+                  {dealFollowUps.dueToday.slice(0, 4).map(d => {
+                    const verb = ACTION_VERBS[getWorkflowAction(d)] || 'Follow up';
+                    return (
+                      <li key={d.id}>
+                        <button
+                          onClick={() => router.push('/deals?deal=' + d.id)}
+                          className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-clay-card border border-clay-hairline hover:border-clay-ochre/40 transition-colors min-h-[44px]"
+                        >
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-clay-ochre/15 text-clay-ochre shrink-0">Today</span>
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-sm font-medium text-clay-ink truncate">{dealClientName(d, companies, contacts)}</span>
+                            <span className="block text-xs text-clay-muted truncate">{verb}{d.next_action ? ` — ${d.next_action}` : ''}</span>
+                          </span>
+                          <ChevronRight className="w-4 h-4 text-clay-muted-soft shrink-0" />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {dealFollowUps.dueToday.length > 4 && (
+                  <button
+                    onClick={() => router.push('/deals')}
+                    className="mt-2 w-full text-[11px] font-semibold text-clay-ochre hover:text-clay-ink transition-colors flex items-center justify-center gap-1"
+                  >
+                    View all {dealFollowUps.dueToday.length} <ChevronRight className="w-3 h-3" />
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* This week */}
+          <div className="rounded-2xl border border-clay-lavender/30 bg-clay-lavender/5 p-4">
+            <button
+              onClick={() => router.push('/deals')}
+              className="w-full flex items-center gap-2 mb-3 text-left group"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-clay-lavender" aria-hidden />
+              <h2 className="zams-display text-base leading-tight group-hover:text-clay-lavender transition-colors">This week</h2>
+              <span className="ml-auto text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-clay-lavender/20 text-clay-lavender">
+                {dealFollowUps.thisWeek.length}
+              </span>
+            </button>
+            {dealFollowUps.thisWeek.length === 0 ? (
+              <p className="text-xs text-clay-muted flex items-center gap-1.5">
+                <HexFace kind="pause" size={18} framed={false} instant alt="" />
+                Light week ahead.
+              </p>
+            ) : (
+              <>
+                <ul className="space-y-1.5">
+                  {dealFollowUps.thisWeek.slice(0, 4).map(d => {
+                    const verb = ACTION_VERBS[getWorkflowAction(d)] || 'Follow up';
+                    const inDays = d.followup_date ? daysUntil(d.followup_date) : 0;
+                    return (
+                      <li key={d.id}>
+                        <button
+                          onClick={() => router.push('/deals?deal=' + d.id)}
+                          className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-clay-card border border-clay-hairline hover:border-clay-lavender/40 transition-colors min-h-[44px]"
+                        >
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-clay-lavender/20 text-clay-lavender shrink-0">
+                            {inDays === 1 ? 'Tomorrow' : `in ${inDays}d`}
+                          </span>
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-sm font-medium text-clay-ink truncate">{dealClientName(d, companies, contacts)}</span>
+                            <span className="block text-xs text-clay-muted truncate">{verb}{d.next_action ? ` — ${d.next_action}` : ''}</span>
+                          </span>
+                          <ChevronRight className="w-4 h-4 text-clay-muted-soft shrink-0" />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {dealFollowUps.thisWeek.length > 4 && (
+                  <button
+                    onClick={() => router.push('/deals')}
+                    className="mt-2 w-full text-[11px] font-semibold text-clay-lavender hover:text-clay-ink transition-colors flex items-center justify-center gap-1"
+                  >
+                    View all {dealFollowUps.thisWeek.length} <ChevronRight className="w-3 h-3" />
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </section>
+      <div className="mb-6 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-4 py-2.5 flex items-center gap-3 overflow-x-auto">
+        <div className="flex items-center gap-2 shrink-0">
+          <HexFace kind="message" size={22} framed alt="Pulse messenger" />
+          <p className="zams-mono text-[10px] uppercase tracking-[0.16px] text-clay-muted-soft">Today's pulse</p>
+        </div>
+        <StaggerList stagger={0.035} className="flex items-center gap-3 shrink-0">
+          {PULSE_ITEMS.map(p => (
+            <StaggerItem key={p.key} className="flex items-center gap-1.5">
+              <HexFace kind={p.clay} size={20} framed={false} instant alt={p.label} />
+              <span className="text-sm font-semibold text-clay-ink leading-none">{todayCounts[p.key] ?? 0}</span>
+              <span className="zams-mono text-[9px] uppercase tracking-[0.1px] text-clay-muted-soft">{p.label}</span>
+            </StaggerItem>
+          ))}
+        </StaggerList>
+        <span className="text-[11px] text-clay-muted-soft ml-auto shrink-0 flex items-center gap-1.5">
+          {todayMeetings.length === 0 && <HexFace kind="pause" size={18} framed alt="Resting — no touches yet" />}
+          {todayMeetings.length === 0 ? 'No touches yet today' : `${todayMeetings.length} ${todayMeetings.length === 1 ? 'touch' : 'touches'} today`}
+        </span>
+      </div>
+
       {/* Up next — short queue under hero */}
       <section className="mb-6">
         <div className="flex items-center gap-2.5 mb-3">
@@ -463,24 +615,20 @@ export default function TodayPage() {
             ))}
           </div>
         ) : upNext.length === 0 ? (
-          <div className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline p-6 flex flex-col items-center gap-2">
-            <MascotSprite src="/assets/mascots/mascot-parked.png" size={36} alt="Sleepy mascot" />
-            <p className="text-sm text-clay-muted">
-              {startHere ? 'Just the one — then you\'re clear.' : 'Nothing waiting.'}
-            </p>
-            {!startHere && (
-              <button
-                ref={startButtonRef}
-                onClick={() => setStartOpen(true)}
-                className="mt-1 inline-flex items-center gap-2 px-4 py-2.5 bg-clay-ink text-clay-canvas text-sm font-medium rounded-lg active:opacity-85"
-              >
-                Start a task
-              </button>
-            )}
+          <div className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline p-8 flex flex-col items-center gap-3">
+            <HexFace kind="success" size={56} framed alt="All clear — nothing waiting" />
+            <p className="text-sm text-clay-muted mb-2">Everything is moving. Nothing waiting.</p>
+            <button
+              ref={startButtonRef}
+              onClick={() => setStartOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-clay-ink text-clay-canvas text-sm font-medium rounded-lg active:opacity-85"
+            >
+              Start a task
+            </button>
           </div>
         ) : (
-          <div className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline divide-y divide-clay-hairline overflow-hidden">
-            {upNext.map(item => {
+          <StaggerList className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline divide-y divide-clay-hairline overflow-hidden">
+            {upNext.slice(0, 4).map(item => {
               const days =
                 item.kind === 'overdue' && item.deal.followup_date
                   ? Math.abs(daysBetween(item.deal.followup_date, todayKey))
@@ -492,7 +640,7 @@ export default function TodayPage() {
               });
               const channel = preferredChannel(item.deal, contacts, meetings);
               return (
-                <div key={item.deal.id} className="px-4 py-3 flex items-center gap-3 group">
+                <StaggerItem key={item.deal.id} className="px-4 py-3 flex items-center gap-3 group">
                   {item.kind === 'overdue' && (
                     <span className="w-1 self-stretch shrink-0 rounded-full bg-clay-error" aria-hidden />
                   )}
@@ -550,16 +698,23 @@ export default function TodayPage() {
                       setLogDealId(item.deal.id);
                       setIsLogModalOpen(true);
                     }}
-                    className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-clay-hairline text-clay-ink text-xs font-medium hover:border-clay-lavender hover:text-clay-lavender transition-colors min-h-[44px]"
+                    className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-clay-hairline text-clay-ink text-xs font-medium hover:border-clay-lavender hover:text-clay-lavender transition-colors min-h-[44px] motion-press"
                     aria-label={`Log touch for ${dealClientName(item.deal, companies, contacts)}`}
                   >
                     <MessageCircle className="w-4 h-4" />
                     <span className="hidden sm:inline">Log</span>
                   </button>
-                </div>
+                  <button
+                    onClick={() => router.push('/deals?deal=' + item.deal.id)}
+                    className="shrink-0 w-9 h-9 rounded-lg bg-clay-lavender text-white flex items-center justify-center hover:bg-[#6a4bc8] transition-colors motion-press"
+                    aria-label={`Open ${dealClientName(item.deal, companies, contacts)}`}
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </StaggerItem>
               );
             })}
-          </div>
+          </StaggerList>
         )}
 
         {dealFollowUps.overdue.length + dealFollowUps.dueToday.length > 6 && (
@@ -573,15 +728,9 @@ export default function TodayPage() {
 
         {!loading && deals.filter((d: Deal) => d.stage !== 'closed_won' && d.stage !== 'closed_lost').length === 0 && (
           <div className="mt-4 text-center py-10 bg-white dark:bg-clay-card rounded-xl border border-clay-hairline">
-            <div className="relative mx-auto mb-4 w-28 h-28">
+            <div className="relative mx-auto mb-4 w-28 h-28 flex items-center justify-center">
               <div className="absolute inset-0 rounded-full bg-clay-lavender/20" />
-              <Image
-                src="/assets/mascot-teardrop.png"
-                alt="LeadPulse mascot holding a deal card"
-                width={1024}
-                height={1024}
-                className="relative w-28 h-28 object-contain"
-              />
+              <HexFace kind="search" size={96} framed className="relative" alt="Search for your next prospect" />
             </div>
             <p className="text-sm font-medium text-clay-ink mb-1">No active deals yet</p>
             <p className="text-xs text-clay-muted mb-4">Your first deal card is waiting to be made.</p>
@@ -604,7 +753,7 @@ export default function TodayPage() {
         <div className="flex items-center gap-3 shrink-0">
           {PULSE_ITEMS.map(p => (
             <div key={p.key} className="flex items-center gap-1.5 opacity-80">
-              {p.icon}
+              <HexFace kind={p.clay} size={18} framed={false} instant alt="" />
               <span className="text-sm font-semibold text-clay-ink leading-none">{pulseCounts[p.key] ?? 0}</span>
               <span className="zams-mono text-[9px] uppercase tracking-[0.1px] text-clay-muted-soft">{p.label}</span>
             </div>
@@ -675,6 +824,6 @@ export default function TodayPage() {
           setIsLogModalOpen(true);
         }}
       />
-    </div>
+    </PageTransition>
   );
 }

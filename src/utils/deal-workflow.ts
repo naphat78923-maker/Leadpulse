@@ -111,6 +111,19 @@ export const DERIVED_NUDGE_OPTIONS: Array<{
   { value: 'parking', label: 'Suggest Park', code: 'NG-004', minDays: 21 },
 ];
 
+/** Soft HexFace kind per lane (SVG faces — replaces PNG mascots on the board chrome). */
+export type DealHexKind = 'call' | 'message' | 'package' | 'search' | 'pause' | 'success';
+
+export const LANE_HEX_KIND: Record<DealWorkflowAction, DealHexKind> = {
+  outreach: 'call',
+  reply: 'message',
+  sample: 'package',
+  testing: 'search',
+  reschedule: 'pause',
+  parked: 'pause',
+  success: 'success',
+};
+
 /** @deprecated Prefer DERIVED_NUDGE_OPTIONS — kept for legacy imports. */
 export const NUDGE_OPTIONS = DERIVED_NUDGE_OPTIONS.map(o => ({
   value: o.value,

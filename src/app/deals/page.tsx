@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import Image from 'next/image';
+import { motion } from 'framer-motion';
 import { Deal, DealWorkflowAction, PRODUCT_OPTIONS, STAGE_LABELS } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
 import { deals as dataDeals, contacts as dataContacts, companies as dataCompanies } from '@/data/crmData';
@@ -10,8 +10,8 @@ import DealDetail from '@/components/DealDetail';
 import DealCardContent from '@/components/DealCardContent';
 import LaneGateModal, { LaneGatePayload } from '@/components/LaneGateModal';
 import ReviewFixModal, { ReviewFixPayload } from '@/components/ReviewFixModal';
-import MascotSprite from '@/components/MascotSprite';
 import { useToast } from '@/components/ToastProvider';
+import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion';
 import * as crm from '@/lib/crm';
 import {
   DndContext,
@@ -29,11 +29,13 @@ import { Plus, TrendingUp, AlertCircle, Loader2, CalendarDays, ArrowRight, Searc
 import clsx from 'clsx';
 import { PRIORITY_CLASSES, PRIORITY_LABELS } from '@/utils/lead-scoring';
 import { formatBaht, sumLaneValues } from '@/utils/format';
-import { WORKFLOW_LANES, WORKFLOW_BY_ID, LANE_MASCOT_PATHS, getWorkflowAction, isOnJourneyBoard, isJourneyLane, deriveNudge, formatDerivedNudgeBadge, lastHumanTouchDateForDeal } from '@/utils/deal-workflow';
+import { WORKFLOW_LANES, WORKFLOW_BY_ID, LANE_MASCOT_PATHS, LANE_HEX_KIND, getWorkflowAction, isOnJourneyBoard, isJourneyLane, deriveNudge, formatDerivedNudgeBadge, lastHumanTouchDateForDeal, nudgeLabel } from '@/utils/deal-workflow';
 import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import { BoardAttentionFilter, dealNeedsReview, reviewReasons, REVIEW_LABEL, buildReviewReport, buildReviewFix, filterAndSortBoardDeals, getDoNowCounts, localDateKey } from '@/utils/deal-board';
 import { buildDealCardPresentation } from '@/utils/deal-card';
+import { PageTransition, HexFace, StaggerList, StaggerItem } from '@/components/motion';
+import { EASE_OUT, pressScale, springPress, tweenBase } from '@/lib/motion';
 
 type ViewMode = 'board' | 'parked' | 'won' | 'lost' | 'table';
 
@@ -92,7 +94,7 @@ export default function DealsPage() {
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [gate, setGate] = useState<{ deal: Deal; target: DealWorkflowAction } | null>(null);
   const [reviewFix, setReviewFix] = useState<{ deal: Deal; reasons: ReturnType<typeof reviewReasons> } | null>(null);
-  const [celebrate, setCelebrate] = useState<{ dealId: string; laneId: DealWorkflowAction; sprite?: string } | null>(null);
+  const [celebrate, setCelebrate] = useState<{ dealId: string; laneId: DealWorkflowAction } | null>(null);
   const [pickerDeal, setPickerDeal] = useState<Deal | null>(null);
   const [attentionFilter, setAttentionFilter] = useState<BoardAttentionFilter>('overdue');
   const [searchQuery, setSearchQuery] = useState('');
@@ -101,6 +103,7 @@ export default function DealsPage() {
 
   const { deals: dbDeals, contacts: dbContacts, companies: dbCompanies, meetings: dbMeetings, loading, refresh, createDeal, logActivity, addMeeting } = useCrm();
   const { addToast } = useToast();
+  const reduceMotion = usePrefersReducedMotion();
   const deals: Deal[] = dbDeals.length > 0 ? dbDeals : (dataDeals as Deal[]);
   const contacts = dbContacts.length > 0 ? dbContacts : (dataContacts as any);
   const companies = dbCompanies.length > 0 ? dbCompanies : (dataCompanies as any);
@@ -311,7 +314,7 @@ export default function DealsPage() {
       await addMeeting(meetingToLog as any);
     }
     setGate(null);
-    setCelebrate({ dealId: deal.id, laneId: target, sprite: LANE_MASCOT_PATHS[target] });
+    setCelebrate({ dealId: deal.id, laneId: target });
     setTimeout(() => setCelebrate(null), 900);
     addToast(`${lane.icon} Moved to ${lane.shortLabel}`);
     await refresh();
@@ -355,7 +358,7 @@ export default function DealsPage() {
     );
   }
 
-  const renderDealCard = (deal: Deal, opts?: { grip?: boolean; compact?: boolean }) => {
+  const renderDealCard = (deal: Deal, opts?: { grip?: boolean; compact?: boolean; dragging?: boolean }) => {
     const action = getWorkflowAction(deal);
     const derived = deriveNudge(deal, todayStr, {
       lastHumanTouch: lastHumanTouchDateForDeal(dbMeetings || [], deal.id),
@@ -368,13 +371,18 @@ export default function DealsPage() {
     const reasons = reviewReasons(deal);
     const isCompact = !!opts?.compact;
     const presentation = buildDealCardPresentation(deal, contacts, companies, due);
+    const skipMotion = reduceMotion || !!opts?.dragging;
 
     return (
-      <button
+      <motion.button
         key={deal.id}
+        type="button"
         onClick={() => setSelectedDeal(deal.id)}
+        whileHover={skipMotion ? undefined : { y: -2, scale: 1.01 }}
+        whileTap={skipMotion ? undefined : { scale: pressScale }}
+        transition={springPress}
         className={clsx(
-          'w-full text-left bg-white dark:bg-clay-card rounded-xl border transition-all active:scale-[0.98] active:bg-clay-surface',
+          'w-full text-left bg-white dark:bg-clay-card rounded-xl border touch-manipulation',
           isCompact ? 'p-2.5' : 'p-3',
           'border-clay-hairline',
           due === 'overdue' && 'border-l-2 border-l-clay-error',
@@ -393,21 +401,24 @@ export default function DealsPage() {
           showGrip={opts?.grip}
         />
         <p className="sr-only">Open {deal.client} in {lane.label}</p>
-      </button>
+      </motion.button>
     );
   };
 
   return (
-    <div className="p-4 md:px-4 md:py-6 pb-20 lg:pb-6 min-h-full">
+    <PageTransition className="p-4 md:px-4 md:py-6 pb-20 lg:pb-6 min-h-full">
       <div className="flex items-start justify-between gap-3 mb-4">
-        <div>
+        <div className="flex items-start gap-3 min-w-0">
+          <HexFace kind="call" size={44} className="shrink-0 mt-0.5 hidden sm:block" alt="Deal Action Board" />
+          <div className="min-w-0">
           <p className="zams-eyebrow mb-1">Pipeline · Action board</p>
           <h1 className="zams-display text-2xl md:text-[28px] leading-tight">Deal Action Board</h1>
           <p className="text-xs md:text-sm text-clay-muted mt-1">Journey only — Won / Lost / Park are exits, not columns. Nudges derive from follow-up + silence.</p>
+          </div>
         </div>
         <button
           onClick={() => setIsModalOpen(true)}
-          className="clay-btn-primary shrink-0"
+          className="clay-btn-primary shrink-0 motion-press"
         >
           <Plus className="w-4 h-4" /> <span className="hidden sm:inline">New deal</span>
         </button>
@@ -584,13 +595,7 @@ export default function DealsPage() {
 
           {actionBoardDeals.length === 0 && (
             <div className="mb-4 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-6 py-8 flex flex-col sm:flex-row items-center justify-center gap-5 text-center sm:text-left">
-              <Image
-                src="/assets/mascot-teardrop.png"
-                alt="LeadPulse mascot holding a deal card"
-                width={1024}
-                height={1024}
-                className="w-20 h-20 sm:w-24 sm:h-24 object-contain"
-              />
+              <HexFace kind="search" size={72} framed alt="No deals on the board yet" />
               <div>
                 <p className="text-sm font-medium text-clay-ink mb-1">No deals on the board yet</p>
                 <p className="text-xs text-clay-muted">Create a deal and it will land in the outreach lane, ready for its first action.</p>
@@ -604,7 +609,8 @@ export default function DealsPage() {
             </div>
           )}
           {actionBoardDeals.length > 0 && visibleActionBoardDeals.length === 0 && (
-            <div className="mb-4 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-5 py-6 flex flex-col sm:flex-row items-center justify-center gap-3 text-center sm:text-left">
+            <div className="mb-4 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-5 py-6 flex flex-col sm:flex-row items-center justify-center gap-4 text-center sm:text-left">
+              <HexFace kind="pause" size={48} framed alt="No deals match filters" />
               <div className="flex-1">
                 <p className="text-sm font-medium text-clay-ink">No deals match this Do now view</p>
                 <p className="text-xs text-clay-muted mt-1">Clear a filter or search for another client.</p>
@@ -626,7 +632,7 @@ export default function DealsPage() {
                     mobileLane === lane.id ? 'bg-clay-ink text-clay-canvas border-clay-ink' : 'bg-white dark:bg-clay-card text-clay-ink border-clay-hairline'
                   )}
                 >
-                  <span>{lane.icon}</span>
+                  <HexFace kind={LANE_HEX_KIND[lane.id]} size={18} framed={false} instant alt="" />
                   <span>{lane.shortLabel}</span>
                   <span className={clsx('text-xs', mobileLane === lane.id ? 'text-clay-canvas/70' : 'text-clay-muted')}>{dealsByAction[lane.id].length} · {formatBaht(laneValues[lane.id])}</span>
                 </button>
@@ -639,7 +645,7 @@ export default function DealsPage() {
                 <section data-lane-id={lane.id} className={clsx('rounded-2xl border p-3', lane.className)}>
                   <div data-lane-header className="mb-2 space-y-1">
                     <div data-lane-title className="flex min-w-0 items-center gap-2">
-                      <MascotSprite src={LANE_MASCOT_PATHS[lane.id]} size={32} alt={lane.label} />
+                      <HexFace kind={LANE_HEX_KIND[lane.id]} size={26} framed alt={lane.label} />
                       <h2 className="min-w-0 flex-1 text-base font-semibold text-clay-ink">{lane.label}</h2>
                     </div>
                     <p className="line-clamp-1 min-h-[1.25rem] text-[11px] text-clay-muted">{lane.description}</p>
@@ -647,9 +653,9 @@ export default function DealsPage() {
                       <span data-lane-stats className="whitespace-nowrap text-sm text-clay-muted bg-white/70 dark:bg-clay-card px-2 py-1 rounded-full">{laneDeals.length} · {formatBaht(laneValues[lane.id])}</span>
                     </div>
                   </div>
-                  <div className="space-y-2">
+                  <StaggerList stagger={0.04} className="space-y-2">
                     {laneDeals.map(d => (
-                      <div key={d.id} className="flex flex-wrap items-stretch gap-1.5">
+                      <StaggerItem key={d.id} className="flex flex-wrap items-stretch gap-1.5">
                         <div className="flex-1 min-w-[min(100%,12rem)]">{renderDealCard(d, { compact })}</div>
                         <button
                           onClick={() => setPickerDeal(d)}
@@ -659,10 +665,15 @@ export default function DealsPage() {
                           <ArrowRight className="w-4 h-4" />
                           <span className="zams-mono text-[8px] uppercase tracking-[0.12px]">Move</span>
                         </button>
-                      </div>
+                      </StaggerItem>
                     ))}
-                    {laneDeals.length === 0 && <div className="border border-dashed border-clay-hairline rounded-xl px-3 py-8 text-center text-sm text-clay-muted-soft">No deals in this lane</div>}
-                  </div>
+                    {laneDeals.length === 0 && (
+                      <div className="border border-dashed border-clay-hairline rounded-xl px-3 py-8 text-center text-sm text-clay-muted-soft flex flex-col items-center gap-2">
+                        <HexFace kind={LANE_HEX_KIND[lane.id]} size={40} framed alt="" />
+                        <span>No deals in this lane</span>
+                      </div>
+                    )}
+                  </StaggerList>
                 </section>
               );
             })()}
@@ -672,10 +683,10 @@ export default function DealsPage() {
             <div className="hidden md:block relative">
               <div ref={boardRef} className="flex gap-2.5 items-stretch overflow-x-auto pb-3 pl-0.5 pr-8 scroll-smooth snap-x snap-mandatory [scrollbar-gutter:stable]">
                 {WORKFLOW_LANES.map(lane => (
-                  <DroppableLane key={lane.id} laneId={lane.id} className={lane.className}>
+                  <DroppableLane key={lane.id} laneId={lane.id} className={lane.className} reduceMotion={reduceMotion}>
                     <div data-lane-header className="mb-2 shrink-0 space-y-1">
                       <div data-lane-title className="flex min-w-0 items-center gap-2">
-                        <MascotSprite src={LANE_MASCOT_PATHS[lane.id]} size={32} alt={lane.shortLabel} />
+                        <HexFace kind={LANE_HEX_KIND[lane.id]} size={24} framed alt={lane.shortLabel} />
                         <h2 className="min-w-0 flex-1 text-sm font-semibold text-clay-ink">{lane.shortLabel}</h2>
                       </div>
                       <p className="line-clamp-1 min-h-[1.25rem] text-[11px] leading-snug text-clay-muted">{lane.description}</p>
@@ -684,31 +695,47 @@ export default function DealsPage() {
                         <span data-lane-stats className="shrink-0 whitespace-nowrap text-xs text-clay-muted bg-white/70 dark:bg-clay-card px-2 py-0.5 rounded-full">{dealsByAction[lane.id].length} · {formatBaht(laneValues[lane.id])}</span>
                       </div>
                     </div>
-                    <div className="space-y-2 flex-1 pr-0.5">
+                    <StaggerList stagger={0.04} className="space-y-2 flex-1 pr-0.5">
                       {dealsByAction[lane.id].map(deal => (
-                        <DraggableCard
-                          key={deal.id}
-                          deal={deal}
-                          landing={celebrate?.dealId === deal.id && celebrate?.laneId === lane.id}
-                          onClick={() => setSelectedDeal(deal.id)}
-                        >
-                          {renderDealCard(deal, { grip: true, compact })}
-                        </DraggableCard>
+                        <StaggerItem key={deal.id}>
+                          <DraggableCard
+                            deal={deal}
+                            landing={celebrate?.dealId === deal.id && celebrate?.laneId === lane.id}
+                            reduceMotion={reduceMotion}
+                            onClick={() => setSelectedDeal(deal.id)}
+                          >
+                            {renderDealCard(deal, { grip: true, compact, dragging: activeDragId === deal.id })}
+                          </DraggableCard>
+                        </StaggerItem>
                       ))}
                       {dealsByAction[lane.id].length === 0 && (
-                        <div className="text-center py-6 text-xs text-clay-muted-soft border-2 border-dashed border-clay-hairline rounded-lg">Drop here</div>
+                        lane.id === 'parked' ? (
+                          <div className="text-center py-6 rounded-lg border-2 border-dashed border-clay-hairline flex flex-col items-center gap-2 opacity-90">
+                            <HexFace kind="pause" size={44} framed alt="Nothing parked" />
+                            <p className="text-xs text-clay-muted-soft">Nothing parked — everything is moving.</p>
+                          </div>
+                        ) : (
+                          <div className="text-center py-6 text-xs text-clay-muted-soft border-2 border-dashed border-clay-hairline rounded-lg flex flex-col items-center gap-2">
+                            <HexFace kind={LANE_HEX_KIND[lane.id]} size={36} framed={false} instant alt="" />
+                            <span>Drop here</span>
+                          </div>
+                        )
                       )}
                       {celebrate && celebrate.laneId === lane.id && (
-                        <div className="flex justify-center">
-                          <MascotSprite
-                            src={celebrate.sprite || LANE_MASCOT_PATHS[lane.id]}
+                        <motion.div
+                          className="flex justify-center"
+                          initial={reduceMotion ? false : { opacity: 0, scale: 0.88, y: 6 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          transition={{ duration: 0.24, ease: EASE_OUT }}
+                        >
+                          <HexFace
+                            kind={lane.id === 'success' ? 'success' : LANE_HEX_KIND[lane.id]}
                             size={40}
-                            alt="Mascot celebrating"
-                            className="mascot-pop"
+                            alt="Celebrating lane move"
                           />
-                        </div>
+                        </motion.div>
                       )}
-                    </div>
+                    </StaggerList>
                   </DroppableLane>
                 ))}
               </div>
@@ -742,13 +769,20 @@ export default function DealsPage() {
             <DragOverlay>
               {activeDragId ? (
                 <div className="relative w-[272px] rotate-2">
-                  {renderDealCard(deals.find(d => d.id === activeDragId)!)}
-                  <MascotSprite
-                    src={LANE_MASCOT_PATHS[getWorkflowAction(deals.find(d => d.id === activeDragId)!)]}
-                    size={44}
-                    alt="Mascot carrying the deal card"
-                    className="mascot-ride absolute -top-7 -right-4"
-                  />
+                  {renderDealCard(deals.find(d => d.id === activeDragId)!, { dragging: true })}
+                  <motion.div
+                    className="absolute -top-7 -right-4"
+                    initial={reduceMotion ? false : { opacity: 0, scale: 0.85, y: 4 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    transition={{ duration: 0.22, ease: EASE_OUT }}
+                  >
+                    <HexFace
+                      kind={LANE_HEX_KIND[getWorkflowAction(deals.find(d => d.id === activeDragId)!)]}
+                      size={40}
+                      instant
+                      alt="Carrying deal to a new lane"
+                    />
+                  </motion.div>
                 </div>
               ) : null}
             </DragOverlay>
@@ -928,60 +962,90 @@ export default function DealsPage() {
       )}
 
       <CreateModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={handleCreate} type="deal" companies={companies} contacts={contacts} />
-    </div>
+    </PageTransition>
   );
 }
 
 /* ─── Drag & drop primitives ─── */
 
 function DraggableCard({
-  deal, onClick, landing, children,
+  deal, onClick, landing, reduceMotion, children,
 }: {
   deal: Deal;
   onClick: () => void;
   landing?: boolean;
+  reduceMotion?: boolean;
   children: React.ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: deal.id });
   const style = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined;
+  const settling = Boolean(landing) && !reduceMotion && !isDragging;
   return (
-    <div
+    <motion.div
       ref={setNodeRef}
       style={style}
       {...listeners}
       {...attributes}
       onClick={onClick}
-      className={clsx(
-        'touch-none cursor-grab active:cursor-grabbing transition-opacity',
-        landing && 'clay-card-land',
-        isDragging && 'opacity-40'
-      )}
+      initial={false}
+      animate={
+        isDragging
+          ? { opacity: 0.4, scale: 1, y: 0 }
+          : settling
+            ? { opacity: 1, scale: [0.97, 1], y: [6, 0] }
+            : { opacity: 1, scale: 1, y: 0 }
+      }
+      transition={
+        settling
+          ? { duration: 0.24, ease: EASE_OUT }
+          : { duration: 0.15, ease: EASE_OUT }
+      }
+      className="touch-none cursor-grab active:cursor-grabbing"
     >
       {children}
-    </div>
+    </motion.div>
   );
 }
 
 function DroppableLane({
-  laneId, className, children,
+  laneId, className, children, reduceMotion,
 }: {
   laneId: string;
   className?: string;
   children: React.ReactNode;
+  reduceMotion?: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: laneId });
+  // Border/bg via className so lane theme restores on drag-out; FM owns the pulse (supersedes CSS .lane-drop-over).
   return (
-    <section
+    <motion.section
       ref={setNodeRef}
       data-lane-id={laneId}
       className={clsx(
-        'flex-1 min-w-[11.5rem] max-w-[18rem] snap-start rounded-2xl border p-2.5 flex flex-col transition-colors',
+        'flex-1 min-w-[11.5rem] max-w-[18rem] snap-start rounded-2xl border p-2.5 flex flex-col transition-colors 2xl:min-w-[150px]',
         className,
-        isOver && 'lane-drop-over'
+        isOver && 'border-[#7451f2] bg-[rgba(116,81,242,0.04)]'
       )}
+      initial={false}
+      animate={
+        isOver && !reduceMotion
+          ? {
+              boxShadow: [
+                '0 0 0 0 rgba(116, 81, 242, 0)',
+                '0 0 0 4px rgba(116, 81, 242, 0.16)',
+                '0 0 0 0 rgba(116, 81, 242, 0)',
+              ],
+            }
+          : { boxShadow: '0 0 0 0 rgba(116, 81, 242, 0)' }
+      }
+      transition={
+        isOver && !reduceMotion
+          ? { duration: 0.9, repeat: Infinity, ease: 'easeInOut' }
+          : tweenBase
+      }
     >
       {children}
-    </section>
+    </motion.section>
   );
 }
 

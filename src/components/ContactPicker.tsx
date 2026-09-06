@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { Check, Search, X } from 'lucide-react';
 import clsx from 'clsx';
 import { Company, Contact } from '@/types/crm';
+import EntityAvatar from '@/components/EntityAvatar';
 
 interface ContactPickerProps {
   contacts: Contact[];
@@ -56,7 +57,8 @@ export default function ContactPicker({ contacts, companies, selectedCompanyId, 
       {selectedContacts.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-2">
           {selectedContacts.map(c => (
-            <button key={c.id} type="button" onClick={() => toggle(c.id)} className="flex items-center gap-1.5 pl-3 pr-2 py-2 rounded-lg text-sm font-medium bg-clay-ink text-clay-canvas min-h-[44px]">
+            <button key={c.id} type="button" onClick={() => toggle(c.id)} className="flex items-center gap-1.5 pl-1.5 pr-2 py-1.5 rounded-lg text-sm font-medium bg-clay-ink text-clay-canvas min-h-[44px]">
+              <EntityAvatar kind="person" name={c.name} id={c.id} size={28} interactive={false} />
               {c.name}
               <X className="w-3.5 h-3.5 opacity-70" />
             </button>
@@ -88,9 +90,12 @@ export default function ContactPicker({ contacts, companies, selectedCompanyId, 
                 onClick={() => toggle(contact.id)}
                 className={clsx('w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left min-h-[44px] border-b border-clay-hairline/60 last:border-0', selected ? 'bg-clay-surface' : 'active:bg-clay-surface')}
               >
-                <span className="min-w-0">
-                  <span className="block text-sm font-medium text-clay-ink truncate">{contact.name}</span>
-                  <span className="block text-xs text-clay-muted truncate">{[company, contact.job_title].filter(Boolean).join(' · ') || 'No company'}</span>
+                <span className="flex items-center gap-2.5 min-w-0">
+                  <EntityAvatar kind="person" name={contact.name} id={contact.id} size={32} interactive={false} />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium text-clay-ink truncate">{contact.name}</span>
+                    <span className="block text-xs text-clay-muted truncate">{[company, contact.job_title].filter(Boolean).join(' · ') || 'No company'}</span>
+                  </span>
                 </span>
                 <span className="flex items-center gap-1.5 shrink-0">
                   {inCompany && <span className="text-[10px] font-semibold tracking-wider text-clay-ochre uppercase">Company</span>}

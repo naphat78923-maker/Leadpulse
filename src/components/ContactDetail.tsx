@@ -11,6 +11,9 @@ import { CONTACT_IDENTITY_OPTIONS, contactIdentityLabel, contactNameFieldCopy, O
 import InteractionThread from '@/components/InteractionThread';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import { Plus } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { overlayVariants, panelVariants, tweenBase, tweenSlow } from '@/lib/motion';
+import EntityAvatar from '@/components/EntityAvatar';
 
 const statusOptions: ContactStatus[] = ['active', 'replied', 'not_interested', 'no_response', 'parked'];
 
@@ -87,25 +90,50 @@ export default function ContactDetail({ contact, onClose, onSaved, companies }: 
 
   return (
     <>
-    <div className="fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50 p-0 md:p-4" onClick={onClose}>
-      <div className={clsx(
-        'bg-white dark:bg-clay-card w-full md:max-w-md md:rounded-2xl rounded-t-2xl p-6 max-h-[80vh] overflow-y-auto transition-all duration-300',
-        saving ? 'scale-[0.98] opacity-80' : saved ? 'scale-100 opacity-100 ring-2 ring-clay-success/40' : 'scale-100 opacity-100'
-      )} onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          {editing ? (
-            <input
-              type="text"
-              aria-label={contactNameCopy.label}
-              placeholder={contactNameCopy.placeholder}
-              value={editData.name}
-              onChange={e => setEditData(prev => ({ ...prev, name: e.target.value }))}
-              className="text-lg font-semibold text-clay-ink bg-transparent border-b border-clay-ink outline-none flex-1 mr-2"
+    <div className="fixed inset-0 flex items-end md:items-center justify-center z-50 p-0 md:p-4">
+      <motion.div
+        className="absolute inset-0 bg-black/50"
+        variants={overlayVariants}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+        transition={tweenBase}
+        onClick={onClose}
+      />
+      <motion.div
+        className={clsx(
+          'relative bg-white dark:bg-clay-card w-full md:max-w-md md:rounded-2xl rounded-t-2xl p-6 max-h-[80vh] overflow-y-auto',
+          saving ? 'opacity-80' : saved ? 'ring-2 ring-clay-success/40' : ''
+        )}
+        variants={panelVariants}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+        transition={tweenSlow}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4 gap-2">
+          <div className="flex items-center gap-3 min-w-0 flex-1 mr-1">
+            <EntityAvatar
+              kind="person"
+              name={editing ? editData.name || contact.name : contact.name}
+              id={contact.id}
+              size={48}
             />
-          ) : (
-            <h2 className="text-lg font-semibold text-clay-ink">{contact.name}</h2>
-          )}
-          <div className="flex items-center gap-1">
+            {editing ? (
+              <input
+                type="text"
+                aria-label={contactNameCopy.label}
+                placeholder={contactNameCopy.placeholder}
+                value={editData.name}
+                onChange={e => setEditData(prev => ({ ...prev, name: e.target.value }))}
+                className="text-lg font-semibold text-clay-ink bg-transparent border-b border-clay-ink outline-none flex-1 min-w-0"
+              />
+            ) : (
+              <h2 className="text-lg font-semibold text-clay-ink truncate">{contact.name}</h2>
+            )}
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
             {editing && (
               <button
                 onClick={handleSave}
@@ -350,7 +378,7 @@ export default function ContactDetail({ contact, onClose, onSaved, companies }: 
             </div>
           )}
         </div>
-      </div>
+      </motion.div>
     </div>
 
     <LogInteractionModal
