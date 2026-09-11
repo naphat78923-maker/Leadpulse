@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
-import { LayoutDashboard, Users, Building2, Kanban, Calendar, Activity, Zap, Menu, X, BarChart3, Bell, HeartPulse, Radar } from 'lucide-react';
+import { LayoutDashboard, Users, Building2, Kanban, Calendar, Activity, Zap, Menu, X, BarChart3, Bell, HeartPulse, Radar, Target } from 'lucide-react';
 import clsx from 'clsx';
 import { useTheme } from '@/components/ThemeProvider';
 import { drawerVariants, overlayVariants, tweenBase, tweenFast } from '@/lib/motion';
@@ -14,6 +14,7 @@ const navItems = [
   { href: '/activity', label: 'Activity', icon: Activity },
   { href: '/contacts', label: 'Contacts', icon: Users },
   { href: '/companies', label: 'Companies', icon: Building2 },
+  { href: '/prospects', label: 'Prospects', icon: Target },
   { href: '/deals', label: 'Deals', icon: Kanban },
   { href: '/meetings', label: 'Meetings', icon: Calendar },
   { href: '/analytics', label: 'Analytics', icon: BarChart3 },

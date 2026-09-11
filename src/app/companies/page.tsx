@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Company, COMPANY_STATUS_LABELS, Contact } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
 import { companies as dataCompanies, contacts as dataContacts } from '@/data/crmData';
@@ -18,6 +18,14 @@ export default function CompaniesPage() {
   const [search, setSearch] = useState('');
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Deep-link support: /companies?company=<id> opens that company directly, used by the
+  // Prospect Review screen's "Open the company record" link. Read from window.location
+  // rather than useSearchParams so this page keeps its current static rendering mode.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('company');
+    if (id) setSelectedCompany(id);
+  }, []);
 
   const { companies: dbCompanies, contacts: dbContacts, loading, refresh, createCompany } = useCrm();
   const companies: Company[] = dbCompanies.length > 0 ? dbCompanies : (dataCompanies as any);
