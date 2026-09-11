@@ -16,7 +16,7 @@
 // Every displayed block names its source, and every count is computed at runtime by
 // the shared evaluator from live CRM rows.
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   Search,
@@ -42,6 +42,15 @@ import {
   READINESS_DIMENSIONS,
   type ReviewContact,
 } from '@/utils/prospectReview';
+import ProspectReviewPanel from '@/components/ProspectReviewPanel';
+import { loadProspectReviews, type ProspectReviewRow, type ReviewsLoad } from '@/lib/prospectReviews';
+import {
+  REVIEW_DECISIONS,
+  decisionSpec,
+  isOverdue,
+  summariseReviews,
+  type FollowupDeal,
+} from '@/utils/prospectReviewDecision';
 
 const SOURCE = 'live CRM via this app: companies, deals, meetings, account_events, contacts';
 
@@ -94,11 +103,17 @@ function CandidateDetail({
   evidenceContacts,
   contactSummary,
   classification,
+  review,
+  companyDeals,
+  onReviewChanged,
 }: {
   fit: ProspectFit;
   evidenceContacts: ReviewContact[];
   contactSummary: { named: number; routeOnly: number; none: number; total: number } | undefined;
   classification: ReturnType<typeof classificationFor>;
+  review: ProspectReviewRow | null;
+  companyDeals: FollowupDeal[];
+  onReviewChanged: () => Promise<void> | void;
 }) {
   return (
     <div className="border-t border-clay-hairline bg-clay-canvas px-4 py-4 text-sm">
@@ -233,16 +248,34 @@ function CandidateDetail({
           </Link>
         </div>
       </div>
+
+      {/* The saved review. Keyed by company so one account's draft can never be saved
+          onto another when the user expands a different candidate. */}
+      <ProspectReviewPanel
+        key={fit.company_id}
+        companyId={fit.company_id}
+        companyName={fit.name}
+        archetypeId={fit.archetype_id}
+        deals={companyDeals}
+        review={review}
+        onChanged={onReviewChanged}
+      />
     </div>
   );
 }
 
 export default function ProspectReviewPage() {
-  const { companies, deals, meetings, accountEvents, contacts, loading } = useCrm();
+  const { companies, deals, meetings, accountEvents, contacts, loading, refresh } = useCrm();
   const [query, setQuery] = useState('');
   const [archetypeId, setArchetypeId] = useState<string>('');
   const [reachability, setReachability] = useState<string>('');
+  const [decisionFilter, setDecisionFilter] = useState<string>('');
   const [expanded, setExpanded] = useState<string | null>(null);
+  // Saved reviews live outside the CRM corpus on purpose: the evaluator must never
+  // read them, so the candidate list stays a pure function of CRM rows.
+  const [reviews, setReviews] = useState<Record<string, ProspectReviewRow>>({});
+  const [reviewsError, setReviewsError] = useState<string | null>(null);
+  const [reviewsMissingTable, setReviewsMissingTable] = useState(false);
 
   const input = useMemo(
     () => ({ companies, deals, meetings, events: accountEvents, contacts }),
@@ -262,9 +295,59 @@ export default function ProspectReviewPage() {
   const availability = useMemo(() => contactAvailability(contacts as ReviewContact[]), [contacts]);
   const archetypes = useMemo(() => archetypeOptions(), []);
 
-  const visible = useMemo(
-    () => (report ? filterProspects(report.fits, { query, archetypeId: archetypeId || null, reachability: reachability || null }) : []),
-    [report, query, archetypeId, reachability]
+  const visible = useMemo(() => {
+    if (!report) return [];
+    const base = filterProspects(report.fits, {
+      query,
+      archetypeId: archetypeId || null,
+      reachability: reachability || null,
+    });
+    if (!decisionFilter) return base;
+    if (decisionFilter === 'unreviewed') return base.filter((f) => !reviews[f.company_id]);
+    return base.filter((f) => reviews[f.company_id]?.decision === decisionFilter);
+  }, [report, query, archetypeId, reachability, decisionFilter, reviews]);
+
+  const applyReviews = useCallback((res: ReviewsLoad) => {
+    if (res.ok) {
+      setReviews(Object.fromEntries(res.rows.map((r) => [r.company_id, r])));
+      setReviewsError(null);
+      setReviewsMissingTable(false);
+    } else {
+      setReviewsError(res.error);
+      setReviewsMissingTable(res.tableMissing);
+    }
+  }, []);
+
+  const reloadReviews = useCallback(async () => {
+    applyReviews(await loadProspectReviews());
+  }, [applyReviews]);
+
+  useEffect(() => {
+    // A one-shot reference load, not a subscription: the state is applied in the
+    // promise callback rather than synchronously in the effect body.
+    let cancelled = false;
+    loadProspectReviews()
+      .then((res) => {
+        if (!cancelled) applyReviews(res);
+      })
+      .catch(() => {
+        /* loadProspectReviews reports its own failures as a value, never by throwing */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [applyReviews]);
+
+  // A saved review may have moved a deal's follow-up date, so the CRM is refreshed too.
+  const handleReviewChanged = useCallback(async () => {
+    await reloadReviews();
+    await refresh();
+  }, [reloadReviews, refresh]);
+
+  const candidateIds = useMemo(() => (report ? report.fits.map((f) => f.company_id) : []), [report]);
+  const reviewSummary = useMemo(
+    () => summariseReviews(Object.values(reviews), candidateIds),
+    [reviews, candidateIds]
   );
 
   return (
@@ -355,6 +438,44 @@ export default function ProspectReviewPage() {
               </ul>
             )}
 
+            {/* Review progress — a different source from the evaluator counts above, and
+                labelled as such: these are the only numbers here a human authored. */}
+            <div className="mt-4 rounded-xl border border-clay-hairline bg-clay-card p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-clay-muted">Review progress</p>
+              <dl className="mt-2 grid gap-2 sm:grid-cols-5">
+                {[
+                  { label: 'Shortlisted', value: reviewSummary.shortlist },
+                  { label: 'Needs research', value: reviewSummary.needs_research },
+                  { label: 'Not a fit', value: reviewSummary.not_a_fit },
+                  { label: 'Unreviewed', value: reviewSummary.unreviewed },
+                  { label: 'Candidates', value: reviewSummary.total },
+                ].map((s) => (
+                  <div key={s.label}>
+                    <dd className="text-lg font-semibold text-clay-ink">{s.value}</dd>
+                    <dt className="text-[11px] uppercase tracking-wide text-clay-muted">{s.label}</dt>
+                  </div>
+                ))}
+              </dl>
+              <SourceNote>
+                computed from the saved review rows against the candidate set{' '}
+                {reviewSummary.reconciles ? '· reconciliation OK' : '· RECONCILIATION FAILED'}
+              </SourceNote>
+              {reviewSummary.outside_candidates > 0 && (
+                <p className="mt-1 text-xs text-clay-body">
+                  {reviewSummary.outside_candidates} saved review(s) belong to accounts that are no longer
+                  candidates (they may have become customers). They are kept out of the counts above rather
+                  than silently dropped.
+                </p>
+              )}
+              {reviewsError && (
+                <p className="mt-1 text-xs text-clay-body">
+                  {reviewsMissingTable
+                    ? 'Saved reviews are unavailable until the prospect_reviews migration is applied. The candidate list below is unaffected.'
+                    : `Saved reviews could not be loaded: ${reviewsError}`}
+                </p>
+              )}
+            </div>
+
             {/* Filters */}
             <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-center">
               <div className="relative flex-1">
@@ -391,10 +512,25 @@ export default function ProspectReviewPage() {
                 <option value="route_only">Route only</option>
                 <option value="none">No route</option>
               </select>
+              <select
+                value={decisionFilter}
+                onChange={(e) => setDecisionFilter(e.target.value)}
+                aria-label="Filter by saved review decision"
+                className="rounded-xl border border-clay-hairline bg-clay-card px-3 py-2 text-sm text-clay-ink"
+              >
+                <option value="">Any review state</option>
+                <option value="unreviewed">Not reviewed yet</option>
+                {REVIEW_DECISIONS.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.short}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <p className="mt-2 text-xs text-clay-muted">
-              Showing {visible.length} of {report.corpus.candidates} candidates.
+              Showing {visible.length} of {report.corpus.candidates} candidates
+              {decisionFilter ? ' · filtered by saved review state' : ''}.
             </p>
 
             {/* Candidates */}
@@ -410,6 +546,8 @@ export default function ProspectReviewPage() {
                   const isOpen = expanded === f.company_id;
                   const summary = availability.get(f.company_id);
                   const evidenceContacts = (contacts as ReviewContact[]).filter((c) => c.company_id === f.company_id);
+                  const review = reviews[f.company_id] ?? null;
+                  const overdue = review ? isOverdue(review.next_action_due, new Date()) : false;
                   return (
                     <li key={f.company_id} className="overflow-hidden rounded-2xl border border-clay-hairline bg-clay-card">
                       <button
@@ -423,6 +561,23 @@ export default function ProspectReviewPage() {
                             {roleLabel(f.role)} · {f.archetype_name} · {reachLabel(f.reachability)}
                             {f.already_touched ? ' · has logged interaction' : ''}
                           </p>
+                          {review && (
+                            <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                              <span className="rounded-md bg-clay-lavender/10 px-1.5 py-0.5 font-semibold text-clay-ink">
+                                {decisionSpec(review.decision).short}
+                              </span>
+                              {review.next_action && (
+                                <span className={clsx('truncate', overdue ? 'text-clay-error' : 'text-clay-muted')}>
+                                  {overdue ? 'overdue: ' : 'next: '}
+                                  {review.next_action}
+                                  {review.next_action_due ? ` · ${review.next_action_due}` : ''}
+                                </span>
+                              )}
+                              {review.needs_data_review && (
+                                <span className="rounded-md bg-clay-surface px-1.5 py-0.5 text-clay-muted">data flag</span>
+                              )}
+                            </p>
+                          )}
                         </div>
                         <span className="shrink-0 rounded-md bg-clay-surface px-2 py-1 text-xs font-semibold text-clay-body">
                           {f.fit_score}
@@ -437,6 +592,9 @@ export default function ProspectReviewPage() {
                           evidenceContacts={evidenceContacts}
                           contactSummary={summary}
                           classification={classificationFor(f, rows)}
+                          review={review}
+                          companyDeals={(deals as unknown as FollowupDeal[]).filter((d) => d.company_id === f.company_id)}
+                          onReviewChanged={handleReviewChanged}
                         />
                       )}
                     </li>

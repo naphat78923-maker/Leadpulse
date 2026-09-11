@@ -13,15 +13,32 @@ afterEach(() => cleanup());
 
 const crm = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 
+// The saved-review writer is mocked here on purpose: this suite covers the read-only
+// candidate list and its states. Importing the real module would pull the Supabase
+// client into the test environment (and attempt a realtime connection) for no benefit.
+const reviewWriter = vi.hoisted(() => ({
+  loadProspectReviews: vi.fn(
+    async (): Promise<{ ok: true; rows: unknown[] } | { ok: false; error: string; tableMissing: boolean }> => ({
+      ok: true,
+      rows: [],
+    })
+  ),
+  saveProspectReview: vi.fn(),
+  restoreProspectReview: vi.fn(),
+  clearProspectReview: vi.fn(),
+  setDealFollowupDate: vi.fn(),
+}));
+
 vi.mock('@/components/CrmProvider', () => ({ useCrm: () => crm.value }));
 vi.mock('@/components/motion', () => ({
   PageTransition: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
+vi.mock('@/lib/prospectReviews', () => reviewWriter);
 
 import ProspectReviewPage from './page';
 
 function setCrm(v: Record<string, unknown>) {
-  crm.value = { deals: [], meetings: [], accountEvents: [], contacts: [], loading: false, ...v };
+  crm.value = { deals: [], meetings: [], accountEvents: [], contacts: [], loading: false, refresh: async () => {}, ...v };
 }
 
 const candidate = {
@@ -113,5 +130,65 @@ describe('Prospect Review screen', () => {
     const values = Array.from(select.options).map((o) => o.value);
     expect(values[0]).toBe('');
     expect(values.length).toBeGreaterThan(1);
+  });
+
+  // ── saved review state (Slice A) ──
+
+  const savedReview = {
+    id: 'row-1',
+    company_id: 'c1',
+    decision: 'shortlist',
+    reason_code: 'verified_route',
+    reason_note: null,
+    criterion_ref: null,
+    reviewed_at: '2026-09-11T10:00:00.000Z',
+    next_action: 'Send the sample list',
+    next_action_owner: 'Pat',
+    next_action_due: null,
+    evidence_note: null,
+    evidence_links: null,
+    needs_data_review: false,
+    created_at: '2026-09-11T10:00:00.000Z',
+    updated_at: '2026-09-11T10:00:00.000Z',
+  };
+
+  it('reports review progress from the saved rows, reconciled against the candidate set', async () => {
+    reviewWriter.loadProspectReviews.mockResolvedValueOnce({ ok: true, rows: [savedReview] });
+    setCrm({ companies: [candidate] });
+    render(<ProspectReviewPage />);
+
+    expect(await screen.findByText('Review progress')).toBeTruthy();
+    expect(screen.getAllByText('Shortlisted').length).toBeGreaterThan(1);
+    expect(screen.getByText('Unreviewed')).toBeTruthy();
+    expect(screen.getByText(/computed from the saved review rows against the candidate set · reconciliation OK/)).toBeTruthy();
+  });
+
+  it('filters the candidate list by saved review state', async () => {
+    reviewWriter.loadProspectReviews.mockResolvedValueOnce({ ok: true, rows: [savedReview] });
+    setCrm({ companies: [candidate] });
+    render(<ProspectReviewPage />);
+    await screen.findByText('Review progress');
+
+    fireEvent.change(screen.getByLabelText(/filter by saved review decision/i), { target: { value: 'unreviewed' } });
+    expect(screen.getByText(/No candidate matches the current search or filters/i)).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText(/filter by saved review decision/i), { target: { value: 'not_a_fit' } });
+    expect(screen.getByText(/No candidate matches the current search or filters/i)).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText(/filter by saved review decision/i), { target: { value: 'shortlist' } });
+    expect(screen.getByRole('button', { name: /Green Bowl/ })).toBeTruthy();
+  });
+
+  it('says saved reviews are unavailable, without hiding the candidate list, when the table is missing', async () => {
+    reviewWriter.loadProspectReviews.mockResolvedValueOnce({
+      ok: false,
+      error: 'relation "public.prospect_reviews" does not exist',
+      tableMissing: true,
+    });
+    setCrm({ companies: [candidate] });
+    render(<ProspectReviewPage />);
+
+    expect(await screen.findByText(/until the prospect_reviews migration is applied/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Green Bowl/ })).toBeTruthy();
   });
 });
