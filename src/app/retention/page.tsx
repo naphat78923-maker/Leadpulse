@@ -6,7 +6,8 @@ import { useCrm } from '@/components/CrmProvider';
 import { companies as dataCompanies, contacts as dataContacts, deals as dataDeals, meetings as dataMeetings } from '@/data/crmData';
 import CompanyDetail from '@/components/CompanyDetail';
 import LogInteractionModal from '@/components/LogInteractionModal';
-import { accountHealthScore, tierLabel, HealthTier, AccountType } from '@/utils/accountHealth';
+import { accountHealthScore, tierLabel, HealthTier } from '@/utils/accountHealth';
+import { accountTypeForCompany } from '@/utils/companyRole';
 import { nextTouchDue, inRetentionSystem, rewardTrigger, pickReward, RewardOption } from '@/utils/retentionCadence';
 import * as crm from '@/lib/crm';
 import { Search, HeartPulse, ShieldAlert, Activity, CalendarClock, TrendingDown, Loader2, AlertTriangle, Gift, BellRing } from 'lucide-react';
@@ -27,15 +28,10 @@ const RING_C = 2 * Math.PI * 22; // r=22 circumference
 
 type FilterKey = 'all' | 'due' | HealthTier;
 
-// Best-effort industry → AccountType for the expected reorder interval.
-function deriveAccountType(c: Company): AccountType {
-  const s = `${c.industry || ''} ${(c.tags || []).join(' ')}`.toLowerCase();
-  if (/hotel|resort|hospital/.test(s)) return 'hotel';
-  if (/bakery|patiss|bread/.test(s)) return 'bakery';
-  if (/modern trade|retail|supermarket|hyper|mall|department/.test(s)) return 'modern_trade';
-  if (/restaurant|cafe|hotel|f&b|food|kitchen/.test(s)) return 'restaurant';
-  return 'other';
-}
+// Company role now comes from ONE classifier: src/utils/companyRole.ts (taxonomy v1).
+// The render-time regex that used to live here guessed the type from free-text
+// industry/tags, had an unreachable `hotel` branch, and called manufacturers
+// restaurants via its `/food/` alternative.
 
 /** True order count: distinct orders from sales history, falling back to won deals. */
 function distinctOrderCountOf(
@@ -88,7 +84,7 @@ export default function RetentionPage() {
         deals: coDeals.map((d) => ({ stage: d.stage, last_outcome: d.last_outcome, value: d.value })),
         events: evts.map((e) => ({ date: e.event_date, amount: e.amount, product_line: e.product_line ?? undefined, order_id: e.order_id ?? undefined })),
         lastOrderDate,
-        accountType: deriveAccountType(c),
+        accountType: accountTypeForCompany(c),
         today,
       });
 
@@ -112,7 +108,7 @@ export default function RetentionPage() {
       // Cadence: derived next human-touch due date (read-only, no DB column).
       const touch = nextTouchDue({
         tier: res.tier,
-        accountType: deriveAccountType(c),
+        accountType: accountTypeForCompany(c),
         lastTouch,
         lastContactDate: c.last_contact_date?.slice(0, 10) || null,
         createdAt: c.created_at?.slice(0, 10) || null,
@@ -199,7 +195,7 @@ export default function RetentionPage() {
     const today = new Date().toISOString().slice(0, 10);
     const next = nextTouchDue({
       tier: sc.res.tier,
-      accountType: deriveAccountType(sc.company),
+      accountType: accountTypeForCompany(sc.company),
       lastTouch: today,
       today,
     });

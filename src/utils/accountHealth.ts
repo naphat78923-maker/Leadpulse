@@ -21,7 +21,7 @@ export interface HealthInputs {
   events?: { date: ISODate; amount: number; product_line?: string; order_id?: string }[];
   /** Not in schema yet — optional, safe default false. */
   standingOrder?: boolean;
-  /** Not in schema yet — optional, safe default 'other'. */
+  /** Derived from taxonomy v1 via classifyCompanyRole().account_type (src/utils/companyRole.ts). Optional; absent input still falls back to 'other'. */
   accountType?: AccountType;
   /** Pat-logged referrals (future meeting type). Default 0. */
   referrals?: number;
