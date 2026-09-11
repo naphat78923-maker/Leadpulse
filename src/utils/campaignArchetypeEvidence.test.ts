@@ -57,6 +57,7 @@ const testArchetype: CampaignArchetype = {
   criteria: ['one', 'two', 'three'],
   offer_angle: 'A placeholder offer angle that is long enough to be plausible.',
   origin_signal: 'A placeholder origin signal that is long enough to be plausible.',
+  qualification_signals: [{ label: 'placeholder signal', pattern: 'placeholder' }],
   evidence_requirement: {
     roles_covered: ['foodservice_restaurant'],
     min_buying_accounts: 3,

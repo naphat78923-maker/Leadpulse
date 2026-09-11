@@ -36,6 +36,15 @@ export interface ArchetypeEvidenceRequirement {
   strength_expectation: 'well_evidenced' | 'emerging' | 'single_account';
 }
 
+/** A keyword proxy for one qualification criterion. Declared here so prospect
+ *  fit uses the SAME source of truth as the archetype, instead of a parallel list
+ *  that drifts. These are textual signals scraped from free-text industry/tags and
+ *  are NOT verification: a hit means "worth a look", never "confirmed qualified". */
+export interface QualificationSignal {
+  label: string;
+  pattern: string;
+}
+
 export interface CampaignArchetype {
   id: string;
   name: string;
@@ -50,6 +59,8 @@ export interface CampaignArchetype {
   offer_angle: string;
   /** the observed signal that produced this archetype (no account names here) */
   origin_signal: string;
+  /** textual proxies for this archetype's criteria, used by read-only prospect fit */
+  qualification_signals: QualificationSignal[];
   evidence_requirement: ArchetypeEvidenceRequirement;
 }
 
@@ -66,6 +77,11 @@ export const CAMPAIGN_ARCHETYPES_V1: CampaignArchetype[] = [
       'Kitchen does its own baking or pastry, or has a named pastry lead',
       'Decision sits with a chef-owner, head chef, or chef-patron',
       'Either already ordering, or has taken samples into a menu test',
+    ],
+    qualification_signals: [
+      { label: 'plant-based or vegan concept', pattern: 'plant-?based|vegan|vegetarian' },
+      { label: 'dessert or pastry in the concept', pattern: 'patiss|pastry|bakery|cake|dessert|ice cream|gelato' },
+      { label: 'chef-led or owner-operated signals', pattern: 'chef|owner|patron|founder' },
     ],
     offer_angle:
       'Sample-led trial run against their own brioche, shokupan or pastry recipe, then convert the winning flavour into a standing reorder.',
@@ -98,6 +114,11 @@ export const CAMPAIGN_ARCHETYPES_V1: CampaignArchetype[] = [
       'Category already carries plant-based or specialty imports',
       'Promotion and shelf trial are part of how they launch a new line',
     ],
+    qualification_signals: [
+      { label: 'retail or modern-trade channel', pattern: 'modern trade|retail|supermarket|hypermarket|grocery|convenience|mall|department|wholesale' },
+      { label: 'specialty or organic positioning', pattern: 'specialty|speciality|organic|health food|gourmet|import' },
+      { label: 'online or e-commerce route', pattern: 'online|e-?commerce|shop|store' },
+    ],
     offer_angle:
       'Lead with tasting-booth support, sample packs for photoshoot and in-store trial, and a bounded introductory margin, then measure sell-through by unit before committing to a listing.',
     origin_signal:
@@ -125,6 +146,11 @@ export const CAMPAIGN_ARCHETYPES_V1: CampaignArchetype[] = [
       'Viennoiserie, cake or laminated pastry in the core range',
       'More than one outlet, or a production site supplying outlets',
       'Product decisions made by a head baker, pastry chef, or owner',
+    ],
+    qualification_signals: [
+      { label: 'baking or pastry production', pattern: 'bakery|bakeries|bak|patiss|pastry|bread|croissant|viennoiserie|doughnut|donut|cake' },
+      { label: 'chain or multi-outlet structure', pattern: 'chain|branch|outlet|group|franchise|corporation|co\\.?,? ?ltd' },
+      { label: 'production scale signals', pattern: 'factory|production|manufactur|wholesale|supply|oem|co-?pack' },
     ],
     offer_angle:
       'Run the comparison in their own laminating process, then price it against their current butter on yield per batch rather than per kilo, with a reorder cadence tied to their production cycle.',
