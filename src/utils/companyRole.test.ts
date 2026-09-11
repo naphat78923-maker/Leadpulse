@@ -7,7 +7,6 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  accountTypeForCompany,
   classifyCompanyRole,
   COMPANY_ROLES,
   ROLE_RULES_FOR_REVIEW,
@@ -56,7 +55,7 @@ describe('classifyCompanyRole — regression: manufacturers are not restaurants'
     const c = classifyCompanyRole({ industry: 'Food Manufacturing' });
     expect(c.role).toBe('manufacturer');
     expect(c.account_type).toBe('other');
-    expect(accountTypeForCompany({ industry: 'Food Manufacturing' })).not.toBe('restaurant');
+    expect(classifyCompanyRole({ industry: 'Food Manufacturing' }).account_type).not.toBe('restaurant');
   });
 
   it('prefers manufacturer identity over the bakery and cake words on the same record', () => {
@@ -174,6 +173,30 @@ describe('classifyCompanyRole — unknown is a value, never a silent other', () 
     expect(c.candidates.map((x) => x.role)).toContain('patisserie_chain');
   });
 
+  it('keeps an add-on school from erasing a trading business, and a school from masquerading as one', () => {
+    // Shapes taken from the live corpus, which contains both cases.
+    const bakerySchool = classifyCompanyRole({ industry: 'Bakery / baking school', tags: ['bakery'] });
+    expect(bakerySchool.role).toBe('bakery_chain');
+    expect(bakerySchool.ambiguous).toBe(true);
+    expect(bakerySchool.candidates.map((c) => c.role)).toContain('unknown');
+    expect(bakerySchool.reason).toContain('institutional wording');
+
+    // 'school' here modifies catering, it is not the business.
+    expect(classifyCompanyRole({ industry: 'International school catering' }).role).toBe('catering');
+
+    // These head their own identity phrase, so they are institutions, not venues.
+    const pastrySchool = classifyCompanyRole({ industry: 'Pastry school' });
+    expect(pastrySchool.role).toBe('unknown');
+    expect(pastrySchool.reason_code).toBe('taxonomy_gap');
+    expect(classifyCompanyRole({ industry: 'Pastry & bakery school' }).role).toBe('unknown');
+    const parenthetical = classifyCompanyRole({ industry: 'Culinary school (ALMA bakery/pastry)' });
+    expect(parenthetical.role).toBe('unknown');
+    expect(parenthetical.reason_code).toBe('taxonomy_gap');
+
+    // A school word in the NAME alone cannot override a real industry.
+    expect(classifyCompanyRole({ name: 'Example School', industry: 'Artisan bakery' }).role).toBe('bakery_chain');
+  });
+
   it('never reports unknown with high confidence', () => {
     for (const role of ['unknown'] as CompanyRole[]) {
       expect(ROLE_TAXONOMY[role].account_type).toBe('other');
@@ -223,9 +246,9 @@ describe('taxonomy invariants', () => {
     for (const role of COMPANY_ROLES) {
       expect(allowed).toContain(ROLE_TAXONOMY[role].account_type);
     }
-    expect(accountTypeForCompany({ industry: 'Doughnut shop' })).toBe('bakery');
-    expect(accountTypeForCompany({ industry: 'Cloud kitchen' })).toBe('restaurant');
-    expect(accountTypeForCompany({ name: 'Unlabelled Co' })).toBe('other');
+    expect(classifyCompanyRole({ industry: 'Doughnut shop' }).account_type).toBe('bakery');
+    expect(classifyCompanyRole({ industry: 'Cloud kitchen' }).account_type).toBe('restaurant');
+    expect(classifyCompanyRole({ name: 'Unlabelled Co' }).account_type).toBe('other');
   });
 
   it('gives every non-unknown role at least one rule', () => {

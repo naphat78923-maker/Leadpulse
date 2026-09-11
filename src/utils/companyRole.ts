@@ -286,6 +286,32 @@ function describe(role: CompanyRole, evidence: RoleEvidence[]): string {
   return `${ROLE_TAXONOMY[role].label} from ${first.field} "${first.matched_text}"${more}`;
 }
 
+const INSTITUTION_RE = /\b(school|academy|university|institute|college)\b/;
+const INSTITUTION_TAIL_RE = /\b(school|academy|university|institute|college)\s*$/;
+
+/**
+ * Does an institutional word HEAD this record's stated identity?
+ *
+ * True only when the industry phrase (parentheticals ignored) has a segment ending
+ * in the institution word AND no other segment states a trading business. A record
+ * whose only institutional hint is in its name or tags returns false, so a name
+ * like "X School" cannot override a real bakery/restaurant industry.
+ */
+function institutionHeadsIdentity(company: ClassifiableCompany): boolean {
+  const industry = (company.industry ?? '').toLowerCase().replace(/\([^)]*\)/g, ' ');
+  if (!INSTITUTION_RE.test(industry)) return false;
+  const segments = industry
+    .split('/')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const institutionHeads = segments.some((seg) => INSTITUTION_TAIL_RE.test(seg));
+  if (!institutionHeads) return false;
+  const otherTradingSegment = segments.some(
+    (seg) => !INSTITUTION_RE.test(seg) && ROLE_RULES.some((rule) => !rule.gap && rule.pattern.test(seg))
+  );
+  return !otherTradingSegment;
+}
+
 /**
  * Classify one company into taxonomy v1.
  *
@@ -298,8 +324,21 @@ export function classifyCompanyRole(
 ): RoleClassification {
   const fired = firedRules(company);
 
-  const identityFired = fired.filter((f) => f.identityMatch);
-  const tier = identityFired.length > 0 ? identityFired : fired;
+  // An institutional word ("school", "academy") must not ERASE real role evidence,
+  // but a genuine school must not be dressed up as a bakery either. The live corpus
+  // contains both, so the institution decides only when it HEADS the identity
+  // phrase and that phrase states no other trading business:
+  //   "Bakery / baking school"          -> bakery (the school is an add-on service)
+  //   "International school catering"   -> catering (school is a modifier)
+  //   "Pastry school"                   -> unknown/taxonomy_gap (an institution)
+  //   "Culinary school (ALMA bakery/..)"-> unknown/taxonomy_gap (parenthetical ignored)
+  const gapFired = fired.find((f) => f.rule.gap) ?? null;
+  const nonGapFired = fired.filter((f) => !f.rule.gap);
+  const gapWins = !!gapFired && institutionHeadsIdentity(company);
+  const winnerPool = gapWins ? fired : nonGapFired.length > 0 ? nonGapFired : fired;
+
+  const identityFired = winnerPool.filter((f) => f.identityMatch);
+  const tier = identityFired.length > 0 ? identityFired : winnerPool;
   const winner = tier[0];
 
   const rolesFired = new Set<CompanyRole>(fired.map((f) => f.rule.role));
@@ -352,6 +391,10 @@ export function classifyCompanyRole(
     if (reason_code === 'tag_only_match' || reason_code === 'tag_only_match_ambiguous') {
       reason += ' Identity fields carried no role wording, so tags decided it.';
     }
+    if (gapFired) {
+      reason +=
+        ' Also matches institutional wording, which v1 has no role for, so it is reported as a candidate rather than the answer.';
+    }
   }
 
   const derived: RoleClassification = {
@@ -388,9 +431,4 @@ export function classifyCompanyRole(
     ],
     source: 'pat_override',
   };
-}
-
-/** Thin adapter for the retention surfaces, which only need the legacy type. */
-export function accountTypeForCompany(company: ClassifiableCompany): AccountType {
-  return classifyCompanyRole(company).account_type;
 }
