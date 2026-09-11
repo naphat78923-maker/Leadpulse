@@ -198,10 +198,31 @@ deployed, migrated, or sent.
   and mobile, the progress block reads `0 / 0 / 0 / 94 / 94` and reconciles against the 94 candidates,
   the panel states that it is not a qualification and that no reviewer identity is recorded, and the
   deal-board line reads "No due date on this review, so the deal board is left alone."
-- **Not verified, and cannot be until the migration exists:** persistence, the deal follow-up write,
-  and undo against a live row. With the table absent the page correctly degrades to
-  "Saved reviews are unavailable until the prospect_reviews migration is applied" while the candidate
-  list keeps working — that state is what the screenshots show.
+- **Verified end to end after the migration was applied (2026-09-11, on Pat's "ok sure deploy please").**
+  The table was applied to `mkyhikarlxuwvprjabbi` and read back: 15 columns, all six named check
+  constraints, one FK, RLS enabled with the same permissive policy the app's other write tables carry,
+  0 rows, and the migration recorded in `supabase_migrations`.
+  Then the **same PostgREST path the browser uses** (public anon key read from the served client bundle,
+  never printed) was exercised against the top-ranked candidate:
+  a review row insert returned 201; a second save with `on_conflict=company_id` returned 200 and left
+  **one** row, not two; a `not_a_fit` with no note was refused by the database (`23514`,
+  `prospect_reviews_exclusion_note_check`) and a reason belonging to another decision was refused
+  (`prospect_reviews_decision_reason_check`); the permitted `followup_date` write on that company's one
+  open deal returned 200 and read back as `2026-09-30`; the company row was unchanged (`prospect`,
+  `updated_at` still 2026-09-02) with no deal or contact created. The rendered screen then showed
+  `0 / 1 / 0 / 93` reconciled against 94 candidates with the decision badge on the row, and the
+  "migration is applied" notice gone.
+  **Residue, disclosed in full:** the verification row was deleted and the deal's `followup_date`
+  returned to `null`, so no review state remains. The deal's `updated_at` did move (the app's own
+  `updateDeal` writes it on any update) — that timestamp is the one lasting trace.
+- **UI click-through was not automated.** The desktop preview pane did not answer this session, so no
+  browser-driven save was performed; the write path was exercised directly against the same endpoint and
+  key the browser uses. A human pass on the deployed screen is still worth doing.
+- Deployed to production: commits `0f66434`, `9b3822b`, `8329b86`, `46a03da` pushed to `main` as a
+  fast-forward (`491f461..46a03da`); Vercel (git-connected, project `leadpulse`) built
+  `leadpulse-3ic2wiu88-hermes-75ff` **Ready in 28s**, `/prospects` returns 200 on
+  `leadpulse-one-ashen.vercel.app`, and the served bundle contains all four literals unique to this
+  slice (production chunks live under `/_next/static/immutable/chunks/`).
 - Lint: one pre-existing `react/no-unescaped-entities` error in the touched page file, reproduced on the
   unmodified `HEAD` copy of that file, so it is not introduced here and was left alone.
 
