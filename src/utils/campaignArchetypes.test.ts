@@ -69,6 +69,24 @@ describe('archetype set', () => {
     expect(strengths.filter((s) => s !== 'well_evidenced').length).toBeGreaterThanOrEqual(2);
   });
 
+  it('does not publish an archetype whose evidence bar it failed', () => {
+    // Withheld, not deleted: the hotel archetype failed its outcome bar when internal
+    // workflow rows stopped counting, so it moved to considered-and-not-published.
+    expect(CAMPAIGN_ARCHETYPES_V1.map((a) => a.id)).not.toContain('hotel_resort_foodservice');
+    const hotel = CONSIDERED_NOT_PUBLISHED_V1.find((c) => c.id === 'hotel_resort_foodservice')!;
+    expect(hotel, 'the withheld hotel archetype must still be documented').toBeDefined();
+    expect(hotel.roles).toEqual(['foodservice_hotel']);
+    expect(hotel.intended_vertical_role).toBe('foodservice_hotel');
+    // the failed bar is stated, and it was NOT lowered to keep it published
+    expect(hotel.unmet_requirement).toContain('NOT met (0 of 1)');
+    expect(hotel.unmet_requirement).toContain('deliberately NOT lowered');
+    // the hypothesis survives intact so the thinking is not lost
+    expect(hotel.untested_hypothesis!.pain.length).toBeGreaterThan(80);
+    expect(hotel.untested_hypothesis!.offer_angle.length).toBeGreaterThan(40);
+    expect(hotel.untested_hypothesis!.criteria.length).toBeGreaterThanOrEqual(3);
+    expect(hotel.untested_hypothesis!.observed_origin_signal.length).toBeGreaterThan(40);
+  });
+
   it('records what was considered and rejected, with a reason', () => {
     expect(CONSIDERED_NOT_PUBLISHED_V1.length).toBeGreaterThan(0);
     for (const c of CONSIDERED_NOT_PUBLISHED_V1) {

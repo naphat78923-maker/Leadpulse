@@ -139,32 +139,6 @@ export const CAMPAIGN_ARCHETYPES_V1: CampaignArchetype[] = [
       strength_expectation: 'emerging',
     },
   },
-  {
-    id: 'hotel_resort_foodservice',
-    name: 'Hotel and resort foodservice',
-    taxonomy_version: TAXONOMY_VERSION,
-    vertical_role: 'foodservice_hotel',
-    pain:
-      'Purchasing is centralised behind brand standards, so a single outlet decision is rarely enough: the substitute has to clear a quality bar once and then be usable across several outlets and menus, including afternoon tea, pastry and events.',
-    criteria: [
-      'Hotel, resort, or venue with its own kitchen or pastry operation',
-      'Menu changes are seasonal, with sugar-free or plant-based requests already present',
-      'Buying is centralised, with an F&B director or executive chef in the chain',
-      'A single outlet can be used as the proving ground before group-wide adoption',
-    ],
-    offer_angle:
-      'Win one outlet with a pastry-team trial, document the result, then use that outlet as the internal reference when approaching the group.',
-    origin_signal:
-      'Two hotels have ordered; only one of them has a recorded win, and the other has order history with no win on record. Hotels are also the largest unworked cluster in the taxonomy: a fifth of the company list, with two buyers.',
-    evidence_requirement: {
-      roles_covered: ['foodservice_hotel'],
-      min_buying_accounts: 2,
-      min_positive_contact_outcomes: 1,
-      basis:
-        'The weakest published bar, and labelled as such. Two buying hotels is enough to justify outreach and NOT enough to claim a pattern: treat the pain statement as a hypothesis to test rather than a proven play.',
-      strength_expectation: 'emerging',
-    },
-  },
 ];
 
 /**
@@ -178,6 +152,19 @@ export interface ConsideredArchetype {
   name: string;
   roles: CompanyRole[];
   reason: string;
+  /** the role a campaign would target if the hypothesis is ever supported */
+  intended_vertical_role?: CompanyRole;
+  /** A whole archetype preserved because its thinking is worth keeping even though
+   *  the evidence is not there yet. Withholding the claim is not discarding the idea. */
+  untested_hypothesis?: {
+    pain: string;
+    offer_angle: string;
+    criteria: string[];
+    observed_origin_signal: string;
+  };
+  /** The bar this archetype failed, stated explicitly so it is never quietly lowered
+   *  to keep it published. */
+  unmet_requirement?: string;
 }
 
 export const CONSIDERED_NOT_PUBLISHED_V1: ConsideredArchetype[] = [
@@ -201,6 +188,30 @@ export const CONSIDERED_NOT_PUBLISHED_V1: ConsideredArchetype[] = [
     roles: ['catering'],
     reason:
       'Accounts exist, including ones serving schools and airlines, but none has ordered or produced a logged outcome. The segmentation need is credible; the evidence is not there yet.',
+  },
+  {
+    id: 'hotel_resort_foodservice',
+    name: 'Hotel and resort foodservice',
+    roles: ['foodservice_hotel'],
+    intended_vertical_role: 'foodservice_hotel',
+    reason:
+      'WITHDRAWN FROM THE PUBLISHED SET on 2026-09-11 after the evidence layer stopped counting internal workflow rows as engagement. Two hotels have buying evidence, but the role records ZERO customer-facing contacts with a recorded positive outcome: its only positive outcome was an internal nudge row. Withholding is not a verdict on hotels as a market, which remains the largest unworked cluster in the taxonomy; it means the current evidence does not support treating this sales approach as validated.',
+    unmet_requirement:
+      'Failed: >=2 accounts with buying evidence and >=1 positive customer-facing outcome. Buying evidence met (2), positive customer-facing outcomes NOT met (0 of 1). The bar is deliberately NOT lowered to retain publication.',
+    untested_hypothesis: {
+      pain:
+        'Purchasing is centralised behind brand standards, so a single outlet decision is rarely enough: the substitute has to clear a quality bar once and then be usable across several outlets and menus, including afternoon tea, pastry and events.',
+      offer_angle:
+        'Win one outlet with a pastry-team trial, document the result, then use that outlet as the internal reference when approaching the group.',
+      criteria: [
+        'Hotel, resort, or venue with its own kitchen or pastry operation',
+        'Menu changes are seasonal, with sugar-free or plant-based requests already present',
+        'Buying is centralised, with an F&B director or executive chef in the chain',
+        'A single outlet can be used as the proving ground before group-wide adoption',
+      ],
+      observed_origin_signal:
+        'Two hotels have ordered; only one has a recorded win, and the other has order history with no win on record. Hotels are also the largest unworked cluster in the taxonomy: a fifth of the company list, with two accounts showing buying evidence.',
+    },
   },
 ];
 

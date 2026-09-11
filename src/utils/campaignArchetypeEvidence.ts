@@ -325,6 +325,12 @@ export function renderArchetypeEvidenceMarkdown(report: ArchetypeEvidenceReport)
   for (const c of CONSIDERED_NOT_PUBLISHED_V1) {
     L.push(`- **${c.name}** (roles: ${c.roles.join(', ')})`);
     L.push(`  - ${c.reason}`);
+    if (c.unmet_requirement) L.push(`  - ${c.unmet_requirement}`);
+    if (c.untested_hypothesis) {
+      L.push(`  - untested hypothesis, preserved: "${c.untested_hypothesis.pain}"`);
+      L.push(`  - offer angle if ever supported: ${c.untested_hypothesis.offer_angle}`);
+      L.push(`  - criteria: ${c.untested_hypothesis.criteria.join('; ')}`);
+    }
   }
   L.push('');
   L.push('## Role coverage across the corpus (why some archetypes are NOT published)');

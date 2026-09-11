@@ -186,11 +186,25 @@ describe('buildArchetypeEvidenceReport', () => {
     expect(report.reconciliation.unsupported).toBe(0);
     expect(report.reconciliation.published).toBe(CAMPAIGN_ARCHETYPES_V1.length);
     expect(report.corpus.won_accounts_total).toBe(8);
-    // the second hotel buyer's proof is order history, not a won deal
-    const hotel = report.archetypes.find((a) => a.archetype_id === 'hotel_resort_foodservice')!;
-    expect(hotel.counts.buying_accounts).toBe(2);
-    expect(hotel.counts.won_accounts).toBe(1);
-    expect(hotel.counts.order_event_only_accounts).toBe(1);
+    // the hotel archetype is withheld, so its fixture rows must count toward nothing
+    expect(report.archetypes.map((a) => a.archetype_id)).not.toContain('hotel_resort_foodservice');
+    expect(report.withheld).toEqual([]);
+    for (const a of report.archetypes) {
+      expect(a.counts.order_events).not.toBe(6); // only the hotel fixture row has 6
+    }
+  });
+
+  it('reports which archetypes must be withheld rather than silently dropping them', () => {
+    // A corpus with buying accounts but no positive customer-facing outcomes: the
+    // evaluator must name what cannot be published instead of passing quietly.
+    const rows = supportedRows().map((r) => ({ ...r, positive_contact_outcomes: 0 }));
+    const report = buildArchetypeEvidenceReport(rows, { source: 'test', now: NOW });
+    expect(report.reconciliation.ok).toBe(false);
+    expect(report.withheld.length).toBeGreaterThan(0);
+    expect(report.withheld.map((w) => w.archetype_id)).toContain('plant_based_restaurant_cafe');
+    const md = renderArchetypeEvidenceMarkdown(report);
+    expect(md).toContain('MUST BE WITHHELD');
+    expect(md).toContain('Archetypes MEETING their evidence bar:');
   });
 
   it('fails loudly when an archetype has lost its evidence', () => {
@@ -219,13 +233,14 @@ describe('buildArchetypeEvidenceReport', () => {
 
 describe('renderArchetypeEvidenceMarkdown', () => {
   it('names the supporting accounts and states the requirement', () => {
+    // name a PUBLISHED archetype's account: the hotel fixture no longer belongs to one
     const rows = supportedRows().map((r) =>
-      r.company_id === 'h1' ? { ...r, name: 'Example Hotel', won_value: 1234 } : r
+      r.company_id === 'r1' ? { ...r, name: 'Example Restaurant', won_value: 1234 } : r
     );
     const report = buildArchetypeEvidenceReport(rows, { source: 'test', now: NOW });
     const md = renderArchetypeEvidenceMarkdown(report);
-    expect(md).toContain('Example Hotel');
-    expect(md).toContain('h1');
+    expect(md).toContain('Example Restaurant');
+    expect(md).toContain('r1');
     expect(md).toContain('meets its evidence bar: **yes**');
     expect(md).toContain('This report contains live customer names and is gitignored by design');
     expect(md).toContain('## Role coverage across the corpus');
