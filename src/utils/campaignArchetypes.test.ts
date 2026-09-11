@@ -35,11 +35,20 @@ describe('archetype set', () => {
     }
   });
 
-  it('demands won-account evidence from every archetype', () => {
+  it('demands buying evidence and customer-facing outcome evidence from every archetype', () => {
     for (const a of CAMPAIGN_ARCHETYPES_V1) {
       expect(a.evidence_requirement.min_buying_accounts, `archetype ${a.id}`).toBeGreaterThanOrEqual(1);
-      expect(a.evidence_requirement.min_positive_outcomes, `archetype ${a.id}`).toBeGreaterThanOrEqual(1);
+      expect(a.evidence_requirement.min_positive_contact_outcomes, `archetype ${a.id}`).toBeGreaterThanOrEqual(1);
       expect(a.evidence_requirement.basis.length, `archetype ${a.id}`).toBeGreaterThan(20);
+    }
+  });
+
+  it('does not assert a closing mechanism that the evidence does not support', () => {
+    // The reconciliation disproved the original claim: the journal says the promo bundle
+    // was never confirmed, so no archetype may present it as the reason a win closed.
+    for (const a of CAMPAIGN_ARCHETYPES_V1) {
+      expect(a.origin_signal.toLowerCase(), `archetype ${a.id}`).not.toContain('promo bundle');
+      expect(a.origin_signal.toLowerCase(), `archetype ${a.id}`).not.toContain('closed only after');
     }
   });
 

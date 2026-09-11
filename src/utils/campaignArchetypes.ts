@@ -26,8 +26,10 @@ export interface ArchetypeEvidenceRequirement {
    *  CRM contains 11 active customers with 200 order events and no won deal at
    *  all: anchoring on deals alone undercounts real buyers. */
   min_buying_accounts: number;
-  /** at least this many positive logged outcomes must exist across those roles */
-  min_positive_outcomes: number;
+  /** at least this many CUSTOMER-FACING contacts carrying a recorded positive outcome
+   *  must exist across those roles. Internal workflow rows (nudges, system rewards)
+   *  never count, and an outbound contact alone is activity, not a response. */
+  min_positive_contact_outcomes: number;
   /** what the requirement is meant to prove, and how it was set */
   basis: string;
   /** what we expect the evidence to look like, stated before it was measured */
@@ -67,14 +69,19 @@ export const CAMPAIGN_ARCHETYPES_V1: CampaignArchetype[] = [
     ],
     offer_angle:
       'Sample-led trial run against their own brioche, shokupan or pastry recipe, then convert the winning flavour into a standing reorder.',
+    // Provenance of this text: an earlier draft claimed a win closed because a
+    // promotional bundle with free samples had been attached. The source journal says
+    // that promotion was never confirmed, so the claim was WITHDRAWN rather than
+    // restated. The copy below asserts only what the journals support, and a unit test
+    // keeps the withdrawn claim out of it.
     origin_signal:
-      'The largest won-deal cluster in the CRM sits here, including a 15kg butter subscription and a win that closed only after a promo bundle with free samples was attached.',
+      'The largest buying cluster in the CRM sits here: the most accounts with order history, the most recorded wins, and the only subscription in the book. No closing mechanism is asserted for these wins, because the journals do not record how they were produced.',
     evidence_requirement: {
       roles_covered: ['foodservice_restaurant', 'cloud_kitchen'],
       min_buying_accounts: 3,
-      min_positive_outcomes: 5,
+      min_positive_contact_outcomes: 5,
       basis:
-        'Set from the observed cluster: multiple won restaurant accounts, several still placing orders or holding subscriptions, and a majority of the positive logged outcomes in the whole CRM.',
+        'Set from the observed cluster: multiple won accounts, several still placing orders or holding a subscription, and the largest share of customer-facing contacts with a recorded positive outcome.',
       strength_expectation: 'well_evidenced',
     },
   },
@@ -94,13 +101,13 @@ export const CAMPAIGN_ARCHETYPES_V1: CampaignArchetype[] = [
     offer_angle:
       'Lead with tasting-booth support, sample packs for photoshoot and in-store trial, and a bounded introductory margin, then measure sell-through by unit before committing to a listing.',
     origin_signal:
-      'The single largest recorded win in the CRM is a modern-trade account, and its journal shows how it closed: a promotional tab, a tasting booth, and samples sent for a photoshoot.',
+      'The single largest recorded win in the CRM is a modern-trade account, and it is the ONLY win whose journal records the promotional mechanics of its close: a discount tab, a tasting booth, and samples for a photoshoot. Other wins record outcomes (a subscription, an expansion target, sell-through numbers) but not the mechanics that produced them.',
     evidence_requirement: {
-      // wholesalers are deliberately NOT covered: they have zero proven buyers, and
+      // wholesalers are deliberately NOT covered: they have zero buying evidence, and
       // the considered-and-rejected list records them as untested
       roles_covered: ['modern_trade_retail'],
       min_buying_accounts: 2,
-      min_positive_outcomes: 1,
+      min_positive_contact_outcomes: 1,
       basis:
         'Set from the observed cluster: a modern-trade win carrying most of the recorded won value, plus retail accounts with recorded order history rather than deal values.',
       strength_expectation: 'emerging',
@@ -126,7 +133,7 @@ export const CAMPAIGN_ARCHETYPES_V1: CampaignArchetype[] = [
     evidence_requirement: {
       roles_covered: ['bakery_chain', 'patisserie_chain'],
       min_buying_accounts: 2,
-      min_positive_outcomes: 1,
+      min_positive_contact_outcomes: 1,
       basis:
         'Set from the observed cluster: a won patisserie brand and a won vegan bakery with a recorded expansion intent, alongside a large prospect base of bakery brands and chains.',
       strength_expectation: 'emerging',
@@ -152,7 +159,7 @@ export const CAMPAIGN_ARCHETYPES_V1: CampaignArchetype[] = [
     evidence_requirement: {
       roles_covered: ['foodservice_hotel'],
       min_buying_accounts: 2,
-      min_positive_outcomes: 1,
+      min_positive_contact_outcomes: 1,
       basis:
         'The weakest published bar, and labelled as such. Two buying hotels is enough to justify outreach and NOT enough to claim a pattern: treat the pain statement as a hypothesis to test rather than a proven play.',
       strength_expectation: 'emerging',

@@ -16,14 +16,14 @@ const NOW = new Date('2026-09-11T00:00:00.000Z');
 
 function supportedRows(): ArchetypeEvidenceRow[] {
   return [
-    row({ company_id: 'r1', role: 'foodservice_restaurant', won_deals: 1, won_value: 500, positive_outcomes: 4 }),
-    row({ company_id: 'r2', role: 'foodservice_restaurant', won_deals: 1, positive_outcomes: 3 }),
-    row({ company_id: 'r3', role: 'foodservice_restaurant', won_deals: 1, positive_outcomes: 2 }),
-    row({ company_id: 'm1', role: 'modern_trade_retail', won_deals: 1, won_value: 900, positive_outcomes: 1 }),
+    row({ company_id: 'r1', role: 'foodservice_restaurant', won_deals: 1, won_value: 500, customer_facing_activity: 4, positive_contact_outcomes: 4 }),
+    row({ company_id: 'r2', role: 'foodservice_restaurant', won_deals: 1, customer_facing_activity: 3, positive_contact_outcomes: 3 }),
+    row({ company_id: 'r3', role: 'foodservice_restaurant', won_deals: 1, customer_facing_activity: 2, positive_contact_outcomes: 2 }),
+    row({ company_id: 'm1', role: 'modern_trade_retail', won_deals: 1, won_value: 900, customer_facing_activity: 1, positive_contact_outcomes: 1 }),
     row({ company_id: 'm2', role: 'modern_trade_retail', won_deals: 1 }),
-    row({ company_id: 'b1', role: 'bakery_chain', won_deals: 1, positive_outcomes: 1 }),
+    row({ company_id: 'b1', role: 'bakery_chain', won_deals: 1, customer_facing_activity: 1, positive_contact_outcomes: 1 }),
     row({ company_id: 'b2', role: 'patisserie_chain', won_deals: 1 }),
-    row({ company_id: 'h1', role: 'foodservice_hotel', won_deals: 1, positive_outcomes: 1 }),
+    row({ company_id: 'h1', role: 'foodservice_hotel', won_deals: 1, customer_facing_activity: 1, positive_contact_outcomes: 1 }),
     row({ company_id: 'h2', role: 'foodservice_hotel', order_events: 6 }),
   ];
 }
@@ -35,10 +35,15 @@ function row(over: Partial<ArchetypeEvidenceRow> & { company_id: string }): Arch
     role: 'foodservice_restaurant',
     won_deals: 0,
     won_value: 0,
-    positive_outcomes: 0,
-    negative_outcomes: 0,
-    no_response_outcomes: 0,
     order_events: 0,
+    internal_activity: 0,
+    customer_facing_activity: 0,
+    inbound_responses: 0,
+    positive_contact_outcomes: 0,
+    neutral_contact_outcomes: 0,
+    negative_contact_outcomes: 0,
+    customer_facing_no_response: 0,
+    internal_no_response: 0,
     ...over,
   };
 }
@@ -55,7 +60,7 @@ const testArchetype: CampaignArchetype = {
   evidence_requirement: {
     roles_covered: ['foodservice_restaurant'],
     min_buying_accounts: 3,
-    min_positive_outcomes: 5,
+    min_positive_contact_outcomes: 5,
     basis: 'Synthetic requirement used only to exercise the evaluator.',
     strength_expectation: 'well_evidenced',
   },
@@ -63,19 +68,57 @@ const testArchetype: CampaignArchetype = {
 
 describe('evaluateArchetype', () => {
   it('reports an archetype as unsupported when no account has ever bought', () => {
-    const r = evaluateArchetype(testArchetype, [row({ company_id: 'a', positive_outcomes: 9 })]);
+    const r = evaluateArchetype(testArchetype, [row({ company_id: 'a', positive_contact_outcomes: 9 })]);
     expect(r.met).toBe(false);
     expect(r.strength).toBe('unsupported');
-    expect(r.problems.join(' ')).toContain('needs 3 proven buying accounts, found 0');
+    expect(r.problems.join(' ')).toContain('needs 3 accounts with buying evidence, found 0');
+  });
+
+  it('excludes internal workflow rows from engagement evidence', () => {
+    // The regression this pass exists for: "Nudge sent" rows were counted as engagement.
+    const r = evaluateArchetype(testArchetype, [
+      row({ company_id: 'a', won_deals: 1, internal_activity: 4, internal_no_response: 2 }),
+      row({ company_id: 'b', won_deals: 1, internal_activity: 3, internal_no_response: 1 }),
+      row({ company_id: 'c', won_deals: 1, internal_activity: 2 }),
+    ]);
+    expect(r.counts.internal_activity).toBe(9);
+    expect(r.counts.internal_no_response).toBe(3);
+    expect(r.counts.positive_contact_outcomes).toBe(0);
+    // three accounts with buying evidence, but no customer-facing positive outcome
+    expect(r.meets_bar).toBe(false);
+    expect(r.problems.join(' ')).toContain('internal workflow rows were counted in the previous version');
+    expect(r.notes.join(' ')).toContain('excluded from engagement evidence');
+    expect(r.notes.join(' ')).toContain('never about the customer');
+  });
+
+  it('does not treat outbound activity as a customer response', () => {
+    const r = evaluateArchetype(testArchetype, [
+      row({ company_id: 'a', won_deals: 1, customer_facing_activity: 5, customer_facing_no_response: 3 }),
+      row({ company_id: 'b', won_deals: 1, customer_facing_activity: 4, customer_facing_no_response: 2 }),
+      row({ company_id: 'c', won_deals: 1, customer_facing_activity: 1 }),
+    ]);
+    expect(r.counts.customer_facing_activity).toBe(10);
+    expect(r.counts.positive_contact_outcomes).toBe(0);
+    expect(r.meets_bar).toBe(false);
+    expect(r.notes.join(' ')).toContain('no customer-initiated response is recorded');
+  });
+
+  it('reports strictly verifiable customer-initiated responses separately', () => {
+    const r = evaluateArchetype(testArchetype, [
+      row({ company_id: 'a', won_deals: 1, inbound_responses: 1, customer_facing_activity: 2, positive_contact_outcomes: 5 }),
+    ]);
+    expect(r.counts.inbound_responses).toBe(1);
+    expect(r.notes.join(' ')).toContain('1 customer-initiated response(s) recorded');
+    expect(r.notes.join(' ')).not.toContain('no customer-initiated response');
   });
 
   it('counts recorded order history as proof of buying, not only won deals', () => {
     // The CRM holds active customers with hundreds of order events and no won deal.
     // Requiring a deal would mark real buyers as non-buyers.
     const orderOnly = evaluateArchetype(testArchetype, [
-      row({ company_id: 'a', order_events: 12, positive_outcomes: 3 }),
-      row({ company_id: 'b', order_events: 4, positive_outcomes: 2 }),
-      row({ company_id: 'c', order_events: 1, positive_outcomes: 1 }),
+      row({ company_id: 'a', order_events: 12, positive_contact_outcomes: 3 }),
+      row({ company_id: 'b', order_events: 4, positive_contact_outcomes: 2 }),
+      row({ company_id: 'c', order_events: 1, positive_contact_outcomes: 1 }),
     ]);
     expect(orderOnly.counts.buying_accounts).toBe(3);
     expect(orderOnly.counts.won_accounts).toBe(0);
@@ -88,25 +131,25 @@ describe('evaluateArchetype', () => {
 
   it('grades evidence strength from the corpus rather than from the label', () => {
     const three = evaluateArchetype(testArchetype, [
-      row({ company_id: 'a', won_deals: 1, positive_outcomes: 3 }),
-      row({ company_id: 'b', won_deals: 1, positive_outcomes: 2 }),
-      row({ company_id: 'c', won_deals: 1, positive_outcomes: 1 }),
+      row({ company_id: 'a', won_deals: 1, positive_contact_outcomes: 3 }),
+      row({ company_id: 'b', won_deals: 1, positive_contact_outcomes: 2 }),
+      row({ company_id: 'c', won_deals: 1, positive_contact_outcomes: 1 }),
     ]);
     expect(three.strength).toBe('well_evidenced');
     expect(three.met).toBe(true);
 
     const two = evaluateArchetype(testArchetype, [
-      row({ company_id: 'a', won_deals: 1, positive_outcomes: 6 }),
+      row({ company_id: 'a', won_deals: 1, positive_contact_outcomes: 6 }),
       row({ company_id: 'b', won_deals: 1 }),
     ]);
     expect(two.strength).toBe('emerging');
 
-    const one = evaluateArchetype(testArchetype, [row({ company_id: 'a', won_deals: 1, positive_outcomes: 6 })]);
+    const one = evaluateArchetype(testArchetype, [row({ company_id: 'a', won_deals: 1, positive_contact_outcomes: 6 })]);
     expect(one.strength).toBe('single_account');
   });
 
   it('flags an archetype claiming more evidence strength than the corpus shows', () => {
-    const one = evaluateArchetype(testArchetype, [row({ company_id: 'a', won_deals: 1, positive_outcomes: 6 })]);
+    const one = evaluateArchetype(testArchetype, [row({ company_id: 'a', won_deals: 1, positive_contact_outcomes: 6 })]);
     expect(one.problems.join(' ')).toContain('expects well-evidenced support');
   });
 
@@ -116,7 +159,7 @@ describe('evaluateArchetype', () => {
       evidence_requirement: { ...testArchetype.evidence_requirement, strength_expectation: 'single_account', min_buying_accounts: 1 },
     };
     const grown = evaluateArchetype(thin, [
-      row({ company_id: 'a', won_deals: 1, positive_outcomes: 2 }),
+      row({ company_id: 'a', won_deals: 1, positive_contact_outcomes: 2 }),
       row({ company_id: 'b', won_deals: 1 }),
       row({ company_id: 'c', won_deals: 1 }),
     ]);
@@ -170,7 +213,7 @@ describe('buildArchetypeEvidenceReport', () => {
     expect(dist.buying_accounts).toBe(0);
     expect(dist.won_accounts).toBe(0);
     const md = renderArchetypeEvidenceMarkdown(report);
-    expect(md).toContain('no proven buyer: no archetype published');
+    expect(md).toContain('no buying evidence: no archetype published');
   });
 });
 
@@ -183,7 +226,7 @@ describe('renderArchetypeEvidenceMarkdown', () => {
     const md = renderArchetypeEvidenceMarkdown(report);
     expect(md).toContain('Example Hotel');
     expect(md).toContain('h1');
-    expect(md).toContain('supported: **yes**');
+    expect(md).toContain('meets its evidence bar: **yes**');
     expect(md).toContain('This report contains live customer names and is gitignored by design');
     expect(md).toContain('## Role coverage across the corpus');
     expect(md).toContain('## Considered and deliberately NOT published');
