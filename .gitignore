@@ -27,6 +27,10 @@ yarn-error.log*
 # vercel
 .vercel
 
+# slice 1 — live classification reports (contain customer data; never commit)
+/.hermes/reports/
+*.company-role-report.json
+
 # supabase temp
 supabase/.temp
 
