@@ -153,6 +153,10 @@ export interface Meeting {
   product: string | null;
   summary: string | null;
   outcome: 'positive' | 'neutral' | 'negative' | 'no_response' | null;
+  /** Present in the database and returned by getMeetings() (`select '*'`), but missing
+   *  from this type until now. Evidence tiers depend on it: without direction every
+   *  logged row is indistinguishable from internal workflow activity. */
+  direction?: 'inbound' | 'outbound' | 'internal' | 'unknown' | null;
   followup_date: string | null;
   created_at: string;
 }
