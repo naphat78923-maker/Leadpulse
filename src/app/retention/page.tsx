@@ -7,7 +7,7 @@ import { companies as dataCompanies, contacts as dataContacts, deals as dataDeal
 import CompanyDetail from '@/components/CompanyDetail';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import { accountHealthScore, tierLabel, HealthTier } from '@/utils/accountHealth';
-import { accountTypeForCompany } from '@/utils/companyRole';
+import { ACTIVE_REORDER_POLICY, accountTypeForPolicy } from '@/utils/reorderPolicy';
 import { nextTouchDue, inRetentionSystem, rewardTrigger, pickReward, RewardOption } from '@/utils/retentionCadence';
 import * as crm from '@/lib/crm';
 import { Search, HeartPulse, ShieldAlert, Activity, CalendarClock, TrendingDown, Loader2, AlertTriangle, Gift, BellRing } from 'lucide-react';
@@ -84,7 +84,7 @@ export default function RetentionPage() {
         deals: coDeals.map((d) => ({ stage: d.stage, last_outcome: d.last_outcome, value: d.value })),
         events: evts.map((e) => ({ date: e.event_date, amount: e.amount, product_line: e.product_line ?? undefined, order_id: e.order_id ?? undefined })),
         lastOrderDate,
-        accountType: accountTypeForCompany(c),
+        accountType: accountTypeForPolicy(c, ACTIVE_REORDER_POLICY),
         today,
       });
 
@@ -108,7 +108,7 @@ export default function RetentionPage() {
       // Cadence: derived next human-touch due date (read-only, no DB column).
       const touch = nextTouchDue({
         tier: res.tier,
-        accountType: accountTypeForCompany(c),
+        accountType: accountTypeForPolicy(c, ACTIVE_REORDER_POLICY),
         lastTouch,
         lastContactDate: c.last_contact_date?.slice(0, 10) || null,
         createdAt: c.created_at?.slice(0, 10) || null,
@@ -195,7 +195,7 @@ export default function RetentionPage() {
     const today = new Date().toISOString().slice(0, 10);
     const next = nextTouchDue({
       tier: sc.res.tier,
-      accountType: accountTypeForCompany(sc.company),
+      accountType: accountTypeForPolicy(sc.company, ACTIVE_REORDER_POLICY),
       lastTouch: today,
       today,
     });

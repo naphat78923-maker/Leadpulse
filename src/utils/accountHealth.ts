@@ -69,7 +69,7 @@ function todayISO(inject?: ISODate): ISODate {
   return new Date().toISOString().slice(0, 10);
 }
 
-const EXPECTED_INTERVAL: Record<AccountType, number> = {
+export const EXPECTED_INTERVAL: Record<AccountType, number> = {
   hotel: 90,
   restaurant: 45,
   bakery: 30,

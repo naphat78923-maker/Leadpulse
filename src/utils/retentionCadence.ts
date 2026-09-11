@@ -3,7 +3,9 @@
 // Scope: RETENTION SYSTEM = WON CUSTOMERS ONLY (company.status === 'active_customer').
 // Cadence is DERIVED (read-only) from last touch + tier interval — no new column.
 
-import { AccountType, HealthTier } from '@/utils/accountHealth';
+// Type-only: the Node-run report scripts load this module directly, and a value
+// import of two types fails at runtime (types have no runtime export).
+import type { AccountType, HealthTier } from './accountHealth.ts';
 
 export type ISODate = string; // 'YYYY-MM-DD'
 
@@ -26,7 +28,7 @@ export const TIER_INTERVAL: Record<HealthTier, number> = {
 // Account-type expected reorder gap (from accountHealth EXPECTED_INTERVAL).
 // The shorter of (tier interval, account interval) wins so fast-reorder
 // accounts (bakery) aren't left 90 days.
-const ACCOUNT_INTERVAL: Record<AccountType, number> = {
+export const ACCOUNT_INTERVAL: Record<AccountType, number> = {
   hotel: 90,
   restaurant: 45,
   bakery: 30,
