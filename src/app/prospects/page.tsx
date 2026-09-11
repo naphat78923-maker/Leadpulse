@@ -52,7 +52,9 @@ function reachLabel(r: ProspectFit['reachability']): string {
 }
 
 function SourceNote({ children }: { children: React.ReactNode }) {
-  return <p className="mt-1 text-[10px] uppercase tracking-wide text-clay-muted">source: {children}</p>;
+  // Deliberately not 10px uppercase muted text: at that size and contrast the source
+  // attribution was the hardest thing on the page to read, which defeats its purpose.
+  return <p className="mt-1 text-[11px] leading-snug text-clay-body/80">source: {children}</p>;
 }
 
 function DimensionPosture() {
@@ -106,7 +108,9 @@ function CandidateDetail({
           <h3 className="text-xs font-semibold uppercase tracking-wide text-clay-muted">Why it matched</h3>
           <p className="mt-2 text-lg font-semibold text-clay-ink">
             {fit.fit_score}
-            <span className="text-xs font-normal text-clay-muted"> /100 · heuristic</span>
+            <span className="text-xs font-normal text-clay-muted">
+              {' '}/100 · heuristic{fit.fit_score >= 100 ? ' · capped at 100' : ''}
+            </span>
           </p>
           <ul className="mt-2 space-y-1 text-xs text-clay-body">
             {fit.fit_reasons.map((r) => (
@@ -277,7 +281,7 @@ export default function ProspectReviewPage() {
               Companies that match a published campaign archetype and are not already buying.
             </p>
           </div>
-          <span className="rounded-lg border border-clay-hairline bg-clay-card px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-clay-muted">
+          <span className="rounded-lg border border-clay-hairline bg-clay-card px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-clay-ink">
             Read-only
           </span>
         </div>
