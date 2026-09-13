@@ -14,8 +14,11 @@ import {
   filterProspects,
   classificationFor,
   READINESS_DIMENSIONS,
+  segmentForRole,
+  segmentOptions,
   type ProspectReviewInput,
 } from './prospectReview.ts';
+import { COMPANY_ROLES, ROLE_TAXONOMY } from './companyRole.ts';
 
 function input(over: Partial<ProspectReviewInput> = {}): ProspectReviewInput {
   return {
@@ -210,5 +213,48 @@ describe('readiness dimensions', () => {
     for (const banned of ['verified route', 'suppression review completed', 'cleared', 'review list', 'pilot']) {
       expect(blob).not.toContain(banned);
     }
+  });
+});
+
+describe('segments (the scannable short form of a role)', () => {
+  it('derives every segment from the one taxonomy, never from a second classification', () => {
+    for (const role of COMPANY_ROLES) {
+      expect(segmentForRole(role)).toBe(ROLE_TAXONOMY[role].segment);
+      expect(segmentForRole(role).length).toBeGreaterThan(0);
+      // a segment is a shortening, not a new sentence
+      expect(segmentForRole(role).length).toBeLessThanOrEqual(16);
+    }
+  });
+
+  it('keeps unknown as its own segment instead of folding it into a nearby type', () => {
+    const segments = COMPANY_ROLES.map((r) => segmentForRole(r));
+    expect(segments).toContain('Unknown');
+    expect(segments.filter((s) => s === 'Unknown')).toHaveLength(1);
+    expect(segmentForRole('unknown')).not.toBe(segmentForRole('modern_trade_retail'));
+  });
+
+  it('offers only the segments present in the candidate set, with live counts', () => {
+    const report = buildProspectReview(input());
+    const options = segmentOptions(report.fits);
+    const expected = new Map<string, number>();
+    for (const f of report.fits) {
+      const s = segmentForRole(f.role);
+      expected.set(s, (expected.get(s) ?? 0) + 1);
+    }
+    expect(new Set(options.map((o) => o.label))).toEqual(new Set(expected.keys()));
+    for (const o of options) expect(o.count).toBe(expected.get(o.label));
+    // a segment nobody carries is not offered as an empty option
+    expect(options.map((o) => o.label)).not.toContain('Hotel');
+  });
+
+  it('filters by segment without touching the archetype or reachability filters', () => {
+    const report = buildProspectReview(input());
+    const target = segmentForRole(report.fits[0].role);
+    const filtered = filterProspects(report.fits, { segment: target });
+    expect(filtered.length).toBeGreaterThan(0);
+    expect(filtered.every((f) => segmentForRole(f.role) === target)).toBe(true);
+    expect(filterProspects(report.fits, { segment: 'no such segment' })).toHaveLength(0);
+    // an empty segment filter is no constraint at all
+    expect(filterProspects(report.fits, { segment: '' })).toHaveLength(report.fits.length);
   });
 });

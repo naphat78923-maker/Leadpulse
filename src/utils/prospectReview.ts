@@ -155,6 +155,49 @@ export function roleLabel(role: ProspectFit['role']): string {
   return ROLE_TAXONOMY[role]?.label ?? String(role);
 }
 
+/**
+ * The short segment form of a role, taken from the same taxonomy entry as `roleLabel`.
+ * This exists so a list row can say "Retail" without restating the whole role, and it
+ * is deliberately derived rather than re-classified: one classifier, one taxonomy.
+ */
+export function segmentForRole(role: ProspectFit['role']): string {
+  return ROLE_TAXONOMY[role]?.segment ?? String(role);
+}
+
+export interface SegmentOption {
+  /** the human label; the taxonomy has no separate id vocabulary for segments */
+  id: string;
+  label: string;
+  count: number;
+}
+
+/**
+ * The segments actually present in a candidate set, in taxonomy order.
+ *
+ * A segment that no candidate carries is not offered, because an empty filter option
+ * reads as "these exist and match nothing" when the truth is "none were found".
+ */
+export function segmentOptions(fits: ProspectFit[]): SegmentOption[] {
+  const counts = new Map<string, number>();
+  for (const f of fits) {
+    const label = segmentForRole(f.role);
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  const ordered: SegmentOption[] = [];
+  const seen = new Set<string>();
+  for (const role of Object.keys(ROLE_TAXONOMY) as (keyof typeof ROLE_TAXONOMY)[]) {
+    const label = ROLE_TAXONOMY[role].segment;
+    if (seen.has(label) || !counts.has(label)) continue;
+    seen.add(label);
+    ordered.push({ id: label, label, count: counts.get(label) ?? 0 });
+  }
+  // A role outside the taxonomy would still be shown rather than silently hidden.
+  for (const [label, count] of counts) {
+    if (!seen.has(label)) ordered.push({ id: label, label, count });
+  }
+  return ordered;
+}
+
 /** Every published archetype, for the filter control. Sourced, never hardcoded. */
 export function archetypeOptions(): { id: string; name: string }[] {
   return CAMPAIGN_ARCHETYPES_V1.map((a) => ({ id: a.id, name: a.name }));
@@ -175,6 +218,8 @@ export interface ProspectFilters {
   query?: string;
   archetypeId?: string | null;
   reachability?: string | null;
+  /** short segment label (see `segmentForRole`); null/absent means no constraint */
+  segment?: string | null;
 }
 
 /** Filter candidates. Empty/absent filters mean "no constraint", not "none". */
@@ -183,6 +228,7 @@ export function filterProspects(fits: ProspectFit[], filters: ProspectFilters): 
   return fits.filter((f) => {
     if (filters.archetypeId && f.archetype_id !== filters.archetypeId) return false;
     if (filters.reachability && f.reachability !== filters.reachability) return false;
+    if (filters.segment && segmentForRole(f.role) !== filters.segment) return false;
     if (!q) return true;
     const haystack = `${f.name} ${f.role} ${f.archetype_name} ${f.signal_hits.join(' ')}`.toLowerCase();
     return haystack.includes(q);

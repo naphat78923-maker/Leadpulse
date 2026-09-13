@@ -93,22 +93,35 @@ export interface RoleOverride {
   note?: string | null;
 }
 
-/** Role → label and legacy AccountType. AccountType must keep covering every
- *  role so the retention cadence intervals keep working unchanged. */
-export const ROLE_TAXONOMY: Record<CompanyRole, { label: string; account_type: AccountType }> = {
-  manufacturer: { label: 'Manufacturer', account_type: 'other' },
-  brand_owner: { label: 'Brand owner', account_type: 'other' },
-  importer: { label: 'Importer', account_type: 'other' },
-  distributor: { label: 'Distributor', account_type: 'other' },
-  wholesaler: { label: 'Wholesaler', account_type: 'other' },
-  modern_trade_retail: { label: 'Modern trade / retail', account_type: 'modern_trade' },
-  foodservice_hotel: { label: 'Hotel foodservice', account_type: 'hotel' },
-  foodservice_restaurant: { label: 'Restaurant foodservice', account_type: 'restaurant' },
-  bakery_chain: { label: 'Bakery chain', account_type: 'bakery' },
-  patisserie_chain: { label: 'Patisserie chain', account_type: 'bakery' },
-  cloud_kitchen: { label: 'Cloud kitchen', account_type: 'restaurant' },
-  catering: { label: 'Catering', account_type: 'restaurant' },
-  unknown: { label: 'Unknown', account_type: 'other' },
+/** Role → label, short segment label, and legacy AccountType. AccountType must keep
+ *  covering every role so the retention cadence intervals keep working unchanged.
+ *
+ *  `segment` is the one-word form used where a row needs a scannable category
+ *  (list rows, segment filter). It is a shortening of `label`, never a different
+ *  claim: every role keeps its own segment, and `unknown` stays `unknown` rather
+ *  than collapsing into a nearby business type. */
+export interface RoleTaxonomyEntry {
+  /** full label, used wherever the role is being explained */
+  label: string;
+  /** short segment label for scannable surfaces — same classification, fewer words */
+  segment: string;
+  account_type: AccountType;
+}
+
+export const ROLE_TAXONOMY: Record<CompanyRole, RoleTaxonomyEntry> = {
+  manufacturer: { label: 'Manufacturer', segment: 'Manufacturer', account_type: 'other' },
+  brand_owner: { label: 'Brand owner', segment: 'Brand owner', account_type: 'other' },
+  importer: { label: 'Importer', segment: 'Importer', account_type: 'other' },
+  distributor: { label: 'Distributor', segment: 'Distributor', account_type: 'other' },
+  wholesaler: { label: 'Wholesaler', segment: 'Wholesaler', account_type: 'other' },
+  modern_trade_retail: { label: 'Modern trade / retail', segment: 'Retail', account_type: 'modern_trade' },
+  foodservice_hotel: { label: 'Hotel foodservice', segment: 'Hotel', account_type: 'hotel' },
+  foodservice_restaurant: { label: 'Restaurant foodservice', segment: 'Restaurant', account_type: 'restaurant' },
+  bakery_chain: { label: 'Bakery chain', segment: 'Bakery', account_type: 'bakery' },
+  patisserie_chain: { label: 'Patisserie chain', segment: 'Patisserie', account_type: 'bakery' },
+  cloud_kitchen: { label: 'Cloud kitchen', segment: 'Cloud kitchen', account_type: 'restaurant' },
+  catering: { label: 'Catering', segment: 'Catering', account_type: 'restaurant' },
+  unknown: { label: 'Unknown', segment: 'Unknown', account_type: 'other' },
 };
 
 export const COMPANY_ROLES: CompanyRole[] = Object.keys(ROLE_TAXONOMY) as CompanyRole[];
