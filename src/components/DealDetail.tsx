@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { AlertCircle, Check, Edit2, Loader2, Undo2, X, Trash2, MessageCircle } from 'lucide-react';
 import clsx from 'clsx';
 import { Deal, DealStage, DealWorkflowAction, SampleStatus } from '@/types/crm';
@@ -20,6 +20,17 @@ import {
   nudgeColorClass,
 } from '@/utils/deal-workflow';
 import { localDateKey } from '@/utils/deal-board';
+import {
+  buildDealEditPayload,
+  dealToEditDraft,
+  dealEditFieldLabel,
+  detectDraftConflicts,
+  isEmptyPayload,
+  mergeDraft,
+  timestampedEntry,
+  type DealEditDraft,
+  type DealEditField,
+} from '@/utils/deal-edit-draft';
 import { outreachLanguageLabel, outreachLanguageBadgeColor, outreachLanguageBasisLabel } from '@/utils/contact-identity';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
@@ -33,12 +44,6 @@ interface DealDetailProps {
   deal: Deal;
   onClose: () => void;
   onSaved: () => void;
-}
-
-function timestampedEntry(text: string) {
-  const now = new Date();
-  const stamp = now.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
-  return `[${stamp}] ${text}`;
 }
 
 function appendOutcome(existing: string, entry?: string) {
@@ -69,18 +74,50 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [exitKind, setExitKind] = useState<'won' | 'lost' | 'park' | null>(null);
-  const [editData, setEditData] = useState({
-    product: deal.product,
-    priority: deal.priority,
-    value: deal.value != null ? String(deal.value) : '',
-    workflow_action: currentWorkflow,
-    sample_status: deal.sample_status || '',
-    next_action: deal.next_action || '',
-    draft_primary_ask: deal.draft_primary_ask || '',
-    followup_date: deal.followup_date || '',
-    last_outcome: deal.last_outcome || '',
-    last_outcome_new: '',
-  });
+
+  // The form is derived from the LATEST record plus the user's own unsaved edits —
+  // never a snapshot taken when the editor opened. A deal that moves in the
+  // background is therefore reflected immediately (lane + history), while anything
+  // the user typed is kept and written back.
+  const baseDraft = useMemo(() => dealToEditDraft(deal), [deal]);
+  // `values` are the user's unsaved edits; `baseline` records what a field looked like
+  // when the user began editing it, which is how a conflict is detected without reading
+  // a ref during render.
+  const [editState, setEditState] = useState<{
+    values: Partial<DealEditDraft>;
+    baseline: Partial<DealEditDraft>;
+  }>({ values: {}, baseline: {} });
+  const editData = useMemo(() => mergeDraft(baseDraft, editState.values), [baseDraft, editState.values]);
+  const conflicts = useMemo(
+    () => detectDraftConflicts(editState.baseline, baseDraft, editState.values),
+    [editState, baseDraft]
+  );
+
+  const setField = <K extends DealEditField>(field: K, value: DealEditDraft[K]) => {
+    setEditState(prev => ({
+      values: { ...prev.values, [field]: value },
+      baseline: field in prev.baseline ? prev.baseline : { ...prev.baseline, [field]: baseDraft[field] },
+    }));
+  };
+
+  const clearEdits = () => setEditState({ values: {}, baseline: {} });
+
+  const toggleEditing = () => {
+    if (editing) clearEdits();
+    setEditing(value => !value);
+  };
+
+  const keepSavedValuesForConflicts = () => {
+    setEditState(prev => {
+      const values = { ...prev.values };
+      const baseline = { ...prev.baseline };
+      conflicts.forEach(field => {
+        delete values[field];
+        delete baseline[field];
+      });
+      return { values, baseline };
+    });
+  };
 
   const beforeSnapshot = (): Partial<Deal> => ({
     stage: deal.stage,
@@ -119,58 +156,43 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
       return;
     }
 
+    const editedFields = new Set(Object.keys(editState.values) as DealEditField[]);
+    const actionToSave = editData.workflow_action as DealWorkflowAction;
+    const workflowChanged = editedFields.has('workflow_action') && actionToSave !== currentWorkflow;
+    const workflow = WORKFLOW_BY_ID[actionToSave];
+    const laneDetail =
+      workflowChanged && actionToSave === 'sample' && editData.sample_status
+        ? ` — sample ${editData.sample_status}`
+        : '';
+
+    const payload = buildDealEditPayload({
+      deal,
+      draft: editData,
+      editedFields,
+      laneJournalEntry: workflowChanged
+        ? `${workflow.icon} Workflow set to ${workflow.label}${laneDetail}`
+        : undefined,
+    });
+
+    // Nothing typed means nothing written — never a fake success.
+    if (isEmptyPayload(payload)) {
+      clearEdits();
+      setEditing(false);
+      setError(null);
+      addToast('No changes to save');
+      return;
+    }
+
     setSaving(true);
     setError(null);
     const before = beforeSnapshot();
-    const actionToSave = editData.workflow_action as DealWorkflowAction;
-    const workflowChanged = actionToSave !== currentWorkflow;
-    const workflow = WORKFLOW_BY_ID[actionToSave];
-
-    let finalOutcome = editData.last_outcome || '';
-    if (workflowChanged) {
-      const detail =
-        actionToSave === 'sample' && editData.sample_status
-          ? ` — sample ${editData.sample_status}`
-          : '';
-      finalOutcome = appendOutcome(
-        finalOutcome,
-        timestampedEntry(`${workflow.icon} Workflow set to ${workflow.label}${detail}`)
-      );
-    }
-    if (editData.last_outcome_new.trim()) {
-      finalOutcome = appendOutcome(finalOutcome, timestampedEntry(editData.last_outcome_new.trim()));
-    }
 
     try {
-      const parsedValue = parseFloat(editData.value);
-      const updated = await crm.updateDeal(deal.id, {
-        product: editData.product,
-        priority: editData.priority,
-        value: editData.value.trim() === '' ? null : Number.isFinite(parsedValue) ? parsedValue : null,
-        workflow_action: actionToSave,
-        nudge_stage: null,
-        sample_status: actionToSave === 'sample' || actionToSave === 'testing'
-          ? (editData.sample_status as SampleStatus) || null
-          : deal.sample_status || null,
-        next_action: editData.next_action,
-        draft_primary_ask: editData.draft_primary_ask.trim() || null,
-        followup_date: editData.followup_date || null,
-        last_outcome: finalOutcome,
-      });
+      // Version-checked so two writes cannot silently overwrite one another; a lost
+      // response is safe to retry because an already-applied change is detected.
+      const updated = await crm.updateDealIfUnchanged(deal.id, deal.updated_at, payload);
 
-      setEditData(prev => ({
-        ...prev,
-        product: updated.product,
-        priority: updated.priority,
-        value: updated.value != null ? String(updated.value) : '',
-        workflow_action: updated.workflow_action || prev.workflow_action,
-        sample_status: updated.sample_status || '',
-        next_action: updated.next_action || '',
-        draft_primary_ask: updated.draft_primary_ask || '',
-        followup_date: updated.followup_date || '',
-        last_outcome: updated.last_outcome || '',
-        last_outcome_new: '',
-      }));
+      clearEdits();
       setUndoSnapshot(before);
       setEditing(false);
       logActivity({
@@ -180,13 +202,14 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
         label: workflowChanged ? `${workflow.icon} ${workflow.label}` : `Updated ${dealClientName(deal, companies, contacts)}`,
         description: workflowChanged
           ? `${dealClientName(deal, companies, contacts)} moved to the ${workflow.shortLabel} lane`
-          : `Action lane: ${WORKFLOW_BY_ID[updated.workflow_action as DealWorkflowAction].label}`,
+          : `Fields updated: ${[...editedFields].filter(f => f !== 'last_outcome_new').join(', ') || 'note added'}`,
         undoPayload: before,
       });
       onSaved();
       setSaved(true);
       addToast(workflowChanged ? 'Action lane updated' : 'Deal saved!');
       setTimeout(() => setSaved(false), 2000);
+      void updated;
     } catch (err: any) {
       setError('Could not save: ' + (err.message || 'Unknown error'));
     } finally {
@@ -349,8 +372,9 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
     new Date(`${deal.followup_date}T12:00:00`) < new Date() &&
     !['closed_won', 'closed_lost'].includes(deal.stage);
   const workflow = WORKFLOW_BY_ID[currentWorkflow];
-  const visibleWorkflow = editing ? editData.workflow_action : currentWorkflow;
-  const visibleNextAction = editing ? editData.next_action : deal.next_action;
+  // Reads the merged draft, so the form always shows the latest record plus the
+  // user's own edits — never the lane the deal has already left.
+  const visibleNextAction = editData.next_action;
   const isClosed = deal.stage === 'closed_won' || deal.stage === 'closed_lost';
 
   return (
@@ -384,7 +408,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
                 {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
               </button>
             )}
-            <button onClick={() => setEditing(value => !value)} className="p-2 text-clay-muted active:opacity-70" aria-label="Edit deal">
+            <button onClick={toggleEditing} className="p-2 text-clay-muted active:opacity-70" aria-label="Edit deal">
               <Edit2 className="w-5 h-5" />
             </button>
             <button onClick={() => setConfirmArchive(true)} className="p-2 text-clay-muted-soft active:opacity-70 hover:text-clay-error transition-colors" aria-label="Archive deal">
@@ -410,6 +434,18 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
         )}
         {error && !saving && <div className="mb-4 rounded-lg bg-clay-error/10 px-3 py-2 text-sm text-clay-error">{error}</div>}
 
+        {editing && conflicts.length > 0 && (
+          <div role="status" className="mb-4 rounded-lg border border-clay-ochre/40 bg-clay-ochre/15 px-3 py-2 text-xs text-clay-ochre">
+            <p className="font-medium">
+              This deal changed while you were editing: {conflicts.map(dealEditFieldLabel).join(', ')}.
+            </p>
+            <p className="mt-0.5">Your unsaved value is kept. Saving writes your version over the newer record.</p>
+            <button type="button" onClick={keepSavedValuesForConflicts} className="mt-1.5 underline">
+              Use the latest saved values
+            </button>
+          </div>
+        )}
+
         <div className="space-y-4 text-sm">
           {/* FIRST SCREEN: lane · next action · follow-up · Log touch */}
           <section className="rounded-xl border border-clay-hairline bg-clay-surface p-3" data-deal-primary>
@@ -419,13 +455,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
                 <select
                   aria-label="Action lane"
                   value={editData.workflow_action}
-                  onChange={event =>
-                    setEditData(prev => ({
-                      ...prev,
-                      workflow_action: event.target.value as DealWorkflowAction,
-                      sample_status: event.target.value === 'sample' ? prev.sample_status : prev.sample_status,
-                    }))
-                  }
+                  onChange={event => setField('workflow_action', event.target.value as DealWorkflowAction)}
                   className="w-full px-3 py-2.5 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card"
                 >
                   {WORKFLOW_LANES.map(lane => (
@@ -440,7 +470,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
                     Sample status
                     <select
                       value={editData.sample_status}
-                      onChange={event => setEditData(prev => ({ ...prev, sample_status: event.target.value as SampleStatus }))}
+                      onChange={event => setField('sample_status', event.target.value as SampleStatus)}
                       className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card"
                     >
                       <option value="">Choose status</option>
@@ -485,7 +515,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
                 <input
                   aria-label="Next action"
                   value={editData.next_action}
-                  onChange={event => setEditData(prev => ({ ...prev, next_action: event.target.value }))}
+                  onChange={event => setField('next_action', event.target.value)}
                   placeholder="Start with a verb: follow up, ask, send, confirm…"
                   className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card"
                 />
@@ -507,7 +537,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
               <input
                 type="date"
                 value={editData.followup_date}
-                onChange={event => setEditData(prev => ({ ...prev, followup_date: event.target.value }))}
+                onChange={event => setField('followup_date', event.target.value)}
                 className="block mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card"
               />
             ) : (
@@ -574,7 +604,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
               {editing ? (
                 <input
                   value={editData.draft_primary_ask}
-                  onChange={event => setEditData(prev => ({ ...prev, draft_primary_ask: event.target.value }))}
+                  onChange={event => setField('draft_primary_ask', event.target.value)}
                   placeholder="What one thing should the client answer?"
                   className="w-full px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card"
                 />
@@ -642,7 +672,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
               <label className="text-clay-body">
                 Product
                 {editing ? (
-                  <input value={editData.product} onChange={event => setEditData(prev => ({ ...prev, product: event.target.value }))} className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card" />
+                  <input value={editData.product} onChange={event => setField('product', event.target.value)} className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card" />
                 ) : (
                   <p className="mt-1 text-clay-ink">{deal.product}</p>
                 )}
@@ -650,7 +680,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
               <label className="text-clay-body">
                 Priority
                 {editing ? (
-                  <select value={editData.priority} onChange={event => setEditData(prev => ({ ...prev, priority: event.target.value as Deal['priority'] }))} className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card">
+                  <select value={editData.priority} onChange={event => setField('priority', event.target.value as Deal['priority'])} className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card">
                     <option value="high">High</option>
                     <option value="medium">Medium</option>
                     <option value="low">Low</option>
@@ -662,7 +692,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
               <label className="text-clay-body">
                 Value (THB)
                 {editing ? (
-                  <input type="text" inputMode="decimal" value={editData.value} onChange={event => setEditData(prev => ({ ...prev, value: event.target.value }))} placeholder="e.g., 50000" className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card" />
+                  <input type="text" inputMode="decimal" value={editData.value} onChange={event => setField('value', event.target.value)} placeholder="e.g., 50000" className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card" />
                 ) : (
                   <p className="mt-1 font-medium text-clay-ink">{deal.value != null ? Number(deal.value).toLocaleString('en-US') : '—'}</p>
                 )}
@@ -675,15 +705,15 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
             {editing ? (
               <textarea
                 value={editData.last_outcome_new}
-                onChange={event => setEditData(prev => ({ ...prev, last_outcome_new: event.target.value }))}
+                onChange={event => setField('last_outcome_new', event.target.value)}
                 rows={3}
                 placeholder="Add a note — the date will be recorded automatically"
                 className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card resize-none"
               />
             ) : null}
             <div className="mt-1 rounded-lg bg-clay-surface p-3 text-xs text-clay-body leading-relaxed space-y-2">
-              {(editing ? editData.last_outcome : deal.last_outcome)
-                ? (editing ? editData.last_outcome : deal.last_outcome || '')
+              {deal.last_outcome
+                ? deal.last_outcome
                     .split('\n---\n')
                     .map((entry, index) => (
                       <p key={index} className="border-b border-clay-hairline/60 pb-2 last:border-0 last:pb-0">
@@ -691,6 +721,11 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
                       </p>
                     ))
                 : 'No outcomes recorded yet.'}
+              {editing && editData.last_outcome_new.trim() && (
+                <p className="border-t border-dashed border-clay-hairline pt-2 text-clay-muted">
+                  Pending when you save: {editData.last_outcome_new.trim()}
+                </p>
+              )}
             </div>
           </section>
 
