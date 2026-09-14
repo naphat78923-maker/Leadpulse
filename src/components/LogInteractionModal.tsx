@@ -10,6 +10,14 @@ import { useCrm } from '@/components/CrmProvider';
 import { SAMPLE_STATUS_OPTIONS, WORKFLOW_BY_ID, getWorkflowAction } from '@/utils/deal-workflow';
 import { buildInteractionWorkflowUpdate, laneTargetOptions } from '@/utils/interaction-workflow';
 import {
+  currentDealSchedule,
+  describeDealSchedule,
+  scheduleUpdateForIntent,
+  validateScheduleIntent,
+  type ScheduleIntent,
+  type ScheduleMode,
+} from '@/utils/deal-schedule';
+import {
   INTERACTION_EVENT_OPTIONS,
   defaultEventKind,
   directionForEvent,
@@ -74,13 +82,17 @@ export default function LogInteractionModal({
   const [confirmSuccess, setConfirmSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  /** What the save should do to the DEAL's schedule: preserve by default, never inferred. */
+  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('preserve');
   const [pendingDealUpdate, setPendingDealUpdate] = useState<{
     dealId: string;
     dealLabel: string;
     expectedUpdatedAt: string;
-    targetAction: DealWorkflowAction;
+    targetAction: DealWorkflowAction | null;
     updates: Partial<Deal>;
     before: Partial<Deal>;
+    label: string;
+    description: string;
   } | null>(null);
 
   useEffect(() => {
@@ -93,6 +105,7 @@ export default function LogInteractionModal({
       setNextWorkflowAction(initialDeal ? getWorkflowAction(initialDeal) : '');
       setSampleStatus('');
       setEventKind(null);
+      setScheduleMode('preserve');
       setConfirmSuccess(false);
       setType('call');
       setDescription('');
@@ -115,6 +128,16 @@ export default function LogInteractionModal({
   const laneTargets = deal ? laneTargetOptions(deal, effectiveKind) : [];
   const selectedAction = deal ? (nextWorkflowAction || dealAction) : undefined;
   const isChangingLane = !!dealAction && !!selectedAction && selectedAction !== dealAction;
+  // A move into Testing or a Follow-up carries the date the lane needs, so it OWNS the deal's
+  // schedule for this save; otherwise the user's explicit preserve/replace/clear choice does.
+  const laneRequiresDate = isChangingLane && (selectedAction === 'testing' || selectedAction === 'reschedule');
+  const scheduleIntent: ScheduleIntent =
+    scheduleMode === 'replace'
+      ? { mode: 'replace', date: followupDate }
+      : scheduleMode === 'clear'
+        ? { mode: 'clear' }
+        : { mode: 'preserve' };
+  const scheduleUpdates = scheduleUpdateForIntent(deal ?? null, scheduleIntent);
 
   const applyEventKind = (kind: InteractionEventKind | null) => {
     setEventKind(kind);
@@ -159,8 +182,8 @@ export default function LogInteractionModal({
       type: 'edit',
       entity: 'deal',
       entityId: request.dealId,
-      label: `Interaction → ${WORKFLOW_BY_ID[request.targetAction].shortLabel}`,
-      description: `${request.dealLabel} moved after a confirmed interaction`,
+      label: request.label,
+      description: request.description,
       undoPayload: request.before,
     });
   };
@@ -174,6 +197,14 @@ export default function LogInteractionModal({
     const eventError = validateInteractionEvent({ kind: effectiveKind, outcome });
     if (eventError) {
       setSaveError(eventError);
+      return;
+    }
+
+    // The DEAL schedule is a separate, explicit decision: a lane that needs a date sets it,
+    // otherwise the user's preserve/replace/clear choice is honoured exactly.
+    const scheduleError = laneRequiresDate ? null : validateScheduleIntent(scheduleIntent);
+    if (scheduleError) {
+      setSaveError(scheduleError);
       return;
     }
 
@@ -200,6 +231,13 @@ export default function LogInteractionModal({
           })
         : null;
 
+      // Scheduling rides in the SAME update as the lane move, so one write carries both and
+      // a partial save can never leave the deal's schedule and its lane disagreeing.
+      const dealPatch: Partial<Deal> = {
+        ...(workflowUpdates || {}),
+        ...(laneRequiresDate ? {} : scheduleUpdates),
+      };
+
       const selectedContacts = contacts.filter(contact => selectedContactIds.includes(contact.id));
       const companyId = selectedContacts[0]?.company_id || deal?.company_id || initialCompanyId || null;
 
@@ -222,21 +260,31 @@ export default function LogInteractionModal({
       });
       interactionSavedThisAttempt = true;
 
-      if (deal && selectedAction && workflowUpdates) {
+      if (deal && Object.keys(dealPatch).length > 0) {
+        const laneLabel =
+          workflowUpdates && selectedAction
+            ? `Interaction → ${WORKFLOW_BY_ID[selectedAction].shortLabel}`
+            : 'Interaction schedule updated';
+        const laneDescription = workflowUpdates
+          ? `${deal.client} moved after a confirmed interaction`
+          : `${deal.client} follow-up schedule updated by a logged interaction`;
         const request = {
           dealId: deal.id,
           dealLabel: deal.client,
           expectedUpdatedAt: deal.updated_at,
-          targetAction: selectedAction,
-          updates: workflowUpdates,
+          targetAction: workflowUpdates ? (selectedAction ?? null) : null,
+          updates: dealPatch,
           before: {
             workflow_action: dealAction,
             stage: deal.stage,
             sample_status: deal.sample_status || null,
             nudge_stage: deal.nudge_stage || null,
             followup_date: deal.followup_date,
+            next_action: deal.next_action,
             last_outcome: deal.last_outcome,
           },
+          label: laneLabel,
+          description: laneDescription,
         };
         setPendingDealUpdate(request);
         await persistDealUpdate(request);
@@ -515,17 +563,97 @@ export default function LogInteractionModal({
             </div>
           </div>
 
-          {/* Follow-up / testing date */}
-          <div>
-            <label className="block text-sm font-medium text-clay-body mb-1">
-              {selectedAction === 'testing' && isChangingLane ? 'Testing date *' : 'Schedule Follow-up'}
+          {/* One authoritative deal schedule: the interaction keeps its own date as history. */}
+          <div className="rounded-xl border border-clay-hairline bg-clay-surface p-3 space-y-3">
+            <div>
+              <p className="text-sm font-medium text-clay-ink">Next follow-up</p>
+              {deal ? (
+                <p className="mt-0.5 text-[11px] text-clay-muted">
+                  Current deal schedule ·{' '}
+                  <span data-deal-schedule className="font-medium text-clay-body">
+                    {describeDealSchedule(currentDealSchedule(deal))}
+                  </span>
+                </p>
+              ) : (
+                <p className="mt-0.5 text-[11px] text-clay-muted">
+                  No deal linked — this date is recorded on the interaction only, and no deal schedule changes.
+                </p>
+              )}
+            </div>
+
+            <label className="block text-sm font-medium text-clay-body">
+              Next follow-up date
+              <input
+                aria-label="Next follow-up date"
+                type="date"
+                value={followupDate}
+                onChange={e => setFollowupDate(e.target.value)}
+                className="mt-1 block w-full px-3 py-3 border border-clay-hairline rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-clay-ink bg-white dark:bg-clay-card text-clay-ink"
+              />
             </label>
-            <input
-              type="date"
-              value={followupDate}
-              onChange={e => setFollowupDate(e.target.value)}
-              className="w-full px-3 py-3 border border-clay-hairline rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-clay-ink bg-white dark:bg-clay-card text-clay-ink"
-            />
+
+            {deal && !laneRequiresDate && (
+              <div className="grid gap-2" role="radiogroup" aria-label="Deal schedule">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={scheduleMode === 'preserve'}
+                  onClick={() => setScheduleMode('preserve')}
+                  className={clsx(
+                    'min-h-[44px] rounded-lg border px-3 py-2 text-left transition-colors',
+                    scheduleMode === 'preserve'
+                      ? 'border-clay-lavender bg-clay-lavender/20 text-clay-ink'
+                      : 'border-clay-hairline bg-white dark:bg-clay-card text-clay-muted'
+                  )}
+                >
+                  <span className="block text-sm font-semibold">Leave the schedule alone</span>
+                  <span className="block text-[10px] mt-0.5 opacity-75">The deal&apos;s date is left exactly as it is.</span>
+                </button>
+
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={scheduleMode === 'replace'}
+                  onClick={() => setScheduleMode('replace')}
+                  className={clsx(
+                    'min-h-[44px] rounded-lg border px-3 py-2 text-left transition-colors',
+                    scheduleMode === 'replace'
+                      ? 'border-clay-mint bg-clay-mint/15 text-clay-ink'
+                      : 'border-clay-hairline bg-white dark:bg-clay-card text-clay-muted'
+                  )}
+                >
+                  <span className="block text-sm font-semibold">Replace the deal schedule</span>
+                  <span className="block text-[10px] mt-0.5 opacity-75">Uses the date above as the deal&apos;s next follow-up.</span>
+                </button>
+
+                {deal.followup_date && (
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={scheduleMode === 'clear'}
+                    onClick={() => {
+                      setScheduleMode('clear');
+                      setFollowupDate('');
+                    }}
+                    className={clsx(
+                      'min-h-[44px] rounded-lg border px-3 py-2 text-left transition-colors',
+                      scheduleMode === 'clear'
+                        ? 'border-clay-ochre bg-clay-ochre/15 text-clay-ochre'
+                        : 'border-clay-hairline bg-white dark:bg-clay-card text-clay-muted'
+                    )}
+                  >
+                    <span className="block text-sm font-semibold">Clear the deal schedule</span>
+                    <span className="block text-[10px] mt-0.5 opacity-75">Removes the date and leaves none on this interaction.</span>
+                  </button>
+                )}
+              </div>
+            )}
+
+            {deal && laneRequiresDate && (
+              <p className="text-[11px] text-clay-muted">
+                This move sets the deal&apos;s follow-up to the date above.
+              </p>
+            )}
           </div>
           </fieldset>
 

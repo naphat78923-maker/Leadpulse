@@ -293,4 +293,142 @@ describe('LogInteractionModal save recovery', () => {
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ direction: 'internal', type: 'note' }));
     expect(crmMocks.updateDealIfUnchanged).not.toHaveBeenCalled();
   });
+
+  describe('deal schedule', () => {
+    const scheduledDeal: Deal = { ...deal, followup_date: '2026-09-15', next_action: 'Follow up on the offer' };
+
+    const renderModal = (props: Partial<React.ComponentProps<typeof LogInteractionModal>> = {}) => {
+      const onSave = vi.fn().mockResolvedValue(undefined);
+      const onClose = vi.fn();
+      render(
+        <LogInteractionModal
+          isOpen
+          onClose={onClose}
+          onSave={onSave}
+          deals={[scheduledDeal]}
+          contacts={[]}
+          companies={[]}
+          selectedDealId={scheduledDeal.id}
+          {...props}
+        />
+      );
+      return { onSave, onClose };
+    };
+
+    it('shows the deal as the authoritative current schedule', () => {
+      renderModal();
+
+      expect(screen.getByText(/Current deal schedule/i)).toBeTruthy();
+      expect(screen.getByText(/Follow up on the offer · 15 Sep/)).toBeTruthy();
+    });
+
+    it('writes the schedule into the SAME update as the lane move', async () => {
+      const { onSave, onClose } = renderModal();
+      crmMocks.updateDealIfUnchanged.mockResolvedValue({ ...scheduledDeal, workflow_action: 'reply' });
+
+      fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
+        target: { value: 'Sent follow-up email, no reply yet' },
+      });
+      fireEvent.click(screen.getByRole('radio', { name: /Log outreach and wait for reply/i }));
+      fireEvent.click(screen.getByRole('radio', { name: /Replace the deal schedule/i }));
+      fireEvent.change(screen.getByLabelText(/Next follow-up date/i), { target: { value: '2026-09-22' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(onSave).toHaveBeenCalledTimes(1);
+      expect(crmMocks.updateDealIfUnchanged).toHaveBeenCalledTimes(1);
+      expect(crmMocks.updateDealIfUnchanged).toHaveBeenCalledWith(
+        scheduledDeal.id,
+        scheduledDeal.updated_at,
+        expect.objectContaining({ workflow_action: 'reply', followup_date: '2026-09-22' })
+      );
+    });
+
+    it('preserves the schedule when the user does not reschedule, even with a date typed on the interaction', async () => {
+      const { onSave, onClose } = renderModal();
+
+      expect(screen.getByRole('radio', { name: /Leave the schedule alone/i }).getAttribute('aria-checked')).toBe('true');
+      fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
+        target: { value: 'Called about the trial' },
+      });
+      fireEvent.change(screen.getByLabelText(/Next follow-up date/i), { target: { value: '2026-09-22' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      // The interaction keeps its own date as history; the deal's schedule is untouched.
+      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ followup_date: '2026-09-22' }));
+      expect(crmMocks.updateDealIfUnchanged).not.toHaveBeenCalled();
+    });
+
+    it('clears the schedule only when the user explicitly asks', async () => {
+      const { onClose } = renderModal();
+      crmMocks.updateDealIfUnchanged.mockResolvedValue({ ...scheduledDeal, followup_date: null });
+
+      fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
+        target: { value: 'No longer chasing this' },
+      });
+      fireEvent.click(screen.getByRole('radio', { name: /Clear the deal schedule/i }));
+      fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(crmMocks.updateDealIfUnchanged).toHaveBeenCalledWith(
+        scheduledDeal.id,
+        scheduledDeal.updated_at,
+        { followup_date: null }
+      );
+    });
+
+    it('keeps a partial failure visible and retries the schedule with the same payload', async () => {
+      const { onSave, onClose } = renderModal();
+      crmMocks.updateDealIfUnchanged
+        .mockRejectedValueOnce(new Error('write failed'))
+        .mockResolvedValueOnce({ ...scheduledDeal, followup_date: '2026-09-22' });
+
+      fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
+        target: { value: 'Confirm the sampling slot' },
+      });
+      fireEvent.click(screen.getByRole('radio', { name: /Replace the deal schedule/i }));
+      fireEvent.change(screen.getByLabelText(/Next follow-up date/i), { target: { value: '2026-09-22' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+
+      expect((await screen.findByRole('alert')).textContent).toMatch(/deal update was not confirmed/i);
+      // Half the action saved: the interaction went in once, the deal did not.
+      expect(onSave).toHaveBeenCalledTimes(1);
+      expect(onClose).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Retry deal update' }));
+
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(onSave).toHaveBeenCalledTimes(1);
+      expect(crmMocks.updateDealIfUnchanged).toHaveBeenCalledTimes(2);
+      expect(crmMocks.updateDealIfUnchanged.mock.calls[1][2]).toEqual({ followup_date: '2026-09-22' });
+    });
+
+    it('never schedules a deal from an unlinked note', async () => {
+      const onSave = vi.fn().mockResolvedValue(undefined);
+      const onClose = vi.fn();
+
+      render(
+        <LogInteractionModal
+          isOpen
+          onClose={onClose}
+          onSave={onSave}
+          deals={[scheduledDeal]}
+          contacts={[]}
+          companies={[]}
+        />
+      );
+
+      fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
+        target: { value: 'Note with no linked deal' },
+      });
+      fireEvent.change(screen.getByLabelText(/Next follow-up date/i), { target: { value: '2026-09-22' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(onSave).toHaveBeenCalledTimes(1);
+      expect(crmMocks.updateDealIfUnchanged).not.toHaveBeenCalled();
+      expect(screen.queryByText(/Current deal schedule/i)).toBeNull();
+    });
+  });
 });

@@ -13,9 +13,11 @@ import {
   buildCompStatusUpdate,
   buildReviewReport,
   buildReviewFix,
+  dealDueState,
   dealNeedsReview,
   evaluateAccountSignals,
   filterAndSortBoardDeals,
+  findDealsMatchingSearch,
   getDoNowCounts,
   localDateKey,
   medianInterOrderDays,
@@ -24,6 +26,43 @@ import {
   reviewReasons,
   sortDealsForDoNow,
 } from './deal-board';
+import { businessDateKey } from './business-time';
+
+describe('business-calendar due dates and the search escape', () => {
+  it('classifies due-today and overdue on the business calendar, not UTC', () => {
+    // 01:00 on the 15th in Bangkok is the 14th in UTC.
+    const today = localDateKey(new Date('2026-09-14T18:00:00Z'));
+    expect(today).toBe('2026-09-15');
+    expect(businessDateKey(new Date('2026-09-14T18:00:00Z'))).toBe(today);
+
+    const dueToday = deal({ id: 'd1', client: 'Due Today Cafe', followup_date: '2026-09-15' });
+    const overdue = deal({ id: 'd2', client: 'Overdue Cafe', followup_date: '2026-09-14' });
+
+    expect(dealDueState(dueToday, today)).toBe('today');
+    expect(dealDueState(overdue, today)).toBe('overdue');
+    expect(getDoNowCounts([dueToday, overdue], today)).toMatchObject({ all: 2, today: 1, overdue: 1 });
+  });
+
+  it('finds a deal the active filters excluded, and preserves the query', () => {
+    const today = '2026-09-15';
+    const overdue = deal({ id: 'd1', client: 'Overdue Cafe', followup_date: '2026-09-01' });
+    const later = deal({ id: 'd2', client: 'Later Cafe', followup_date: '2026-10-01' });
+    const pool = [overdue, later];
+
+    const filtered = filterAndSortBoardDeals(pool, {
+      search: 'Later',
+      attention: 'overdue',
+      product: 'all',
+      priority: 'all',
+      today,
+    });
+    expect(filtered).toHaveLength(0);
+
+    expect(findDealsMatchingSearch(pool, 'Later', today).map(d => d.client)).toEqual(['Later Cafe']);
+    expect(findDealsMatchingSearch(pool, '  ', today)).toEqual([]);
+    expect(findDealsMatchingSearch(pool, 'Nothing Here', today)).toEqual([]);
+  });
+});
 
 function deal(overrides: Partial<Deal> & Pick<Deal, 'id' | 'client'>): Deal {
   const { id, client, ...rest } = overrides;

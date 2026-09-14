@@ -4,6 +4,7 @@
 import type { CompanyStatus, CompStatus, Deal, SampleStatus } from '@/types/crm';
 import { getWorkflowAction, isOnJourneyBoard } from './deal-workflow.ts';
 import { daysBetween, inRetentionSystem, type ISODate } from './retentionCadence.ts';
+import { businessDateKey } from './business-time.ts';
 
 export type BoardAttentionFilter = 'all' | 'overdue' | 'today' | 'needs-review';
 
@@ -22,11 +23,13 @@ export interface DoNowCounts {
   needsReview: number;
 }
 
+/**
+ * Today's date key on the BUSINESS calendar (Asia/Bangkok), not the device's and not UTC.
+ * Kept under this name because every board/detail/queue comparison already calls it; the
+ * implementation moved so a phone in another timezone cannot disagree about a due date.
+ */
 export function localDateKey(date = new Date()): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return businessDateKey(date);
 }
 
 export function dealDueState(deal: Deal, today: string): 'overdue' | 'today' | 'upcoming' | 'none' {
@@ -221,6 +224,22 @@ export function filterAndSortBoardDeals(deals: Deal[], filters: DealBoardFilters
   });
 
   return sortDealsForDoNow(filtered, filters.today);
+}
+
+/**
+ * Deals matching a search once the board's own filters are set aside.
+ * Backs the "Search all deals" escape: a deal that exists but is filtered out must never look
+ * missing, and the query is preserved across the switch. An empty query matches nothing.
+ */
+export function findDealsMatchingSearch(deals: Deal[], search: string, today: string): Deal[] {
+  if (!search.trim()) return [];
+  return filterAndSortBoardDeals(deals, {
+    search,
+    attention: 'all',
+    product: 'all',
+    priority: 'all',
+    today,
+  });
 }
 
 export function getDoNowCounts(deals: Deal[], today: string): DoNowCounts {
