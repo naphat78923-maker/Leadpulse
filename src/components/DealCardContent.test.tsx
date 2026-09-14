@@ -86,8 +86,9 @@ describe('DealCardContent', () => {
     expect(screen.getByText('Research')).toBeTruthy();
 
     const text = container.textContent || '';
-    expect(text.indexOf('Nok S.')).toBeLessThan(text.indexOf('Butter + Condensed Milk'));
-    expect(text.indexOf('Butter + Condensed Milk')).toBeLessThan(text.indexOf('Next action'));
+    expect(text.indexOf('Nok S.')).toBeLessThan(text.indexOf('Next action'));
+    // The concrete next action leads the body; commercial metadata follows it.
+    expect(text.indexOf('Next action')).toBeLessThan(text.indexOf('Butter + Condensed Milk'));
     expect(text.indexOf('Next action')).toBeLessThan(text.indexOf('Why now'));
     expect(text.indexOf('Why now')).toBeLessThan(text.indexOf('Research'));
     expect(text).not.toContain(deal.title);
@@ -164,7 +165,7 @@ describe('DealCardContent', () => {
     expect(screen.queryByRole('img', { name: 'Mello Vegan logo' })).toBeNull();
   });
 
-  it('keeps compact cards contact-led without rendering the body hierarchy', () => {
+  it('leads a compact card with the concrete next action and its reason', () => {
     render(
       <DealCardContent
         deal={deal}
@@ -177,11 +178,31 @@ describe('DealCardContent', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'Nok S. +1' })).toBeTruthy();
-    expect(screen.queryByText('Next action')).toBeNull();
-    expect(screen.queryByText('Why now · Follow-up is overdue')).toBeNull();
+    // The compact journey card used to omit the action entirely — that was the defect.
+    expect(screen.getByText('Next action')).toBeTruthy();
+    expect(screen.getByText(presentation.nextAction)).toBeTruthy();
+    expect(screen.getByText('Why now · Follow-up is overdue')).toBeTruthy();
+    // Still no full-card footer metadata in the compact variant.
+    expect(screen.queryByText('Research')).toBeNull();
   });
 
-  it('renders a high-contrast nudge badge on compact cards', () => {
+  it('offers an actionable empty state instead of a dash when no next action is set', () => {
+    render(
+      <DealCardContent
+        deal={{ ...deal, next_action: null }}
+        presentation={{ ...presentation, nextAction: 'No next action set' }}
+        whyNow={null}
+        reviewLabels={[]}
+        nudge={null}
+        compact
+      />
+    );
+
+    expect(screen.getByText('Set next action')).toBeTruthy();
+    expect(screen.queryByText('No next action set')).toBeNull();
+  });
+
+  it('renders a high-contrast nudge badge on compact cards without the implementation code', () => {
     render(
       <DealCardContent
         deal={deal}
@@ -193,10 +214,12 @@ describe('DealCardContent', () => {
         compact
       />
     );
-    const badge = screen.getByText('2/4 Remind NG-002');
+    const badge = screen.getByText('2/4 Remind');
     expect(badge.hasAttribute('data-nudge-badge')).toBe(true);
     expect(badge.className).toMatch(/text-\[11px\]/);
     expect(badge.className).toMatch(/font-semibold/);
+    // The technical code stays discoverable in the tooltip rather than shouting on the card.
+    expect(badge.getAttribute('title')).toBe('2/4 Remind NG-002');
   });
 
 });

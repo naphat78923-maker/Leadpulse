@@ -1,8 +1,79 @@
 import type { Company, Contact, Deal } from '@/types/crm';
 import { entityInitials } from '@/utils/entity-avatar';
+import { getWorkflowAction } from '@/utils/deal-workflow';
 
 export type DealCardDueState = 'overdue' | 'today' | null;
 export type DealCardTimingTone = 'overdue' | 'today' | 'scheduled' | 'none';
+
+const PASSIVE_NEXT_ACTION = /^(awaiting|waiting|pending)\b/i;
+
+/**
+ * A next action the user can act on. A blank field and a passive state ("Awaiting their reply")
+ * both mean the same thing to the card: there is nothing concrete to do, so offer to set one
+ * instead of printing a dash.
+ */
+export function isConcreteNextAction(value?: string | null): boolean {
+  const trimmed = value?.trim() || '';
+  return !!trimmed && !PASSIVE_NEXT_ACTION.test(trimmed);
+}
+
+export type DealCardPrimaryActionId = 'log-outreach' | 'record-reply' | 'log-followup' | 'set-next-action';
+
+export interface DealCardPrimaryAction {
+  id: DealCardPrimaryActionId;
+  label: string;
+  hint: string;
+  /** True when the action opens the log form. It never sends anything by itself. */
+  opensLogForm: boolean;
+}
+
+export const NO_NEXT_ACTION_LABEL = 'Set next action';
+
+/** One contextual primary action per card, derived from the lane. Never an automatic send. */
+export function primaryCardAction(deal: Deal): DealCardPrimaryAction {
+  const setAction: DealCardPrimaryAction = {
+    id: 'set-next-action',
+    label: NO_NEXT_ACTION_LABEL,
+    hint: 'Opens the deal so you can set one concrete next action.',
+    opensLogForm: false,
+  };
+
+  if (!isConcreteNextAction(deal.next_action)) return setAction;
+
+  switch (getWorkflowAction(deal)) {
+    case 'outreach':
+      return {
+        id: 'log-outreach',
+        label: 'Log outreach',
+        hint: 'Opens the log form — nothing is sent from this button.',
+        opensLogForm: true,
+      };
+    case 'reply':
+      return {
+        id: 'record-reply',
+        label: 'Record reply',
+        hint: 'Opens the log form so you can record what they said.',
+        opensLogForm: true,
+      };
+    case 'sample':
+    case 'testing':
+    case 'reschedule':
+      return {
+        id: 'log-followup',
+        label: 'Log follow-up',
+        hint: 'Opens the log form for the next follow-up.',
+        opensLogForm: true,
+      };
+    default:
+      return setAction;
+  }
+}
+
+/** The nudge badge without its implementation code — the code stays in the tooltip. */
+export function nudgeChipLabel(nudge: string | null): string | null {
+  if (!nudge) return null;
+  return nudge.replace(/\s*NG-\d{3}\s*/, ' ').replace(/\s+/g, ' ').trim();
+}
 
 export interface DealCardPresentation {
   contact: {

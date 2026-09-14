@@ -4,6 +4,7 @@ import type { Deal, NudgeStage } from '@/types/crm';
 import { STAGE_LABELS } from '@/types/crm';
 import type { DealCardPresentation } from '@/utils/deal-card';
 import { nudgeColorClass, SEND_LADDER_RUNGS } from '@/utils/deal-workflow';
+import { isConcreteNextAction, nudgeChipLabel, NO_NEXT_ACTION_LABEL } from '@/utils/deal-card';
 import CompanyLogo from '@/components/CompanyLogo';
 import NudgeLadderRail from '@/components/NudgeLadderRail';
 import EntityAvatar from '@/components/EntityAvatar';
@@ -42,6 +43,8 @@ export default function DealCardContent({
   showGrip = false,
 }: DealCardContentProps) {
   const { contact, companyName, companyLogoUrl, product, nextAction, timing } = presentation;
+  const hasConcreteNextAction = isConcreteNextAction(deal.next_action);
+  const nudgeText = nudgeChipLabel(nudge);
 
   const nudgeChip = nudge ? (
     <span
@@ -53,7 +56,7 @@ export default function DealCardContent({
         nudgeColorClass(nudgeStage)
       )}
     >
-      {nudge}
+      {nudgeText}
     </span>
   ) : null;
 
@@ -155,6 +158,34 @@ export default function DealCardContent({
           </div>
           {showGrip && <GripVertical className="h-3.5 w-3.5 shrink-0 text-clay-muted-soft" />}
         </div>
+
+        {/* The concrete next action leads in EVERY card variant, with why-now beneath it. */}
+        <div className="min-w-0 space-y-1" data-card-next-action>
+          <p className="zams-eyebrow">Next action</p>
+          <p
+            className={clsx(
+              'text-xs leading-relaxed',
+              compact ? 'line-clamp-2' : 'line-clamp-3',
+              hasConcreteNextAction ? 'font-medium text-clay-body-strong' : 'font-normal italic text-clay-muted'
+            )}
+          >
+            {hasConcreteNextAction ? nextAction : NO_NEXT_ACTION_LABEL}
+          </p>
+          {whyNow && (
+            <p
+              className={clsx(
+                'text-[10px] font-medium leading-snug',
+                timing.tone === 'overdue'
+                  ? 'text-clay-error/90'
+                  : timing.tone === 'today'
+                    ? 'text-clay-ochre'
+                    : 'text-clay-muted'
+              )}
+            >
+              Why now · {whyNow}
+            </p>
+          )}
+        </div>
       </div>
 
       {!compact && (
@@ -162,32 +193,6 @@ export default function DealCardContent({
           <div className="flex items-center gap-2 border-t border-clay-hairline/70 py-2 text-[11px] text-clay-muted">
             <Package className="h-3.5 w-3.5 shrink-0 text-clay-muted-soft" aria-hidden="true" />
             <span className="line-clamp-2 [overflow-wrap:anywhere]">{product}</span>
-          </div>
-
-          <div className="border-t border-clay-hairline/70 py-2.5">
-            <p className="zams-eyebrow mb-1">Next action</p>
-            <p
-              className={clsx(
-                'text-xs leading-relaxed line-clamp-3',
-                deal.next_action?.trim() ? 'font-medium text-clay-body-strong' : 'italic text-clay-muted'
-              )}
-            >
-              {nextAction}
-            </p>
-            {whyNow && (
-              <p
-                className={clsx(
-                  'mt-1.5 text-[10px] font-medium leading-snug',
-                  timing.tone === 'overdue'
-                    ? 'text-clay-error/90'
-                    : timing.tone === 'today'
-                      ? 'text-clay-ochre'
-                      : 'text-clay-muted'
-                )}
-              >
-                Why now · {whyNow}
-              </p>
-            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 border-t border-clay-hairline/70 pt-2 text-[10px] text-clay-muted">

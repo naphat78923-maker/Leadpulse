@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Company, Contact, Deal } from '@/types/crm';
-import { buildDealCardPresentation } from './deal-card';
+import { buildDealCardPresentation, isConcreteNextAction, primaryCardAction } from './deal-card';
 
 const baseDeal: Deal = {
   id: 'deal-1',
@@ -55,6 +55,44 @@ const contact = (overrides: Partial<Contact> = {}): Contact => ({
   created_at: '2026-08-01T00:00:00Z',
   updated_at: '2026-08-01T00:00:00Z',
   ...overrides,
+});
+
+describe('card primary action and actionable empty state', () => {
+  it('offers one contextual action per lane and opens the form rather than sending', () => {
+    const outreach = primaryCardAction({ ...baseDeal, workflow_action: 'outreach' });
+    const reply = primaryCardAction({ ...baseDeal, workflow_action: 'reply' });
+    const testing = primaryCardAction({ ...baseDeal, workflow_action: 'testing' });
+
+    expect(outreach.label).toBe('Log outreach');
+    expect(reply.label).toBe('Record reply');
+    expect(testing.label).toBe('Log follow-up');
+    for (const action of [outreach, reply, testing]) {
+      expect(action.opensLogForm).toBe(true);
+      expect(action.hint).toMatch(/open/i);
+      expect(action.hint).not.toMatch(/will send|sends it|automatically sends/i);
+    }
+  });
+
+  it('turns an empty next action into an actionable state instead of a dash', () => {
+    const action = primaryCardAction({ ...baseDeal, next_action: null });
+
+    expect(action.id).toBe('set-next-action');
+    expect(action.label).toBe('Set next action');
+    expect(action.opensLogForm).toBe(false);
+  });
+
+  it('treats a passive next action as missing', () => {
+    expect(isConcreteNextAction('Awaiting their reply')).toBe(false);
+    expect(isConcreteNextAction('Waiting on the sample')).toBe(false);
+    expect(isConcreteNextAction('   ')).toBe(false);
+    expect(isConcreteNextAction('Follow up on the offer')).toBe(true);
+    expect(primaryCardAction({ ...baseDeal, next_action: 'Awaiting the buyer' }).id).toBe('set-next-action');
+  });
+
+  it('does not invent a lane action for a parked or won deal', () => {
+    expect(primaryCardAction({ ...baseDeal, workflow_action: 'parked' }).id).toBe('set-next-action');
+    expect(primaryCardAction({ ...baseDeal, workflow_action: 'success' }).id).toBe('set-next-action');
+  });
 });
 
 describe('buildDealCardPresentation', () => {

@@ -7,6 +7,7 @@ import { useCrm } from '@/components/CrmProvider';
 import { deals as dataDeals, contacts as dataContacts, companies as dataCompanies } from '@/data/crmData';
 import CreateModal from '@/components/CreateModal';
 import DealDetail from '@/components/DealDetail';
+import DealCardPrimaryAction from '@/components/DealCardPrimaryAction';
 import DealCardContent from '@/components/DealCardContent';
 import LaneGateModal, { LaneGatePayload } from '@/components/LaneGateModal';
 import ReviewFixModal, { ReviewFixPayload } from '@/components/ReviewFixModal';
@@ -32,7 +33,8 @@ import { formatBaht, sumLaneValues } from '@/utils/format';
 import { WORKFLOW_LANES, WORKFLOW_BY_ID, LANE_MASCOT_PATHS, LANE_HEX_KIND, getWorkflowAction, isOnJourneyBoard, isJourneyLane, deriveNudge, formatDerivedNudgeBadge, outboundSendCountForDeal, nudgeLabel } from '@/utils/deal-workflow';
 import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
 import LogInteractionModal from '@/components/LogInteractionModal';
-import { BoardAttentionFilter, dealNeedsReview, reviewReasons, REVIEW_LABEL, buildReviewReport, buildReviewFix, filterAndSortBoardDeals, getDoNowCounts, localDateKey } from '@/utils/deal-board';
+import { BoardAttentionFilter, dealNeedsReview, reviewReasons, REVIEW_LABEL, buildReviewReport, buildReviewFix, filterAndSortBoardDeals, findDealsMatchingSearch, getDoNowCounts, localDateKey } from '@/utils/deal-board';
+import type { DealCardPrimaryAction as DealCardPrimaryActionSpec } from '@/utils/deal-card';
 import { buildDealCardPresentation } from '@/utils/deal-card';
 import { PageTransition, HexFace, StaggerList, StaggerItem } from '@/components/motion';
 import { EASE_OUT, pressScale, springPress, tweenBase } from '@/lib/motion';
@@ -212,6 +214,22 @@ export default function DealsPage() {
   const activeDeal = selectedDeal ? deals.find(deal => deal.id === selectedDeal) : null;
 
   const filtersActive = attentionFilter !== 'all' || searchQuery.trim() !== '' || productFilter !== 'all' || priorityFilter !== 'all';
+
+  // A deal filtered out must not read as missing: search across every deal, keeping the query.
+  const searchEscapeMatches = useMemo(
+    () => findDealsMatchingSearch(deals, searchQuery, todayStr),
+    [deals, searchQuery, todayStr]
+  );
+  const tableDeals = searchQuery.trim() ? searchEscapeMatches : deals;
+
+  // Escape hatch: keep the query, drop the board filters, and list every deal (parked/won too).
+  const searchAllDeals = () => {
+    setAttentionFilter('all');
+    setProductFilter('all');
+    setPriorityFilter('all');
+    setView('table');
+  };
+
   const clearDoNowFilters = () => {
     setAttentionFilter('all');
     setSearchQuery('');
@@ -227,6 +245,16 @@ export default function DealsPage() {
   const handleCreate = async (data: any) => {
     // Let errors bubble to the modal so failures are visible.
     await createDeal(data);
+  };
+
+  // The card's one contextual action. It opens the right form — nothing is sent from here,
+  // and "Set next action" opens the deal instead of inventing a step.
+  const handleCardPrimaryAction = (deal: Deal, action: DealCardPrimaryActionSpec) => {
+    if (action.opensLogForm) {
+      setLogDealId(deal.id);
+      return;
+    }
+    setSelectedDeal(deal.id);
   };
 
   /* ─── Drag & drop lane moves with per-lane gatekeeping ─── */
@@ -374,33 +402,38 @@ export default function DealsPage() {
     const skipMotion = reduceMotion || !!opts?.dragging;
 
     return (
-      <motion.button
-        key={deal.id}
-        type="button"
-        onClick={() => setSelectedDeal(deal.id)}
-        whileHover={skipMotion ? undefined : { y: -2, scale: 1.01 }}
-        whileTap={skipMotion ? undefined : { scale: pressScale }}
-        transition={springPress}
-        className={clsx(
-          'w-full text-left bg-white dark:bg-clay-card rounded-xl border touch-manipulation',
-          isCompact ? 'p-2.5' : 'p-3',
-          'border-clay-hairline',
-          due === 'overdue' && 'border-l-2 border-l-clay-error',
-          due === 'today' && 'border-l-2 border-l-clay-ochre'
-        )}
-      >
-        <DealCardContent
-          deal={deal}
-          presentation={presentation}
-          whyNow={reason}
-          reviewLabels={reasons.map(item => REVIEW_LABEL[item])}
-          nudge={nudge}
-          nudgeStage={nudgeStage}
-          compact={isCompact}
-          showGrip={opts?.grip}
-        />
-        <p className="sr-only">Open {deal.client} in {lane.label}</p>
-      </motion.button>
+      <div key={deal.id} className="space-y-1.5" data-deal-card>
+        <motion.button
+          type="button"
+          onClick={() => setSelectedDeal(deal.id)}
+          whileHover={skipMotion ? undefined : { y: -2, scale: 1.01 }}
+          whileTap={skipMotion ? undefined : { scale: pressScale }}
+          transition={springPress}
+          className={clsx(
+            'w-full text-left bg-white dark:bg-clay-card rounded-xl border touch-manipulation',
+            isCompact ? 'p-2.5' : 'p-3',
+            'border-clay-hairline',
+            due === 'overdue' && 'border-l-2 border-l-clay-error',
+            due === 'today' && 'border-l-2 border-l-clay-ochre'
+          )}
+        >
+          <DealCardContent
+            deal={deal}
+            presentation={presentation}
+            whyNow={reason}
+            reviewLabels={reasons.map(item => REVIEW_LABEL[item])}
+            nudge={nudge}
+            nudgeStage={nudgeStage}
+            compact={isCompact}
+            showGrip={opts?.grip}
+          />
+          <p className="sr-only">Open {deal.client} in {lane.label}</p>
+        </motion.button>
+        {/* Sibling of the card button, never nested: one contextual action that opens the form. */}
+        <div className="flex items-center gap-2">
+          <DealCardPrimaryAction deal={deal} onSelect={handleCardPrimaryAction} />
+        </div>
+      </div>
     );
   };
 
@@ -412,7 +445,10 @@ export default function DealsPage() {
           <div className="min-w-0">
           <p className="zams-eyebrow mb-1">Pipeline · Action board</p>
           <h1 className="zams-display text-2xl md:text-[28px] leading-tight">Deal Action Board</h1>
-          <p className="text-xs md:text-sm text-clay-muted mt-1">Journey only — Won / Lost / Park are exits, not columns. Nudges track your sends: 4 max, then park.</p>
+          <details className="mt-1">
+            <summary className="cursor-pointer text-xs text-clay-muted underline decoration-dotted md:text-sm">How this board works</summary>
+            <p className="mt-1 max-w-prose text-xs text-clay-muted md:text-sm">Journey only — Won / Lost / Park are exits, not columns. Nudges track your sends: 4 max, then park.</p>
+          </details>
           </div>
         </div>
         <button
@@ -609,14 +645,45 @@ export default function DealsPage() {
           )}
           {actionBoardDeals.length > 0 && visibleActionBoardDeals.length === 0 && (
             <div className="mb-4 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-5 py-6 flex flex-col sm:flex-row items-center justify-center gap-4 text-center sm:text-left">
-              <HexFace kind="pause" size={48} framed alt="No deals match filters" />
+              <HexFace kind="search" size={48} framed alt="No deals match filters" />
               <div className="flex-1">
-                <p className="text-sm font-medium text-clay-ink">No deals match this Do now view</p>
-                <p className="text-xs text-clay-muted mt-1">Clear a filter or search for another client.</p>
+                {searchQuery.trim() ? (
+                  searchEscapeMatches.length > 0 ? (
+                    <>
+                      <p className="text-sm font-medium text-clay-ink">
+                        {searchEscapeMatches.length === 1 ? '1 deal matches' : `${searchEscapeMatches.length} deals match`} “{searchQuery.trim()}” outside these filters
+                      </p>
+                      <p className="text-xs text-clay-muted mt-1">
+                        Showing {visibleActionBoardDeals.length} of {actionBoardDeals.length} on this board — the match is filtered out, not missing.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium text-clay-ink">No deal matches “{searchQuery.trim()}”</p>
+                      <p className="text-xs text-clay-muted mt-1">Searched every deal, not just this board view.</p>
+                    </>
+                  )
+                ) : (
+                  <>
+                    <p className="text-sm font-medium text-clay-ink">No deals match this Do now view</p>
+                    <p className="text-xs text-clay-muted mt-1">Clear a filter or search for another client.</p>
+                  </>
+                )}
               </div>
-              <button onClick={clearDoNowFilters} className="min-h-[44px] rounded-lg bg-clay-ink px-4 text-sm font-medium text-clay-canvas active:opacity-85">
-                Show all deals
-              </button>
+              <div className="flex shrink-0 flex-col gap-2">
+                {searchQuery.trim() !== '' && searchEscapeMatches.length > 0 && (
+                  <button
+                    onClick={searchAllDeals}
+                    data-search-all-deals
+                    className="min-h-[44px] rounded-lg bg-clay-ink px-4 text-sm font-medium text-clay-canvas active:opacity-85"
+                  >
+                    Search all deals
+                  </button>
+                )}
+                <button onClick={clearDoNowFilters} className="min-h-[44px] rounded-lg border border-clay-hairline px-4 text-sm font-medium text-clay-body active:opacity-85">
+                  Show all deals
+                </button>
+              </div>
             </div>
           )}
           {/* Phone: one readable lane at a time. Desktop: full board. */}
@@ -824,10 +891,15 @@ export default function DealsPage() {
 
       {view === 'table' && (
         <div className="flex-1 overflow-auto bg-white dark:bg-clay-card rounded-xl border border-clay-hairline">
+          {searchQuery.trim() !== '' && (
+            <p data-table-search-note className="border-b border-clay-hairline px-3 py-2 text-[11px] text-clay-muted">
+              Searching every deal for “{searchQuery.trim()}” — {tableDeals.length} matching, {deals.length} in total.
+            </p>
+          )}
           <table className="w-full text-sm">
             <thead><tr className="border-b border-clay-hairline text-left text-clay-muted text-xs uppercase tracking-wide"><th className="px-3 py-3 font-medium">Client</th><th className="px-3 py-3 font-medium">Action</th><th className="hidden sm:table-cell px-3 py-3 font-medium">Stage</th><th className="hidden sm:table-cell px-3 py-3 font-medium">Follow-up</th><th className="px-3 py-3 font-medium">Priority</th></tr></thead>
             <tbody>
-              {deals.map(deal => {
+              {tableDeals.map(deal => {
                 const lane = WORKFLOW_BY_ID[getWorkflowAction(deal)];
                 const derived = deriveNudge(deal, todayStr, {
       sendCount: outboundSendCountForDeal(dbMeetings || [], deal.id),
