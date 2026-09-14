@@ -47,7 +47,7 @@ describe('LogInteractionModal save recovery', () => {
 
   afterEach(cleanup);
 
-  it('keeps the current lane by default and does not write the deal', async () => {
+  it('keeps the current lane and mirrors the touch into outcome history', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     const onClose = vi.fn();
 
@@ -73,6 +73,48 @@ describe('LogInteractionModal save recovery', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(onSave).toHaveBeenCalledTimes(1);
     expect(crmMocks.updateDealIfUnchanged).not.toHaveBeenCalled();
+    // Keep-current still journals the touch so Outcome history shows it.
+    expect(crmMocks.updateDeal).toHaveBeenCalledTimes(1);
+    expect(crmMocks.updateDeal).toHaveBeenCalledWith(
+      deal.id,
+      expect.objectContaining({ last_outcome: expect.stringContaining('Sent outbound email, no reply yet') })
+    );
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  it('advances the deal follow-up date when a follow-up date is keyed (keep current lane)', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+
+    const { container } = render(
+      <LogInteractionModal
+        isOpen
+        onClose={onClose}
+        onSave={onSave}
+        deals={[deal]}
+        contacts={[]}
+        companies={[]}
+        selectedDealId={deal.id}
+      />
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
+      target: { value: 'Sent outbound email, no reply yet' },
+    });
+    // Two date inputs: interaction Date (0) and Schedule Follow-up (1).
+    const dateInputs = container.querySelectorAll('input[type="date"]');
+    fireEvent.change(dateInputs[1], { target: { value: '2026-09-20' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(crmMocks.updateDeal).toHaveBeenCalledWith(
+      deal.id,
+      expect.objectContaining({
+        followup_date: '2026-09-20',
+        last_outcome: expect.stringContaining('Sent outbound email, no reply yet'),
+      })
+    );
   });
 
   it('preserves the form and shows an error when the interaction write fails', async () => {
@@ -99,6 +141,7 @@ describe('LogInteractionModal save recovery', () => {
     expect(description.value).toBe('Call notes that must survive');
     expect(onClose).not.toHaveBeenCalled();
     expect(crmMocks.updateDealIfUnchanged).not.toHaveBeenCalled();
+    expect(crmMocks.updateDeal).not.toHaveBeenCalled();
   });
 
   it('retries only a version-checked deal update after the interaction already saved', async () => {
@@ -142,7 +185,11 @@ describe('LogInteractionModal save recovery', () => {
     expect(crmMocks.updateDealIfUnchanged).toHaveBeenCalledWith(
       deal.id,
       deal.updated_at,
-      expect.objectContaining({ workflow_action: 'reply', stage: 'contacted' }),
+      expect.objectContaining({
+        workflow_action: 'reply',
+        stage: 'contacted',
+        last_outcome: expect.stringContaining('Alice asked for pricing'),
+      }),
     );
     expect(crmMocks.updateDeal).not.toHaveBeenCalled();
   });

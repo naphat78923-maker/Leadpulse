@@ -42,10 +42,9 @@ export function buildInteractionWorkflowUpdate(
     if (!details.outcome || details.outcome === 'no_response') {
       throw new Error('A customer reply needs a real response outcome. No response keeps the deal in Outreach.');
     }
-    const replyEntry = `Customer reply (${details.outcome}): ${details.interactionDescription.trim()}`;
-    updates.last_outcome = deal.last_outcome
-      ? `${deal.last_outcome}\n---\n${replyEntry}`
-      : replyEntry;
+    // No last_outcome here: LogInteractionModal mirrors every deal-scoped touch
+    // into the outcome journal itself (one timestamped entry, lane moves included).
+    void details.interactionDescription;
   }
 
   if (targetAction === 'sample') {

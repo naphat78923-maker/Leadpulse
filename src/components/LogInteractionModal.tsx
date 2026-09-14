@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { MeetingType, Meeting, Deal, Contact, Company, NudgeStage, SampleStatus, DealWorkflowAction, MeetingDirection } from '@/types/crm';
+import { MeetingType, Meeting, Deal, Contact, Company, NudgeStage, SampleStatus, DealWorkflowAction, MeetingDirection, MEETING_TYPE_LABELS } from '@/types/crm';
 import { X, MessageCircle, Phone, Mail, Users, FileText, ArrowRight, AlertTriangle, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
 import ContactPicker from '@/components/ContactPicker';
@@ -39,6 +39,34 @@ const outcomeOptions = [
   { value: 'negative', label: 'Negative', color: 'bg-clay-error/10 text-clay-error border-clay-error/20' },
   { value: 'no_response', label: 'No Response', color: 'bg-clay-card text-clay-muted border-clay-hairline' },
 ];
+
+// Outcome history mirror — one canonical journal line per deal-scoped touch.
+// DealDetail's "Outcome history" renders deals.last_outcome text only, so a
+// meetings row alone is invisible there. Append the same entry everywhere a
+// touch is logged against a deal (lane move or not) so the journal never skips.
+const TOUCH_ICONS: Partial<Record<MeetingType, string>> = {
+  call: '📞',
+  email: '✉️',
+  dm: '💬',
+  meeting: '🤝',
+  note: '📝',
+  sample_sent: '📦',
+};
+
+function touchJournalLine(meeting: Pick<Meeting, 'type' | 'description' | 'summary' | 'outcome'>) {
+  const now = new Date();
+  const stamp = now.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+  const icon = TOUCH_ICONS[meeting.type] || '📝';
+  const label = MEETING_TYPE_LABELS[meeting.type];
+  const outcome = meeting.outcome ? ` · ${outcomeOptions.find(o => o.value === meeting.outcome)?.label || meeting.outcome}` : '';
+  const details = [meeting.description, meeting.summary || null].filter(Boolean).join(' · ');
+  return `[${stamp}] ${icon} ${label} — ${details}${outcome}`;
+}
+
+function appendOutcome(existing: string | null, entry?: string) {
+  if (!entry) return existing;
+  return existing ? `${existing}\n---\n${entry}` : entry;
+}
 
 export default function LogInteractionModal({
   isOpen,
@@ -197,6 +225,39 @@ export default function LogInteractionModal({
         direction,
       });
       interactionSavedThisAttempt = true;
+
+      // Outcome history mirror + follow-up date. Every deal-scoped touch writes
+      // one journal line to deals.last_outcome (Outcome history renders that
+      // text only), and a keyed follow-up date advances deals.followup_date so
+      // the card and the follow-up queue reflect it. Lane moves fold both into
+      // the same concurrency-guarded update; keep-current rides a best-effort
+      // update so a mirror failure never fails a save whose meetings row is
+      // already durable.
+      if (deal && selectedDeal) {
+        const mirrorUpdate: Partial<Deal> = {
+          last_outcome: appendOutcome(
+            deal.last_outcome,
+            touchJournalLine({
+              type,
+              description: description.trim(),
+              summary: summary.trim() || null,
+              outcome,
+            })
+          ),
+        };
+        if (followupDate) mirrorUpdate.followup_date = followupDate;
+
+        if (workflowUpdates) {
+          Object.assign(workflowUpdates, mirrorUpdate);
+        } else {
+          try {
+            await crm.updateDeal(deal.id, mirrorUpdate);
+            await refresh();
+          } catch (mirrorErr) {
+            console.error('Outcome history mirror failed (interaction is saved):', mirrorErr);
+          }
+        }
+      }
 
       if (deal && selectedAction && workflowUpdates) {
         const request = {

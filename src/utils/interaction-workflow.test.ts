@@ -50,7 +50,8 @@ describe('buildInteractionWorkflowUpdate', () => {
       workflow_action: 'reply',
       stage: 'contacted',
     });
-    expect(updates?.last_outcome).toContain('Alice asked for pricing');
+    // Journaling belongs to LogInteractionModal's mirror, not the lane util.
+    expect(updates?.last_outcome).toBeUndefined();
   });
 
   it('requires sent or received status before moving to Sample', () => {
