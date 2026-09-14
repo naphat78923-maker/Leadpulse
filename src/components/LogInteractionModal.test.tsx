@@ -126,7 +126,7 @@ describe('LogInteractionModal save recovery', () => {
     fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
       target: { value: 'Alice asked for pricing' },
     });
-    fireEvent.click(screen.getByRole('radio', { name: /Move forward/i }));
+    fireEvent.click(screen.getByRole('radio', { name: /Log outreach and wait for reply/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Positive' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
 
@@ -145,5 +145,152 @@ describe('LogInteractionModal save recovery', () => {
       expect.objectContaining({ workflow_action: 'reply', stage: 'contacted' }),
     );
     expect(crmMocks.updateDeal).not.toHaveBeenCalled();
+  });
+
+  it('lets an outreach with no reply enter Waiting on reply — no fabricated outcome', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    crmMocks.updateDealIfUnchanged.mockResolvedValue({ ...deal, workflow_action: 'reply' });
+
+    render(
+      <LogInteractionModal
+        isOpen
+        onClose={onClose}
+        onSave={onSave}
+        deals={[deal]}
+        contacts={[]}
+        companies={[]}
+        selectedDealId={deal.id}
+      />
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
+      target: { value: 'Sent follow-up email, no reply yet' },
+    });
+    fireEvent.click(screen.getByRole('radio', { name: /Log outreach and wait for reply/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'No Response' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ direction: 'outbound', outcome: 'no_response', deal_id: deal.id })
+    );
+    expect(crmMocks.updateDealIfUnchanged).toHaveBeenCalledWith(
+      deal.id,
+      deal.updated_at,
+      expect.objectContaining({ workflow_action: 'reply', stage: 'contacted' })
+    );
+    expect(crmMocks.updateDealIfUnchanged.mock.calls[0][2].last_outcome).toMatch(/waiting on reply/);
+  });
+
+  it('records a client reply as inbound and keeps the lane when the user chooses to', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+
+    render(
+      <LogInteractionModal
+        isOpen
+        onClose={onClose}
+        onSave={onSave}
+        deals={[deal]}
+        contacts={[]}
+        companies={[]}
+        selectedDealId={deal.id}
+      />
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
+      target: { value: 'Alice asked for pricing' },
+    });
+    fireEvent.click(screen.getByRole('radio', { name: /Client replied/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Positive' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ direction: 'inbound', outcome: 'positive' }));
+    // Keeping the current lane is still a no-write: the event does not move the journey.
+    expect(crmMocks.updateDealIfUnchanged).not.toHaveBeenCalled();
+  });
+
+  it('refuses a client reply tagged as no response', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+
+    render(
+      <LogInteractionModal
+        isOpen
+        onClose={onClose}
+        onSave={onSave}
+        deals={[deal]}
+        contacts={[]}
+        companies={[]}
+        selectedDealId={deal.id}
+      />
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
+      target: { value: 'Something happened' },
+    });
+    fireEvent.click(screen.getByRole('radio', { name: /Client replied/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'No Response' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+
+    expect((await screen.findByRole('alert')).textContent).toMatch(/cannot be recorded as 'No Response'/i);
+    expect(onSave).not.toHaveBeenCalled();
+    expect(crmMocks.updateDealIfUnchanged).not.toHaveBeenCalled();
+  });
+
+  it('accepts a client reply with the sentiment left blank', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+
+    render(
+      <LogInteractionModal
+        isOpen
+        onClose={onClose}
+        onSave={onSave}
+        deals={[deal]}
+        contacts={[]}
+        companies={[]}
+        selectedDealId={deal.id}
+      />
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
+      target: { value: 'They replied without detail' },
+    });
+    fireEvent.click(screen.getByRole('radio', { name: /Client replied/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ direction: 'inbound', outcome: null }));
+  });
+
+  it('records an internal note as internal and offers it no journey move', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+
+    render(
+      <LogInteractionModal
+        isOpen
+        onClose={onClose}
+        onSave={onSave}
+        deals={[deal]}
+        contacts={[]}
+        companies={[]}
+        selectedDealId={deal.id}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /^Note/ }));
+    expect(screen.getByText(/never moves the journey or counts as outreach/i)).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
+      target: { value: 'Internal pricing reminder' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ direction: 'internal', type: 'note' }));
+    expect(crmMocks.updateDealIfUnchanged).not.toHaveBeenCalled();
   });
 });

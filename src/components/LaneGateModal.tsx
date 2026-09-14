@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Deal, DealWorkflowAction, MeetingType, SampleStatus, Contact, Company } from '@/types/crm';
+import { Deal, DealWorkflowAction, MeetingType, Meeting, SampleStatus, Contact, Company } from '@/types/crm';
 import { WORKFLOW_BY_ID, LANE_MASCOT_PATHS, SAMPLE_STATUS_OPTIONS } from '@/utils/deal-workflow';
 import MascotSprite from '@/components/MascotSprite';
 import ContactPicker from '@/components/ContactPicker';
@@ -15,7 +15,7 @@ export interface LaneGatePayload {
   sample_status?: SampleStatus | null;
   followup_date?: string | null;
   next_action?: string | null;
-  reply_outcome?: string | null;
+  reply_outcome?: Meeting['outcome'] | null;
   reply_summary?: string | null;
   channel?: MeetingType | null;
   contact_ids?: string[];
@@ -39,7 +39,7 @@ interface LaneGateModalProps {
   onConfirm: (payload: LaneGatePayload) => Promise<void>;
 }
 
-const OUTCOME_OPTIONS = [
+const OUTCOME_OPTIONS: Array<{ value: NonNullable<Meeting['outcome']>; label: string; cls: string }> = [
   { value: 'positive', label: 'Positive', cls: 'border-clay-success/30 bg-clay-success/10 text-clay-success' },
   { value: 'neutral', label: 'Neutral', cls: 'border-clay-hairline bg-clay-card text-clay-body' },
   { value: 'negative', label: 'Negative', cls: 'border-clay-error/30 bg-clay-error/10 text-clay-error' },
@@ -52,7 +52,7 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
   const [followupDate, setFollowupDate] = useState<string>(deal.followup_date || '');
   const [nextAction, setNextAction] = useState<string>('');
   const [channel, setChannel] = useState<MeetingType>('call');
-  const [replyOutcome, setReplyOutcome] = useState<string>('');
+  const [replyOutcome, setReplyOutcome] = useState<Meeting['outcome'] | ''>('');
   const [replySummary, setReplySummary] = useState<string>('');
   const [addressConfirmed, setAddressConfirmed] = useState(false);
   const [outreachLogged, setOutreachLogged] = useState(Boolean(deal.last_outcome?.trim()));

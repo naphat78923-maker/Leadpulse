@@ -299,14 +299,14 @@ export default function DealsPage() {
       };
       if (target === 'outreach' && payload.channel) {
         const chLabel = payload.channel === 'dm' ? 'DM' : payload.channel === 'email' ? 'Email' : 'Call';
-        return { ...base, type: payload.channel, description: `${chLabel} outreach — ${deal.client}`, summary: payload.next_action || null, outcome: null, followup_date: null, contact_ids: payload.contact_ids || deal.contact_ids || [] };
+        return { ...base, type: payload.channel, description: `${chLabel} outreach — ${deal.client}`, summary: payload.next_action || null, outcome: null, followup_date: null, contact_ids: payload.contact_ids || deal.contact_ids || [], direction: 'outbound' as const };
       }
       if (target === 'reply' && payload.channel && payload.reply_outcome) {
         const chLabel = payload.channel === 'dm' ? 'DM' : payload.channel === 'email' ? 'Email' : 'Call';
-        return { ...base, type: payload.channel, description: `${chLabel} reply from ${deal.client}`, summary: payload.reply_summary || null, outcome: payload.reply_outcome, followup_date: null, contact_ids: payload.contact_ids || deal.contact_ids || [] };
+        return { ...base, type: payload.channel, description: `${chLabel} reply from ${deal.client}`, summary: payload.reply_summary || null, outcome: payload.reply_outcome || null, followup_date: null, contact_ids: payload.contact_ids || deal.contact_ids || [], direction: 'inbound' as const };
       }
       if (target === 'sample' && payload.sample_status) {
-        return { ...base, type: 'sample_sent', description: `Sample ${payload.sample_status} — ${deal.client}`, summary: null, outcome: null, followup_date: null, contact_ids: payload.contact_ids || deal.contact_ids || [] };
+        return { ...base, type: 'sample_sent', description: `Sample ${payload.sample_status} — ${deal.client}`, summary: null, outcome: null, followup_date: null, contact_ids: payload.contact_ids || deal.contact_ids || [], direction: 'outbound' as const };
       }
       return null;
     })();

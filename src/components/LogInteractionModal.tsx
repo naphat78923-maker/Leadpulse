@@ -1,14 +1,21 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { MeetingType, Meeting, Deal, Contact, Company, NudgeStage, SampleStatus, DealWorkflowAction, MeetingDirection } from '@/types/crm';
+import { MeetingType, Meeting, Deal, Contact, Company, SampleStatus, DealWorkflowAction, MeetingDirection } from '@/types/crm';
 import { X, MessageCircle, Phone, Mail, Users, FileText, ArrowRight, AlertTriangle, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
 import ContactPicker from '@/components/ContactPicker';
 import * as crm from '@/lib/crm';
 import { useCrm } from '@/components/CrmProvider';
-import { NUDGE_OPTIONS, SAMPLE_STATUS_OPTIONS, nudgeColorClass, NEXT_WORKFLOW, WORKFLOW_BY_ID, canNudge, getWorkflowAction } from '@/utils/deal-workflow';
-import { buildInteractionWorkflowUpdate } from '@/utils/interaction-workflow';
+import { SAMPLE_STATUS_OPTIONS, WORKFLOW_BY_ID, getWorkflowAction } from '@/utils/deal-workflow';
+import { buildInteractionWorkflowUpdate, laneTargetOptions } from '@/utils/interaction-workflow';
+import {
+  INTERACTION_EVENT_OPTIONS,
+  defaultEventKind,
+  directionForEvent,
+  validateInteractionEvent,
+  type InteractionEventKind,
+} from '@/utils/interaction-event';
 import { localDateKey } from '@/utils/deal-board';
 import ModalShell from '@/components/motion/ModalShell';
 
@@ -62,7 +69,8 @@ export default function LogInteractionModal({
   const [followupDate, setFollowupDate] = useState('');
   const [nextWorkflowAction, setNextWorkflowAction] = useState<DealWorkflowAction | ''>('');
   const [sampleStatus, setSampleStatus] = useState<SampleStatus | ''>('');
-  const [nudgeStage, setNudgeStage] = useState<NudgeStage | ''>('');
+  /** Explicit event kind. `null` follows the channel's default until the user says otherwise. */
+  const [eventKind, setEventKind] = useState<InteractionEventKind | null>(null);
   const [confirmSuccess, setConfirmSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -84,7 +92,7 @@ export default function LogInteractionModal({
       setSelectedDeal(selectedDealId || '');
       setNextWorkflowAction(initialDeal ? getWorkflowAction(initialDeal) : '');
       setSampleStatus('');
-      setNudgeStage('');
+      setEventKind(null);
       setConfirmSuccess(false);
       setType('call');
       setDescription('');
@@ -102,10 +110,21 @@ export default function LogInteractionModal({
 
   const deal = deals.find(item => item.id === selectedDeal);
   const dealAction = deal ? getWorkflowAction(deal) : undefined;
-  const nextAction = dealAction ? NEXT_WORKFLOW[dealAction] : undefined;
+  // The event owns direction and sentiment; the lane move is a separate explicit choice.
+  const effectiveKind: InteractionEventKind = eventKind ?? defaultEventKind(type);
+  const laneTargets = deal ? laneTargetOptions(deal, effectiveKind) : [];
   const selectedAction = deal ? (nextWorkflowAction || dealAction) : undefined;
   const isChangingLane = !!dealAction && !!selectedAction && selectedAction !== dealAction;
-  const showNudge = !!selectedAction && isChangingLane && canNudge(selectedAction);
+
+  const applyEventKind = (kind: InteractionEventKind | null) => {
+    setEventKind(kind);
+    setSaveError(null);
+    if (!deal || !dealAction) return;
+    // The safe default is always the current lane: a target the new event does not
+    // permit is dropped rather than silently kept.
+    const allowed = laneTargetOptions(deal, kind ?? defaultEventKind(type));
+    setNextWorkflowAction(prev => (prev && allowed.some(option => option.target === prev) ? prev : dealAction));
+  };
 
   const resetAndClose = () => {
     setDescription('');
@@ -116,7 +135,7 @@ export default function LogInteractionModal({
     setSelectedContactIds([]);
     setNextWorkflowAction('');
     setSampleStatus('');
-    setNudgeStage('');
+    setEventKind(null);
     setConfirmSuccess(false);
     setSaveError(null);
     setPendingDealUpdate(null);
@@ -128,7 +147,7 @@ export default function LogInteractionModal({
     setSelectedDeal(dealId);
     setNextWorkflowAction(nextDeal ? getWorkflowAction(nextDeal) : '');
     setSampleStatus('');
-    setNudgeStage('');
+    setEventKind(null);
     setConfirmSuccess(false);
     setSaveError(null);
   };
@@ -150,6 +169,14 @@ export default function LogInteractionModal({
     e.preventDefault();
     if (!description.trim() || saving) return;
 
+    // The event is written on every save, with or without a lane move, so it is
+    // validated before anything is persisted.
+    const eventError = validateInteractionEvent({ kind: effectiveKind, outcome });
+    if (eventError) {
+      setSaveError(eventError);
+      return;
+    }
+
     setSaving(true);
     setSaveError(null);
     let interactionSavedThisAttempt = false;
@@ -163,11 +190,12 @@ export default function LogInteractionModal({
 
       const workflowUpdates = deal && selectedAction
         ? buildInteractionWorkflowUpdate(deal, selectedAction, {
+            kind: effectiveKind,
             outcome,
             interactionDescription: summary.trim() || description.trim(),
+            channel: type,
             sampleStatus: sampleStatus || null,
             testingDate: followupDate || null,
-            nudgeStage: nudgeStage || null,
             confirmSuccess,
           })
         : null;
@@ -175,13 +203,9 @@ export default function LogInteractionModal({
       const selectedContacts = contacts.filter(contact => selectedContactIds.includes(contact.id));
       const companyId = selectedContacts[0]?.company_id || deal?.company_id || initialCompanyId || null;
 
-      // Direction drives the nudge gauge: only outbound call/email/DM are sends.
-      // A captured customer reply (Move forward → Waiting on reply) is inbound.
-      const isCustomerReply = !!deal && selectedAction === 'reply' && isChangingLane;
-      const direction: MeetingDirection =
-        isCustomerReply ? 'inbound'
-        : type === 'meeting' || type === 'note' ? 'internal'
-        : 'outbound';
+      // Direction comes from the chosen event, never from the lane the deal moves to.
+      // An internal note and a captured client reply are their own categories.
+      const direction: MeetingDirection = directionForEvent(effectiveKind);
 
       await onSave({
         description: description.trim(),
@@ -269,6 +293,39 @@ export default function LogInteractionModal({
             </div>
           </div>
 
+          {/* What happened — the event owns direction; the lane never redefines it. */}
+          <div>
+            <label className="block text-sm font-medium text-clay-body mb-2">What happened?</label>
+            <div className="grid gap-2" role="radiogroup" aria-label="What happened?">
+              {INTERACTION_EVENT_OPTIONS.map(option => (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={effectiveKind === option.value}
+                  onClick={() => applyEventKind(option.value)}
+                  className={clsx(
+                    'min-h-[48px] rounded-lg border px-3 py-2.5 text-left transition-colors',
+                    effectiveKind === option.value
+                      ? 'border-clay-ink bg-clay-ink/5 text-clay-ink'
+                      : 'border-clay-hairline bg-white dark:bg-clay-card text-clay-muted'
+                  )}
+                >
+                  <span className="block text-sm font-semibold">{option.label}</span>
+                  <span className="block text-[10px] mt-0.5 opacity-75">{option.hint}</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-clay-muted mt-1.5">
+              Recorded as <span className="font-medium text-clay-body">{directionForEvent(effectiveKind)}</span>
+              {effectiveKind === 'customer_response'
+                ? ' — a customer response.'
+                : effectiveKind === 'internal_note'
+                  ? ' — never counts as outreach or a reply.'
+                  : ' — an outreach attempt.'}
+            </p>
+          </div>
+
           {/* Description */}
           <div>
             <label className="block text-sm font-medium text-clay-body mb-1">Description *</label>
@@ -336,32 +393,41 @@ export default function LogInteractionModal({
                   <span className="block text-[10px] mt-0.5 opacity-75">Recommended for outbound messages, notes, and no response.</span>
                 </button>
 
-                {nextAction && nextAction !== dealAction && (
+                {laneTargets.map(option => (
                   <button
+                    key={option.target}
                     type="button"
                     role="radio"
-                    aria-checked={selectedAction === nextAction}
+                    aria-checked={selectedAction === option.target}
                     onClick={() => {
-                      setNextWorkflowAction(nextAction);
+                      setNextWorkflowAction(option.target);
                       setSaveError(null);
                     }}
                     className={clsx(
                       'min-h-[48px] rounded-lg border px-3 py-2.5 text-left transition-colors',
-                      selectedAction === nextAction
+                      selectedAction === option.target
                         ? 'border-clay-mint bg-clay-mint/15 text-clay-ink'
                         : 'border-clay-hairline bg-white dark:bg-clay-card text-clay-muted'
                     )}
                   >
                     <span className="flex items-center gap-2 text-sm font-semibold">
-                      Move forward <ArrowRight className="w-3.5 h-3.5" /> {WORKFLOW_BY_ID[nextAction].shortLabel}
+                      {option.label} <ArrowRight className="w-3.5 h-3.5" /> {WORKFLOW_BY_ID[option.target].shortLabel}
                     </span>
-                    <span className="block text-[10px] mt-0.5 opacity-75">Choose only when this interaction justifies the move.</span>
+                    {option.hint && <span className="block text-[10px] mt-0.5 opacity-75">{option.hint}</span>}
                   </button>
-                )}
+                ))}
               </div>
 
-              {selectedAction === 'reply' && isChangingLane && (
-                <p className="text-[11px] text-clay-muted">Client reply requires Positive, Neutral, or Negative below. No Response keeps the deal in Outreach.</p>
+              {laneTargets.length === 0 && (
+                <p className="text-[11px] text-clay-muted">
+                  An internal note records information — it never moves the journey or counts as outreach.
+                </p>
+              )}
+
+              {effectiveKind === 'customer_response' && (
+                <p className="text-[11px] text-clay-muted">
+                  A recorded reply is not a wait: choose the next action above, or keep the current lane.
+                </p>
               )}
 
               {selectedAction === 'sample' && isChangingLane && (
@@ -404,28 +470,6 @@ export default function LogInteractionModal({
                 >
                   {confirmSuccess ? '✓ Confirmed: this deal is won' : 'Confirm this deal is won'}
                 </button>
-              )}
-
-              {showNudge && (
-                <div>
-                  <p className="text-xs font-medium text-clay-body mb-2">Nudge level <span className="font-normal text-clay-muted">(optional)</span></p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {NUDGE_OPTIONS.map(option => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => setNudgeStage(nudgeStage === option.value ? '' : option.value)}
-                        className={clsx(
-                          'px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors min-h-[44px] flex items-center justify-center gap-1.5',
-                          nudgeStage === option.value ? nudgeColorClass(option.value) : 'bg-white dark:bg-clay-card text-clay-muted border-clay-hairline active:bg-clay-surface'
-                        )}
-                      >
-                        {option.label}
-                        <span className="text-[10px] opacity-70">{option.days}d</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
               )}
             </div>
           )}

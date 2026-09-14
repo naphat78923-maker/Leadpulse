@@ -2,6 +2,9 @@
 // import of types fails at runtime (types have no runtime export). See
 // retentionCadence.ts for the same convention.
 import type { Deal, DealWorkflowAction, NudgeStage, SampleStatus } from '@/types/crm';
+// Relative `.ts` import on purpose: the Node-run report scripts load this module
+// directly and cannot resolve the `@/` alias (see retentionCadence.ts).
+import { UNANSWERED_CHASE_CHANNELS, unansweredChaseCount } from './interaction-event.ts';
 
 export interface WorkflowLane {
   id: DealWorkflowAction;
@@ -119,7 +122,7 @@ export const DERIVED_NUDGE_OPTIONS: Array<{
 ];
 
 /** A send = outbound call, email, or DM logged against the deal. */
-export const NUDGE_SEND_CHANNELS = ['call', 'email', 'dm'] as const;
+export const NUDGE_SEND_CHANNELS = UNANSWERED_CHASE_CHANNELS;
 export const NUDGE_SEND_LIMIT = 4;
 
 /** Soft HexFace kind per lane (SVG faces — replaces PNG mascots on the board chrome). */
@@ -204,20 +207,20 @@ export interface DerivedNudge {
 }
 
 /**
- * Count of outbound sends (call / email / DM) logged against a deal.
- * Direction `inbound` (a captured customer reply) never counts; legacy rows
- * without a direction count as sends — they were outreach logs.
+ * Count of unanswered chases (call / email / DM) logged against a deal.
+ *
+ * The counting rule lives in `interaction-event.ts` behind a versioned policy. The
+ * ACTIVE policy is the cumulative-sends rule production already serves, so this
+ * function's output on live data is unchanged by the event-classification work: a row
+ * with `direction: 'unknown'` or no direction keeps whatever meaning the DB gave it,
+ * and this function never asserts an unknown row was outbound. An `inbound` reply and an
+ * internal note never count.
  */
 export function outboundSendCountForDeal(
-  meetings: Array<{ deal_id?: string | null; type: string; direction?: string | null }>,
+  meetings: Array<{ deal_id?: string | null; type: string; direction?: string | null; outcome?: string | null }>,
   dealId: string
 ): number {
-  return meetings.filter(
-    m =>
-      m.deal_id === dealId &&
-      (NUDGE_SEND_CHANNELS as readonly string[]).includes(m.type) &&
-      m.direction !== 'inbound'
-  ).length;
+  return unansweredChaseCount(meetings, dealId);
 }
 
 /** Map total outbound sends to a ladder stage (null before the first send). */
