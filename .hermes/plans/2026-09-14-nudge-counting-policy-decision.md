@@ -1,5 +1,12 @@
 # Decision needed: what does the 4-send nudge ladder count?
 
+> **DECIDED (Pat, 2026-09-14): v0 — keep the cumulative-sends rule.** The ladder keeps counting
+> every logged outbound call/email/DM on the deal, cumulative, and a reply does not reset it.
+> The reviewed alternative (v1) stays implemented and tested in `src/utils/interaction-event.ts`
+> but is **not** active, and must not be switched on without a new explicit decision. Consequence:
+> no live badge changes, and the "a positive follow-up call advanced the badge" behaviour is the
+> intended rule rather than a defect. No backfill, no reclassification of historical rows.
+
 **Raised by:** slice 2 of the assigned action-flow brief, which requires "customer responses do not
 increment unanswered nudges" while also stating that any change to the four-send/park policy needs a
 separately documented decision. This is that document. **Nothing live has changed: the ACTIVE policy is
