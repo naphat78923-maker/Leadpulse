@@ -742,11 +742,12 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
         <LogInteractionModal
           isOpen={logOpen}
           onClose={() => setLogOpen(false)}
+          // Persist the interaction ONLY. The modal owns closing, its success toast, and its
+          // partial-failure/retry state — closing it here would destroy the very error surface
+          // that tells the user half the action saved.
           onSave={async meeting => {
             await addMeeting(meeting);
-            setLogOpen(false);
             onSaved();
-            addToast('Touch logged');
           }}
           deals={[deal]}
           contacts={contacts}

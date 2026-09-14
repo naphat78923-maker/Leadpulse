@@ -7,6 +7,7 @@ import clsx from 'clsx';
 import ContactPicker from '@/components/ContactPicker';
 import * as crm from '@/lib/crm';
 import { useCrm } from '@/components/CrmProvider';
+import { useToast } from '@/components/ToastProvider';
 import { SAMPLE_STATUS_OPTIONS, WORKFLOW_BY_ID, getWorkflowAction } from '@/utils/deal-workflow';
 import { buildInteractionWorkflowUpdate, laneTargetOptions } from '@/utils/interaction-workflow';
 import {
@@ -67,6 +68,7 @@ export default function LogInteractionModal({
   initialCompanyId,
 }: LogInteractionModalProps) {
   const { refresh, logActivity } = useCrm();
+  const { addToast } = useToast();
   const [type, setType] = useState<MeetingType>('call');
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(localDateKey());
@@ -215,6 +217,7 @@ export default function LogInteractionModal({
     try {
       if (pendingDealUpdate) {
         await persistDealUpdate(pendingDealUpdate);
+        addToast('Touch logged');
         resetAndClose();
         return;
       }
@@ -290,6 +293,9 @@ export default function LogInteractionModal({
         await persistDealUpdate(request);
       }
 
+      // Success is claimed only once the WHOLE action is durable: the interaction and, when the
+      // user chose one, the deal update. A half-save keeps the modal open with its retry.
+      addToast('Touch logged');
       resetAndClose();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'The interaction could not be saved.';
