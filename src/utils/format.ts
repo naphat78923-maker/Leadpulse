@@ -1,4 +1,6 @@
 /** Thai baht formatter. Shared so the board, analytics, and signals agree. */
+import { businessDateKey } from '@/utils/business-time';
+
 export function formatBaht(n: number | null | undefined): string {
   if (n == null) return '฿0';
   return '฿' + Math.round(n).toLocaleString('en-US');
@@ -25,12 +27,9 @@ export const APP_TIMEZONE = 'Asia/Bangkok';
 
 /** YYYY-MM-DD in Asia/Bangkok for the given instant (defaults to now). */
 export function bangkokDateKey(date: Date = new Date()): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: APP_TIMEZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(date);
+  // Delegates to the one business-calendar implementation (src/utils/business-time.ts) so the
+  // timezone and the key format can never diverge between the dashboard and the boards.
+  return businessDateKey(date);
 }
 
 /** e.g. "Sunday · Sep 6" for headers — always Bangkok wall clock. */

@@ -311,13 +311,13 @@ export default function LogInteractionModal({
     <ModalShell
       open={isOpen}
       onClose={onClose}
-      lockDismiss={saving}
+      lockDismiss={saving || !!pendingDealUpdate}
       panelClassName="bg-white dark:bg-clay-card md:max-w-lg md:rounded-2xl rounded-t-2xl shadow-2xl max-h-[90vh] overflow-y-auto"
     >
       <>
         <div className="sticky top-0 bg-white dark:bg-clay-card flex items-center justify-between p-4 border-b border-clay-hairline z-10">
           <h2 className="text-lg font-semibold text-clay-ink">Log Interaction</h2>
-          <button onClick={onClose} disabled={saving} className="text-clay-muted hover:text-clay-ink p-2 -mr-2 disabled:opacity-40">
+          <button onClick={onClose} disabled={saving || !!pendingDealUpdate} className="text-clay-muted hover:text-clay-ink p-2 -mr-2 disabled:opacity-40">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -657,7 +657,9 @@ export default function LogInteractionModal({
 
             {deal && laneRequiresDate && (
               <p className="text-[11px] text-clay-muted">
-                This move sets the deal&apos;s follow-up to the date above.
+                {followupDate
+                  ? "This move sets the deal's follow-up to the date above."
+                  : "This move keeps the deal's existing follow-up date — add a date above to change it."}
               </p>
             )}
           </div>
@@ -689,7 +691,7 @@ export default function LogInteractionModal({
             <button
               type="button"
               onClick={onClose}
-              disabled={saving}
+              disabled={saving || !!pendingDealUpdate}
               className="px-4 py-3 bg-clay-card text-clay-ink text-sm font-medium rounded-lg motion-press min-h-[48px] disabled:opacity-40"
             >
               Cancel

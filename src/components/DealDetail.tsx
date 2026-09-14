@@ -121,6 +121,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
     value: deal.value,
     workflow_action: currentWorkflow,
     sample_status: deal.sample_status || null,
+    nudge_stage: deal.nudge_stage || null,
     next_action: deal.next_action,
     draft_primary_ask: deal.draft_primary_ask || null,
     followup_date: deal.followup_date,

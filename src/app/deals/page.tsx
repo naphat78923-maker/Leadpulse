@@ -36,6 +36,7 @@ import LogInteractionModal from '@/components/LogInteractionModal';
 import { BoardAttentionFilter, dealNeedsReview, reviewReasons, REVIEW_LABEL, buildReviewReport, buildReviewFix, filterAndSortBoardDeals, findDealsMatchingSearch, getDoNowCounts, localDateKey } from '@/utils/deal-board';
 import type { DealCardPrimaryAction as DealCardPrimaryActionSpec } from '@/utils/deal-card';
 import { buildCloseUpdate } from '@/utils/deal-close';
+import { buildLaneGateDecision } from '@/utils/lane-gate';
 import { buildDealCardPresentation } from '@/utils/deal-card';
 import { PageTransition, HexFace, StaggerList, StaggerItem } from '@/components/motion';
 import { EASE_OUT, pressScale, springPress, tweenBase } from '@/lib/motion';
@@ -49,17 +50,6 @@ const LANE_CRITERIA: Record<string, string> = {
   testing: 'Requires: sample delivered + date',
   reschedule: 'Requires: follow-up date',
 };
-
-function timestampedEntry(text: string) {
-  const now = new Date();
-  const stamp = `${now.toISOString().replace('T', ' ').substring(0, 19)} UTC`;
-  return `[${stamp}] ${text}`;
-}
-
-function appendOutcome(existing: string | null, entry?: string | null) {
-  if (!entry) return existing;
-  return existing ? `${existing}\n---\n${entry}` : entry;
-}
 
 function dueStateFor(deal: Deal, todayStr: string): 'overdue' | 'today' | null {
   if (!deal.followup_date) return null;
@@ -287,26 +277,36 @@ export default function DealsPage() {
       next_action: deal.next_action,
       last_outcome: deal.last_outcome,
     };
-    const updates: Partial<Deal> = { workflow_action: target };
-    if (target === 'sample') updates.sample_status = payload.sample_status || null;
-    if (target === 'testing' || target === 'reschedule') updates.followup_date = payload.followup_date || null;
-    if (target === 'testing' && payload.sample_status) updates.sample_status = payload.sample_status;
-    if (target !== 'sample' && target !== 'testing') {
-      /* keep existing sample_status on other lanes */
-    } else if (target === 'sample') {
-      updates.sample_status = payload.sample_status || null;
+
+    // One pure decision, shared with the event rules: "no response" is a wait, not a reply, and
+    // the interaction is dated on the business calendar.
+    const { updates, meeting } = buildLaneGateDecision(
+      deal,
+      {
+        target,
+        channel: payload.channel ?? null,
+        reply_outcome: payload.reply_outcome ?? null,
+        reply_summary: payload.reply_summary ?? null,
+        next_action: payload.next_action ?? null,
+        sample_status: payload.sample_status ?? null,
+        followup_date: payload.followup_date ?? null,
+        contact_ids: payload.contact_ids,
+      },
+      { dateKey: todayStr }
+    );
+
+    try {
+      // Version-checked like the other write paths: two concurrent moves cannot silently
+      // overwrite one another.
+      await crm.updateDealIfUnchanged(deal.id, deal.updated_at, updates);
+    } catch (err) {
+      setGate(null);
+      const message = err instanceof Error ? err.message : 'This deal changed before the move was saved';
+      addToast(message, 'error');
+      await refresh();
+      return;
     }
-    updates.nudge_stage = null; // nudges are derived — never stored from drag
-    if (target === 'outreach' && payload.next_action) updates.next_action = payload.next_action;
-    if (target === 'reply') {
-      if (payload.reply_outcome) {
-        const detail = payload.reply_summary ? `: ${payload.reply_summary}` : '';
-        updates.last_outcome = appendOutcome(deal.last_outcome, timestampedEntry(`💬 Client replied — ${payload.reply_outcome}${detail}`));
-      } else if (payload.outreach_logged) {
-        updates.last_outcome = appendOutcome(deal.last_outcome, timestampedEntry('✅ Outreach logged — waiting on reply'));
-      }
-    }
-    await crm.updateDeal(deal.id, updates);
+
     logActivity({
       type: 'edit',
       entity: 'deal',
@@ -316,31 +316,9 @@ export default function DealsPage() {
       undoPayload: before,
     });
 
-    // Feed the pulse: interaction-type lane moves also create an interaction row
-    // so calls, emails, DMs, and samples from the board count on the Activity pulse.
-    const meetingToLog = (() => {
-      const base = {
-        date: new Date().toISOString().split('T')[0],
-        company_id: deal.company_id,
-        contact_ids: deal.contact_ids || [],
-        deal_id: deal.id,
-        product: deal.product,
-      };
-      if (target === 'outreach' && payload.channel) {
-        const chLabel = payload.channel === 'dm' ? 'DM' : payload.channel === 'email' ? 'Email' : 'Call';
-        return { ...base, type: payload.channel, description: `${chLabel} outreach — ${deal.client}`, summary: payload.next_action || null, outcome: null, followup_date: null, contact_ids: payload.contact_ids || deal.contact_ids || [], direction: 'outbound' as const };
-      }
-      if (target === 'reply' && payload.channel && payload.reply_outcome) {
-        const chLabel = payload.channel === 'dm' ? 'DM' : payload.channel === 'email' ? 'Email' : 'Call';
-        return { ...base, type: payload.channel, description: `${chLabel} reply from ${deal.client}`, summary: payload.reply_summary || null, outcome: payload.reply_outcome || null, followup_date: null, contact_ids: payload.contact_ids || deal.contact_ids || [], direction: 'inbound' as const };
-      }
-      if (target === 'sample' && payload.sample_status) {
-        return { ...base, type: 'sample_sent', description: `Sample ${payload.sample_status} — ${deal.client}`, summary: null, outcome: null, followup_date: null, contact_ids: payload.contact_ids || deal.contact_ids || [], direction: 'outbound' as const };
-      }
-      return null;
-    })();
-    if (meetingToLog) {
-      await addMeeting(meetingToLog as any);
+    // Interaction-type lane moves also create an interaction row so the Activity pulse stays true.
+    if (meeting) {
+      await addMeeting(meeting as any);
     }
     setGate(null);
     setCelebrate({ dealId: deal.id, laneId: target });
@@ -964,6 +942,9 @@ export default function DealsPage() {
               workflow_action: getWorkflowAction(d),
               followup_date: d.followup_date,
               value: d.value,
+              next_action: d.next_action,
+              sample_status: d.sample_status || null,
+              nudge_stage: d.nudge_stage || null,
               last_outcome: d.last_outcome,
               close_date: d.close_date || null,
               won_note: d.won_note || null,

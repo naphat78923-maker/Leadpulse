@@ -4,7 +4,7 @@ import type { Deal, NudgeStage } from '@/types/crm';
 import { STAGE_LABELS } from '@/types/crm';
 import type { DealCardPresentation } from '@/utils/deal-card';
 import { nudgeColorClass, SEND_LADDER_RUNGS } from '@/utils/deal-workflow';
-import { isConcreteNextAction, nudgeChipLabel, NO_NEXT_ACTION_LABEL } from '@/utils/deal-card';
+import { isConcreteNextAction, nudgeChipLabel } from '@/utils/deal-card';
 import CompanyLogo from '@/components/CompanyLogo';
 import NudgeLadderRail from '@/components/NudgeLadderRail';
 import EntityAvatar from '@/components/EntityAvatar';
@@ -169,7 +169,7 @@ export default function DealCardContent({
               hasConcreteNextAction ? 'font-medium text-clay-body-strong' : 'font-normal italic text-clay-muted'
             )}
           >
-            {hasConcreteNextAction ? nextAction : NO_NEXT_ACTION_LABEL}
+            {hasConcreteNextAction ? nextAction : 'No next action set yet'}
           </p>
           {whyNow && (
             <p

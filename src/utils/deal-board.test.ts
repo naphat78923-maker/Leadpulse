@@ -92,8 +92,12 @@ function deal(overrides: Partial<Deal> & Pick<Deal, 'id' | 'client'>): Deal {
 const today = '2026-08-25';
 
 describe('localDateKey', () => {
-  it('uses local calendar fields with zero padding instead of UTC conversion', () => {
-    expect(localDateKey(new Date(2026, 7, 5, 1, 30))).toBe('2026-08-05');
+  it('resolves on the business calendar regardless of the host timezone', () => {
+    // A host at any offset must produce the same Bangkok day — this test used to assert the
+    // device's local calendar fields, and failed under TZ=Asia/Tokyo or Pacific/Auckland.
+    expect(localDateKey(new Date('2026-08-04T18:30:00Z'))).toBe('2026-08-05');
+    expect(localDateKey(new Date('2026-08-04T16:59:59.999Z'))).toBe('2026-08-04');
+    expect(localDateKey(new Date('2026-08-04T17:00:00.000Z'))).toBe('2026-08-05');
   });
 });
 

@@ -158,6 +158,28 @@ describe('buildDealEditPayload', () => {
     expect(payload).toMatchObject({ workflow_action: 'reply', stage: 'contacted', nudge_stage: null });
   });
 
+  it('writes a sample-status edit even when the lane did not move', () => {
+    const sampleDeal: Deal = { ...deal, workflow_action: 'sample', stage: 'proposal', sample_status: 'sent' };
+    const draft = mergeDraft(dealToEditDraft(sampleDeal), { sample_status: 'received' });
+
+    const payload = buildDealEditPayload({
+      deal: sampleDeal,
+      draft,
+      editedFields: new Set(['sample_status']),
+    });
+
+    // The user's change must not be reported as "no changes to save" and dropped.
+    expect(payload).toEqual({ sample_status: 'received' });
+  });
+
+  it('clears the sample status only when the user cleared it', () => {
+    const sampleDeal: Deal = { ...deal, workflow_action: 'sample', stage: 'proposal', sample_status: 'sent' };
+    const draft = mergeDraft(dealToEditDraft(sampleDeal), { sample_status: '' });
+
+    const payload = buildDealEditPayload({ deal: sampleDeal, draft, editedFields: new Set(['sample_status']) });
+    expect(payload).toEqual({ sample_status: null });
+  });
+
   it('appends a new journal entry to the latest record, not to the draft copy', () => {
     const payload = buildDealEditPayload({
       deal: laneMovedDeal,

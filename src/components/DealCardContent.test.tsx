@@ -198,7 +198,7 @@ describe('DealCardContent', () => {
       />
     );
 
-    expect(screen.getByText('Set next action')).toBeTruthy();
+    expect(screen.getByText('No next action set yet')).toBeTruthy();
     expect(screen.queryByText('No next action set')).toBeNull();
   });
 

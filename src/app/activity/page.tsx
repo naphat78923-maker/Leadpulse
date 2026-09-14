@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import { Meeting, MEETING_TYPE_LABELS, Company, Contact, Deal } from '@/types/crm';
 import { useCrm, ActivityEntry } from '@/components/CrmProvider';
 import { WORKFLOW_LANES, getWorkflowAction } from '@/utils/deal-workflow';
+import { localDateKey } from '@/utils/deal-board';
+import { bangkokDateKey } from '@/utils/format';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import CompanyDetail from '@/components/CompanyDetail';
 import ContactDetail from '@/components/ContactDetail';
@@ -98,7 +100,7 @@ export default function ActivityPage() {
       const d = new Date();
       d.setHours(0, 0, 0, 0);
       d.setDate(d.getDate() - i);
-      const key = d.toISOString().split('T')[0];
+      const key = bangkokDateKey(d);
       days.push({
         label: d.toLocaleDateString('en-US', { weekday: 'short' }),
         count: inWeek.filter(m => m.date === key).length,
@@ -197,7 +199,7 @@ export default function ActivityPage() {
       .filter(c => !touchedContactIds.has(c.id) && !c.last_contacted_date)
       .slice(0, 6);
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = localDateKey();
     const openLoops: { kind: 'deal' | 'meeting'; name: string; date: string; dealId?: string }[] = [
       ...deals
         .filter(d => d.stage !== 'closed_won' && d.stage !== 'closed_lost' && d.followup_date && d.followup_date < todayStr)

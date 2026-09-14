@@ -58,7 +58,7 @@ const ACTION_RESOLUTION_OPTIONS: Array<{ value: CloseActionResolution; label: st
 export default function ExitDealModal({ deal, kind, onCancel, onConfirm }: ExitDealModalProps) {
   const [closeDate, setCloseDate] = useState(deal.close_date || todayKey());
   const [wonNote, setWonNote] = useState(deal.won_note || '');
-  const [value, setValue] = useState(deal.value != null ? String(deal.value) : '');
+  const [value, setValue] = useState('');
   const [lostReason, setLostReason] = useState<LostReason | ''>('');
   const [revisitDate, setRevisitDate] = useState(deal.followup_date || '');
   const [parkWhy, setParkWhy] = useState(deal.park_reason || '');
@@ -112,6 +112,9 @@ export default function ExitDealModal({ deal, kind, onCancel, onConfirm }: ExitD
       });
     } catch (e: any) {
       setError('Could not save: ' + (e.message || 'Unknown error'));
+    } finally {
+      // The modal owns its own saving state: a handler that returns early (a rejected close, for
+      // example) must not leave this dialog stuck on a spinner.
       setSaving(false);
     }
   };
@@ -162,13 +165,20 @@ export default function ExitDealModal({ deal, kind, onCancel, onConfirm }: ExitD
                   inputMode="decimal"
                   value={value}
                   onChange={e => setValue(e.target.value)}
-                  placeholder="e.g. 50000"
+                  placeholder="Leave blank if there is no order yet"
                   className="w-full mt-1 px-3 py-3 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg text-sm text-clay-ink"
                 />
                 <span className="mt-1 block text-[11px] text-clay-muted">
-                  Leave it blank if you do not know it yet — blank stays unknown and records no sale.
+                  Blank stays unknown and records no sale. This field starts empty on purpose: a pipeline
+                  estimate is not an order.
                 </span>
               </label>
+              {deal.value != null && (
+                <p data-close-pipeline-estimate className="text-[11px] text-clay-muted">
+                  Pipeline estimate on the deal: ฿{Number(deal.value).toLocaleString('en-US')} — unchanged, and not
+                  recorded as an order unless you type an order value above.
+                </p>
+              )}
 
               <div className="space-y-2 rounded-lg border border-clay-hairline bg-clay-surface p-3">
                 <div>

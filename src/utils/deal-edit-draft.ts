@@ -128,8 +128,12 @@ export function buildDealEditPayload({
     payload.stage = stageFromWorkflow(target, deal.stage);
     // Nudges are derived; the stored column is legacy and is cleared only by a real lane move.
     payload.nudge_stage = null;
-    const sampleStatus = (draft.sample_status as SampleStatus) || null;
-    if (target === 'sample' || target === 'testing') payload.sample_status = sampleStatus;
+  }
+
+  // Sample status is a field the user can edit WITHOUT moving the lane (the select is shown for
+  // the sample/testing lanes), so it is written on an edit of its own — not only on a lane change.
+  if ((laneChanged && (draft.workflow_action === 'sample' || draft.workflow_action === 'testing')) || touched('sample_status')) {
+    payload.sample_status = (draft.sample_status as SampleStatus) || null;
   }
 
   if (touched('next_action')) payload.next_action = draft.next_action.trim() ? draft.next_action : null;

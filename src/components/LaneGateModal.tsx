@@ -43,7 +43,7 @@ const OUTCOME_OPTIONS: Array<{ value: NonNullable<Meeting['outcome']>; label: st
   { value: 'positive', label: 'Positive', cls: 'border-clay-success/30 bg-clay-success/10 text-clay-success' },
   { value: 'neutral', label: 'Neutral', cls: 'border-clay-hairline bg-clay-card text-clay-body' },
   { value: 'negative', label: 'Negative', cls: 'border-clay-error/30 bg-clay-error/10 text-clay-error' },
-  { value: 'no_response', label: 'No response', cls: 'border-clay-ochre/30 bg-clay-ochre/10 text-clay-ochre' },
+  { value: 'no_response', label: 'No response yet', cls: 'border-clay-ochre/30 bg-clay-ochre/10 text-clay-ochre' },
 ];
 
 export default function LaneGateModal({ deal, targetLane, contacts = [], companies = [], onCancel, onConfirm }: LaneGateModalProps) {
@@ -292,6 +292,9 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
               </div>
               <div>
                 {fieldLabel('Client response (optional)', false)}
+                <p className="mt-1 text-[10px] text-clay-muted">
+                  Leave this as “No response yet” when nothing has come back — that records the outreach and waiting, not a reply.
+                </p>
                 <div className="grid grid-cols-2 gap-2 mt-2">
                   {OUTCOME_OPTIONS.map(opt => (
                     <button

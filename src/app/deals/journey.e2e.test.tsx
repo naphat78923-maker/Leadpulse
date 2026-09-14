@@ -285,6 +285,8 @@ describe('end-to-end journey on synthetic fixtures', () => {
   });
 
   it('records a sale signal only when an explicit order value was given', async () => {
+    // The deal carries a pipeline estimate. It must NOT become an order value by default.
+    store.state.deals = [freshDeal({ value: 50000 })];
     render(
       <CrmProvider>
         <Harness />
@@ -294,12 +296,36 @@ describe('end-to-end journey on synthetic fixtures', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Won/i }));
     await screen.findByText(/This deal's current action/i);
-    fireEvent.change(screen.getByPlaceholderText('e.g. 50000'), { target: { value: '42000' } });
+
+    const orderValue = screen.getByPlaceholderText(/Leave blank if there is no order yet/i) as HTMLInputElement;
+    expect(orderValue.value).toBe('');
+    expect(screen.getByText(/Pipeline estimate on the deal: ฿50,000/)).toBeTruthy();
+
+    fireEvent.change(orderValue, { target: { value: '42000' } });
     fireEvent.click(screen.getByRole('button', { name: /^Mark won$/ }));
 
     await waitFor(() => expect(store.state.accountEvents).toHaveLength(1));
     expect(store.state.accountEvents[0]).toMatchObject({ company_id: 'company-1', amount: 42000 });
     expect(persist(store.state as any).value).toBe(42000);
+  });
+
+  it('does not turn a pipeline estimate into an order when the field is left alone', async () => {
+    store.state.deals = [freshDeal({ value: 50000 })];
+    render(
+      <CrmProvider>
+        <Harness />
+      </CrmProvider>
+    );
+    await screen.findByText('ACTION LANE');
+
+    fireEvent.click(screen.getByRole('button', { name: /Won/i }));
+    await screen.findByText(/This deal's current action/i);
+    fireEvent.click(screen.getByRole('button', { name: /^Mark won$/ }));
+
+    await waitFor(() => expect(persist(store.state as any).stage).toBe('closed_won'));
+    // No order was asserted, so no sale signal — and the estimate is left as it was.
+    expect(store.state.accountEvents).toHaveLength(0);
+    expect(persist(store.state as any).value).toBe(50000);
   });
 
   it('keeps the current action when the user chooses to, and never drops it silently', async () => {
