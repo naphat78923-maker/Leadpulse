@@ -27,10 +27,10 @@ import {
   detectDraftConflicts,
   isEmptyPayload,
   mergeDraft,
-  timestampedEntry,
   type DealEditDraft,
   type DealEditField,
 } from '@/utils/deal-edit-draft';
+import { buildCloseUpdate } from '@/utils/deal-close';
 import { outreachLanguageLabel, outreachLanguageBadgeColor, outreachLanguageBasisLabel } from '@/utils/contact-identity';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
@@ -44,11 +44,6 @@ interface DealDetailProps {
   deal: Deal;
   onClose: () => void;
   onSaved: () => void;
-}
-
-function appendOutcome(existing: string, entry?: string) {
-  if (!entry) return existing;
-  return existing ? `${existing}\n---\n${entry}` : entry;
 }
 
 function isPassiveNextAction(value?: string | null) {
@@ -219,89 +214,58 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
 
   const handleExitConfirm = async (payload: ExitDealPayload) => {
     const before = beforeSnapshot();
+    const { updates, error: closeError, recordOrderAmount } = buildCloseUpdate(deal, {
+      kind: payload.kind,
+      close_date: payload.close_date,
+      won_note: payload.won_note,
+      value: payload.value,
+      lost_reason: payload.lost_reason,
+      followup_date: payload.followup_date,
+      park_reason: payload.park_reason,
+      action: payload.action ?? null,
+    });
+    if (closeError) {
+      setError(closeError);
+      return;
+    }
+
     setSaving(true);
     setError(null);
     try {
-      if (payload.kind === 'won') {
-        const note = payload.won_note ? ` — ${payload.won_note}` : '';
-        const updates: Partial<Deal> = {
-          stage: 'closed_won',
-          workflow_action: 'success',
-          followup_date: null,
-          close_date: payload.close_date || null,
-          won_note: payload.won_note || null,
-          nudge_stage: null,
-          last_outcome: appendOutcome(
-            deal.last_outcome || '',
-            timestampedEntry(`🎉 Marked won${note}`)
-          ),
-        };
-        if (payload.value != null) updates.value = payload.value;
-        await crm.updateDeal(deal.id, updates);
-        if (deal.company_id) {
-          try {
-            await crm.createAccountEvent({
-              company_id: deal.company_id,
-              event_date: payload.close_date || localDateKey(),
-              amount: Number(payload.value ?? deal.value) > 0 ? Number(payload.value ?? deal.value) : 0,
-              product_line: deal.product || null,
-              order_id: `deal_${deal.id}`,
-            });
-          } catch (eventErr) {
-            console.error('Sale recorded for pipeline but not for signals:', eventErr);
-          }
+      await crm.updateDeal(deal.id, updates);
+
+      // A sale signal is written ONLY when an explicit positive order value was given.
+      // A blank value stays unknown: no order row is manufactured for the pipeline.
+      if (payload.kind === 'won' && deal.company_id && recordOrderAmount != null) {
+        try {
+          await crm.createAccountEvent({
+            company_id: deal.company_id,
+            event_date: payload.close_date || localDateKey(),
+            amount: recordOrderAmount,
+            product_line: deal.product || null,
+            order_id: `deal_${deal.id}`,
+          });
+        } catch (eventErr) {
+          console.error('Sale recorded for pipeline but not for signals:', eventErr);
         }
-        logActivity({
-          type: 'edit',
-          entity: 'deal',
-          entityId: deal.id,
-          label: '🎉 Marked won',
-          description: `${dealClientName(deal, companies, contacts)} closed as won`,
-          undoPayload: before,
-        });
-        addToast('Deal marked won');
-      } else if (payload.kind === 'lost') {
-        await crm.updateDeal(deal.id, {
-          stage: 'closed_lost',
-          workflow_action: 'parked',
-          followup_date: null,
-          lost_reason: payload.lost_reason || null,
-          nudge_stage: null,
-          last_outcome: appendOutcome(
-            deal.last_outcome || '',
-            timestampedEntry(`📉 Marked lost — ${payload.lost_reason}`)
-          ),
-        });
-        logActivity({
-          type: 'edit',
-          entity: 'deal',
-          entityId: deal.id,
-          label: '📉 Marked lost',
-          description: `${dealClientName(deal, companies, contacts)} closed as lost (${payload.lost_reason})`,
-          undoPayload: before,
-        });
-        addToast('Deal marked lost');
-      } else {
-        await crm.updateDeal(deal.id, {
-          workflow_action: 'parked',
-          followup_date: payload.followup_date || null,
-          park_reason: payload.park_reason || null,
-          nudge_stage: null,
-          last_outcome: appendOutcome(
-            deal.last_outcome || '',
-            timestampedEntry(`⏸ Parked — ${payload.park_reason}`)
-          ),
-        });
-        logActivity({
-          type: 'edit',
-          entity: 'deal',
-          entityId: deal.id,
-          label: '⏸ Parked',
-          description: `${dealClientName(deal, companies, contacts)} parked until ${payload.followup_date}`,
-          undoPayload: before,
-        });
-        addToast('Deal parked');
       }
+
+      const exitCopy =
+        payload.kind === 'won'
+          ? { label: '🎉 Marked won', description: `${dealClientName(deal, companies, contacts)} marked won`, toast: 'Deal marked won' }
+          : payload.kind === 'lost'
+            ? { label: '📉 Marked lost', description: `${dealClientName(deal, companies, contacts)} marked lost (${payload.lost_reason})`, toast: 'Deal marked lost' }
+            : { label: '⏸ Parked', description: `${dealClientName(deal, companies, contacts)} parked until ${payload.followup_date}`, toast: 'Deal parked' };
+
+      logActivity({
+        type: 'edit',
+        entity: 'deal',
+        entityId: deal.id,
+        label: exitCopy.label,
+        description: exitCopy.description,
+        undoPayload: before,
+      });
+      addToast(exitCopy.toast);
       setUndoSnapshot(before);
       setExitKind(null);
       onSaved();

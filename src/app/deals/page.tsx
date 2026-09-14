@@ -35,6 +35,7 @@ import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import { BoardAttentionFilter, dealNeedsReview, reviewReasons, REVIEW_LABEL, buildReviewReport, buildReviewFix, filterAndSortBoardDeals, findDealsMatchingSearch, getDoNowCounts, localDateKey } from '@/utils/deal-board';
 import type { DealCardPrimaryAction as DealCardPrimaryActionSpec } from '@/utils/deal-card';
+import { buildCloseUpdate } from '@/utils/deal-close';
 import { buildDealCardPresentation } from '@/utils/deal-card';
 import { PageTransition, HexFace, StaggerList, StaggerItem } from '@/components/motion';
 import { EASE_OUT, pressScale, springPress, tweenBase } from '@/lib/motion';
@@ -970,21 +971,25 @@ export default function DealsPage() {
               park_reason: d.park_reason || null,
             };
             if (payload.kind === 'won') {
-              await crm.updateDeal(d.id, {
-                stage: 'closed_won',
-                workflow_action: 'success',
-                followup_date: null,
-                close_date: payload.close_date || null,
-                won_note: payload.won_note || null,
-                value: payload.value != null ? payload.value : d.value,
-                nudge_stage: null,
+              const close = buildCloseUpdate(d, {
+                kind: 'won',
+                close_date: payload.close_date,
+                won_note: payload.won_note,
+                value: payload.value,
+                action: payload.action ?? null,
               });
-              if (d.company_id) {
+              if (close.error) {
+                addToast(close.error, 'error');
+                return;
+              }
+              await crm.updateDeal(d.id, close.updates);
+              // No order value, no sale signal: a blank value stays unknown.
+              if (d.company_id && close.recordOrderAmount != null) {
                 try {
                   await crm.createAccountEvent({
                     company_id: d.company_id,
                     event_date: payload.close_date || todayStr,
-                    amount: Number(payload.value ?? d.value) > 0 ? Number(payload.value ?? d.value) : 0,
+                    amount: close.recordOrderAmount,
                     product_line: d.product || null,
                     order_id: `deal_${d.id}`,
                   });
@@ -992,25 +997,20 @@ export default function DealsPage() {
                   console.error(e);
                 }
               }
-              logActivity({ type: 'edit', entity: 'deal', entityId: d.id, label: '🎉 Marked won', description: `${d.client} closed as won`, undoPayload: before });
+              logActivity({ type: 'edit', entity: 'deal', entityId: d.id, label: '🎉 Marked won', description: `${d.client} marked won`, undoPayload: before });
               addToast('Deal marked won');
             } else if (payload.kind === 'lost') {
-              await crm.updateDeal(d.id, {
-                stage: 'closed_lost',
-                workflow_action: 'parked',
-                followup_date: null,
-                lost_reason: payload.lost_reason || null,
-                nudge_stage: null,
-              });
-              logActivity({ type: 'edit', entity: 'deal', entityId: d.id, label: '📉 Marked lost', description: `${d.client} closed as lost`, undoPayload: before });
+              const close = buildCloseUpdate(d, { kind: 'lost', lost_reason: payload.lost_reason });
+              await crm.updateDeal(d.id, close.updates);
+              logActivity({ type: 'edit', entity: 'deal', entityId: d.id, label: '📉 Marked lost', description: `${d.client} marked lost`, undoPayload: before });
               addToast('Deal marked lost');
             } else {
-              await crm.updateDeal(d.id, {
-                workflow_action: 'parked',
-                followup_date: payload.followup_date || null,
-                park_reason: payload.park_reason || null,
-                nudge_stage: null,
+              const close = buildCloseUpdate(d, {
+                kind: 'park',
+                park_reason: payload.park_reason,
+                followup_date: payload.followup_date,
               });
+              await crm.updateDeal(d.id, close.updates);
               logActivity({ type: 'edit', entity: 'deal', entityId: d.id, label: '⏸ Parked', description: `${d.client} parked`, undoPayload: before });
               addToast('Deal parked');
             }

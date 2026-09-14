@@ -1,3 +1,5 @@
+import { businessDateKey } from '@/utils/business-time';
+
 export const LOST_REASON_OPTIONS = [
   { value: 'price', label: 'Price' },
   { value: 'taste', label: 'Taste' },
@@ -10,6 +12,6 @@ export const LOST_REASON_OPTIONS = [
 export type LostReason = (typeof LOST_REASON_OPTIONS)[number]['value'];
 
 export function localDateKeySafe() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  // Business calendar, not the device's: a close date must agree with the board's day.
+  return businessDateKey();
 }

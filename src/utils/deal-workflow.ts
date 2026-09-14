@@ -77,7 +77,8 @@ export const EXIT_WORKFLOW_META: Record<'parked' | 'success', WorkflowLane> = {
     icon: '🎉',
     label: 'Won',
     shortLabel: 'Won',
-    description: 'Closed won — first order recorded.',
+    // An opportunity outcome only. Never a claim of an order, a delivery, or payment received.
+    description: 'Marked won — not an order, delivery, or payment.',
     className: 'border-clay-teal/30 bg-clay-mint/10',
   },
 };
