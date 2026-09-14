@@ -79,6 +79,8 @@ export type DealWorkflowAction =
 
 export type NudgeStage = 'warm' | 'remind' | 'firm' | 'parking';
 export type SampleStatus = 'sent' | 'received';
+/** Payment state of a test/order. 'unknown' is a valid, honest value — never a gap to fill. */
+export type CompStatus = 'paid' | 'comped' | 'unknown';
 export type Value_type = 'estimated' | 'committed' | 'unknown';
 
 export interface ReshipEntry {
@@ -104,6 +106,15 @@ export interface Deal {
   workflow_action?: DealWorkflowAction | null;
   nudge_stage?: NudgeStage | null;
   sample_status?: SampleStatus | null;
+  /**
+   * Payment state of the test/order. PROPOSED schema
+   * (`supabase/migrations/20260914_add_deal_comp_status.sql`) — deliberately NOT
+   * applied, so this is absent on every live row. 'unknown' is the honest
+   * default, and it is never inferred from order value or `is_zero_value`.
+   */
+  comp_status?: CompStatus | null;
+  /** Date the paid test was recorded against. Same migration, also not applied. */
+  paid_test_date?: string | null;
   /** Exit metadata — not journey lanes */
   lost_reason?: 'price' | 'taste' | 'timing' | 'vendor_list' | 'no_reply' | 'other' | null;
   park_reason?: string | null;

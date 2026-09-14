@@ -1,4 +1,7 @@
-import { Deal, DealWorkflowAction, NudgeStage, SampleStatus } from '@/types/crm';
+// Type-only: the Node-run report scripts load this module directly, and a value
+// import of types fails at runtime (types have no runtime export). See
+// retentionCadence.ts for the same convention.
+import type { Deal, DealWorkflowAction, NudgeStage, SampleStatus } from '@/types/crm';
 
 export interface WorkflowLane {
   id: DealWorkflowAction;
