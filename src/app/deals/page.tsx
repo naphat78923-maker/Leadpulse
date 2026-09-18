@@ -392,8 +392,9 @@ export default function DealsPage() {
             'w-full text-left bg-white dark:bg-clay-card rounded-xl border touch-manipulation',
             isCompact ? 'p-2.5' : 'p-3',
             'border-clay-hairline',
-            due === 'overdue' && 'border-l-2 border-l-clay-error',
-            due === 'today' && 'border-l-2 border-l-clay-ochre'
+            deal.priority === 'high' && 'border-l-[3px] border-l-clay-error',
+            deal.priority === 'medium' && 'border-l-[3px] border-l-clay-ochre',
+            deal.priority === 'low' && 'border-l-[3px] border-l-clay-muted-soft',
           )}
         >
           <DealCardContent
@@ -488,9 +489,9 @@ export default function DealsPage() {
                     'shrink-0 min-h-[44px] rounded-xl border px-3 text-sm font-medium transition-colors',
                     attentionFilter === value
                       ? value === 'overdue'
-                        ? 'border-clay-error bg-clay-error/10 text-clay-error'
+                        ? 'border-clay-error bg-clay-error/20 text-clay-error-strong dark:bg-clay-error/10 dark:text-clay-error'
                         : value === 'today'
-                          ? 'border-clay-ochre bg-clay-ochre/10 text-clay-ochre'
+                          ? 'border-clay-ochre bg-clay-ochre/20 text-clay-warning-strong dark:bg-clay-ochre/10 dark:text-clay-ochre'
                           : 'border-clay-lavender bg-clay-lavender/20 text-clay-ink'
                       : 'border-clay-hairline bg-clay-card text-clay-muted'
                   )}

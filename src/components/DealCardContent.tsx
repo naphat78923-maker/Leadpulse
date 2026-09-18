@@ -129,8 +129,8 @@ export default function DealCardContent({
             <span
               className={clsx(
                 'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap',
-                timing.tone === 'overdue' && 'bg-clay-error/10 text-clay-error',
-                timing.tone === 'today' && 'bg-clay-ochre/15 text-clay-ochre',
+                timing.tone === 'overdue' && 'bg-clay-error/20 text-clay-error-strong dark:bg-clay-error/10 dark:text-clay-error',
+                timing.tone === 'today' && 'bg-clay-ochre/20 text-clay-warning-strong dark:bg-clay-ochre/10 dark:text-clay-ochre',
                 timing.tone === 'scheduled' && 'bg-clay-lavender/12 text-clay-lavender',
                 timing.tone === 'none' && 'bg-clay-card text-clay-muted-soft'
               )}

@@ -50,14 +50,19 @@
   --color-clay-teal: #2a5a5a;
   --color-clay-lavender: #b8a4ed;
   --color-clay-peach: #f2b48c;
-  --color-clay-ochre: #eec35a;   /* butter yellow — attention */
+  --color-clay-ochre: #c49010;   /* butter yellow — attention */
   --color-clay-mint: #7fc9a8;    /* mint — progress */
   --color-clay-coral: #e0766a;
 
   /* Semantic — tomato red only for true danger */
   --color-clay-success: #3daf7a;
   --color-clay-warning: #eec35a;
-  --color-clay-error: #d9543f;
+  --color-clay-error: #b5342a;
+
+  /* Status chips — strong variants for light-mode contrast */
+  --color-clay-error-strong: #b91c1c;
+  --color-clay-warning-strong: #92400e;
+  --color-clay-ochre-strong: #92400e;
 
   /* Spacing */
   --spacing-clay-xs: 8px;
