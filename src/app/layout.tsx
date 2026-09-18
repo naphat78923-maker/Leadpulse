@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter, Lustria, DM_Sans, Martian_Mono } from 'next/font/google';
 import './globals.css';
 import Sidebar from '@/components/Sidebar';
@@ -31,6 +31,24 @@ const martianMono = Martian_Mono({
 export const metadata: Metadata = {
   title: 'LeadPulse CRM — VG Saveur',
   description: 'B2B butter sales CRM. Four connected databases: Contacts, Companies, Deal Pipeline, Meetings.',
+  applicationName: 'LeadPulse',
+  // Home-screen install: without this, iOS opens the bookmark as a browser tab
+  // with browser chrome instead of a standalone app.
+  appleWebApp: {
+    capable: true,
+    title: 'LeadPulse',
+    statusBarStyle: 'default',
+  },
+  other: {
+    // Next 16 does not emit this from appleWebApp.capable, and iOS before 16.4
+    // only honours the legacy tag — without it those versions open a browser tab.
+    'apple-mobile-web-app-capable': 'yes',
+  },
+};
+
+// Matches --color-clay-canvas so the standalone status bar blends with the app.
+export const viewport: Viewport = {
+  themeColor: '#fdf6e9',
 };
 
 export default function RootLayout({
