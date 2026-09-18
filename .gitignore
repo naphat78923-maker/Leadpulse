@@ -37,3 +37,15 @@ supabase/.temp
 # typescript
 *.tsbuildinfo
 .env*
+
+# report artefacts — live customer data (names, ids, contact routes, amounts).
+# Never commit. Note .hermes/ is only PARTIALLY ignored: design-briefs/ and
+# plans/*.md are tracked, so ignore the reports directory by its exact path.
+.hermes/reports/
+
+# private upstream plan — this one file names live customer records, so it must not be
+# committed. Not a blanket plans rule: other plans are de-identified and commit-ready.
+.hermes/plans/2026-09-11-leadpulse-intelligence-upstream-slices.md
+
+# local agent worktrees
+/.worktrees/
