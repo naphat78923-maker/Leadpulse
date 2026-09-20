@@ -21,6 +21,7 @@ interface StoreState {
   accountEvents: Array<{ company_id: string; event_date: string; amount: number; product_line: string | null; order_id: string | null }>;
   activities: unknown[];
   failNextDealWrite: Error | null;
+  closeDealCalls: number;
   nextId: number;
 }
 
@@ -33,6 +34,7 @@ const store = vi.hoisted(() => {
     accountEvents: [] as any[],
     activities: [] as any[],
     failNextDealWrite: null as Error | null,
+    closeDealCalls: 0,
     nextId: 1,
   };
   const id = (prefix: string) => `${prefix}-${state.nextId++}`;
@@ -92,6 +94,31 @@ const store = vi.hoisted(() => {
       return row;
     },
     // Mirrors the real contract: a version-checked write, safe to retry when it already applied.
+    closeDealWithOrderIfUnchanged: async ({ dealId, expectedUpdatedAt, updates, order }: any) => {
+      state.closeDealCalls++;
+      const row = state.deals.find((d: any) => d.id === dealId);
+      if (!row) throw new Error('deal not found');
+      if (row.updated_at !== expectedUpdatedAt) throw new Error('This deal changed while the interaction was saving. Review its current lane before trying again.');
+      Object.assign(row, updates, { updated_at: now() });
+      if (order) {
+        state.accountEvents.push({
+          company_id: order.companyId,
+          event_date: order.eventDate,
+          amount: order.amount,
+          product_line: order.productLine,
+          order_id: `deal_${dealId}`,
+        });
+      }
+      return row;
+    },
+    recordOrderForClosedDeal: async (dealId: string, order: any) => {
+      const orderId = `deal_${dealId}`;
+      const existing = state.accountEvents.find(event => event.order_id === orderId);
+      if (existing) return existing;
+      const event = { company_id: order.companyId, event_date: order.eventDate, amount: order.amount, product_line: order.productLine, order_id: orderId };
+      state.accountEvents.push(event);
+      return event;
+    },
     updateDealIfUnchanged: async (dealId: string, expectedUpdatedAt: string, updates: any) => {
       if (state.failNextDealWrite) {
         const err = state.failNextDealWrite;
@@ -216,6 +243,7 @@ describe('end-to-end journey on synthetic fixtures', () => {
     store.state.accountEvents = [];
     store.state.activities = [];
     store.state.failNextDealWrite = null;
+    store.state.closeDealCalls = 0;
     store.state.nextId = 1;
     addToast.mockReset();
   });
@@ -305,6 +333,7 @@ describe('end-to-end journey on synthetic fixtures', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Mark won$/ }));
 
     await waitFor(() => expect(store.state.accountEvents).toHaveLength(1));
+    expect(store.state.closeDealCalls).toBe(1);
     expect(store.state.accountEvents[0]).toMatchObject({ company_id: 'company-1', amount: 42000 });
     expect(persist(store.state as any).value).toBe(42000);
   });

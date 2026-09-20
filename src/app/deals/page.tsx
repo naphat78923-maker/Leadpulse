@@ -964,26 +964,42 @@ export default function DealsPage() {
                 addToast(close.error, 'error');
                 return;
               }
-              await crm.updateDeal(d.id, close.updates);
-              // No order value, no sale signal: a blank value stays unknown.
-              if (d.company_id && close.recordOrderAmount != null) {
-                try {
-                  await crm.createAccountEvent({
-                    company_id: d.company_id,
-                    event_date: payload.close_date || todayStr,
-                    amount: close.recordOrderAmount,
-                    product_line: d.product || null,
-                    order_id: `deal_${d.id}`,
+              try {
+                await crm.closeDealWithOrderIfUnchanged({
+                  dealId: d.id,
+                  expectedUpdatedAt: d.updated_at,
+                  updates: close.updates,
+                  order: d.company_id && close.recordOrderAmount != null
+                    ? {
+                        companyId: d.company_id,
+                        eventDate: payload.close_date || todayStr,
+                        amount: close.recordOrderAmount,
+                        productLine: d.product || null,
+                      }
+                    : null,
+                });
+              } catch (error) {
+                if (error instanceof crm.OrderRecordPendingError) {
+                  logActivity({ type: 'edit', entity: 'deal', entityId: d.id, label: '🎉 Marked won', description: `${d.client} marked won; order record pending retry`, undoPayload: before });
+                  addToast('Deal marked won; order record needs retry.', 'error', {
+                    label: 'Retry',
+                    onClick: () => {
+                      void crm.recordOrderForClosedDeal(d.id, error.order)
+                        .then(() => addToast('Order record saved'))
+                        .catch(() => addToast('Order record still needs retry.', 'error'));
+                    },
                   });
-                } catch (e) {
-                  console.error(e);
+                  setExitModal(null);
+                  await refresh();
+                  return;
                 }
+                throw error;
               }
               logActivity({ type: 'edit', entity: 'deal', entityId: d.id, label: '🎉 Marked won', description: `${d.client} marked won`, undoPayload: before });
               addToast('Deal marked won');
             } else if (payload.kind === 'lost') {
               const close = buildCloseUpdate(d, { kind: 'lost', lost_reason: payload.lost_reason });
-              await crm.updateDeal(d.id, close.updates);
+              await crm.updateDealIfUnchanged(d.id, d.updated_at, close.updates);
               logActivity({ type: 'edit', entity: 'deal', entityId: d.id, label: '📉 Marked lost', description: `${d.client} marked lost`, undoPayload: before });
               addToast('Deal marked lost');
             } else {
@@ -992,7 +1008,7 @@ export default function DealsPage() {
                 park_reason: payload.park_reason,
                 followup_date: payload.followup_date,
               });
-              await crm.updateDeal(d.id, close.updates);
+              await crm.updateDealIfUnchanged(d.id, d.updated_at, close.updates);
               logActivity({ type: 'edit', entity: 'deal', entityId: d.id, label: '⏸ Parked', description: `${d.client} parked`, undoPayload: before });
               addToast('Deal parked');
             }

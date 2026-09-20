@@ -6,8 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Meeting, MEETING_TYPE_LABELS, Company, Contact, Deal } from '@/types/crm';
 import { useCrm, ActivityEntry } from '@/components/CrmProvider';
 import { WORKFLOW_LANES, getWorkflowAction } from '@/utils/deal-workflow';
-import { localDateKey } from '@/utils/deal-board';
-import { bangkokDateKey } from '@/utils/format';
+import { businessDateKey, businessDateKeysEndingAt, businessDaysBetween } from '@/utils/business-time';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import CompanyDetail from '@/components/CompanyDetail';
 import ContactDetail from '@/components/ContactDetail';
@@ -59,15 +58,16 @@ const meetingIconColor = (type: Meeting['type']) => {
   }
 };
 
-const dayMs = 86400000;
-const toTs = (date: string) => new Date(`${date}T12:00:00`).getTime();
-const daysSince = (ts: number) => Math.floor((Date.now() - ts) / dayMs);
+const toTs = (date: string) => Date.parse(`${date}T12:00:00+07:00`);
+const daysSince = (ts: number, todayKey: string) => businessDaysBetween(businessDateKey(new Date(ts)), todayKey);
 
 export default function ActivityPage() {
   const router = useRouter();
   const { meetings, contacts, companies, deals, activities, loading, addMeeting, undoActivity, refresh } = useCrm();
 
   const [tab, setTab] = useState<'timeline' | 'radar'>('timeline');
+  const [now] = useState(() => new Date());
+  const todayKey = businessDateKey(now);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [range, setRange] = useState<'all' | 'today' | '7d' | '30d'>('all');
@@ -87,28 +87,25 @@ export default function ActivityPage() {
 
   /* ─── Pulse: 7-day touchpoint stats ─── */
   const pulse = useMemo(() => {
-    const start = Date.now() - 7 * dayMs;
-    const inWeek = meetings.filter(m => toTs(m.date) >= start);
+    const dateKeys = businessDateKeysEndingAt(now, 7);
+    const dateKeySet = new Set(dateKeys);
+    const inWeek = meetings.filter(meeting => dateKeySet.has(meeting.date));
     const byType: Record<string, number> = { call: 0, email: 0, dm: 0, meeting: 0, sample_sent: 0, nudge: 0, note: 0 };
     const outcomes: Record<string, number> = { positive: 0, neutral: 0, negative: 0, no_response: 0 };
     inWeek.forEach(m => {
       if (byType[m.type] !== undefined) byType[m.type]++;
       if (m.outcome) outcomes[m.outcome] = (outcomes[m.outcome] || 0) + 1;
     });
-    const days: { label: string; count: number; isToday: boolean }[] = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setHours(0, 0, 0, 0);
-      d.setDate(d.getDate() - i);
-      const key = bangkokDateKey(d);
-      days.push({
-        label: d.toLocaleDateString('en-US', { weekday: 'short' }),
-        count: inWeek.filter(m => m.date === key).length,
-        isToday: i === 0,
-      });
-    }
+    const days = dateKeys.map(key => ({
+      label: new Date(`${key}T12:00:00+07:00`).toLocaleDateString('en-US', {
+        weekday: 'short',
+        timeZone: 'Asia/Bangkok',
+      }),
+      count: inWeek.filter(meeting => meeting.date === key).length,
+      isToday: key === todayKey,
+    }));
     return { byType, outcomes, days, total: inWeek.length, outcomeTotal: Object.values(outcomes).reduce((a, b) => a + b, 0) };
-  }, [meetings]);
+  }, [meetings, now, todayKey]);
 
   const typeStats = [
     { key: 'call', label: 'Calls', icon: <Phone className="w-3.5 h-3.5" />, cls: 'bg-clay-mint/20 text-clay-teal' },
@@ -187,7 +184,7 @@ export default function ActivityPage() {
     const coldAccounts = companies
       .filter(c => c.status === 'prospect' || c.status === 'active_customer')
       .map(c => ({ company: c, lastTouch: companyLastTouch[c.id] || 0 }))
-      .filter(x => x.lastTouch === 0 || daysSince(x.lastTouch) > 14)
+      .filter(x => x.lastTouch === 0 || daysSince(x.lastTouch, todayKey) > 14)
       .sort((a, b) => a.lastTouch - b.lastTouch)
       .slice(0, 6);
 
@@ -199,7 +196,7 @@ export default function ActivityPage() {
       .filter(c => !touchedContactIds.has(c.id) && !c.last_contacted_date)
       .slice(0, 6);
 
-    const todayStr = localDateKey();
+    const todayStr = todayKey;
     const openLoops: { kind: 'deal' | 'meeting'; name: string; date: string; dealId?: string }[] = [
       ...deals
         .filter(d => d.stage !== 'closed_won' && d.stage !== 'closed_lost' && d.followup_date && d.followup_date < todayStr)
@@ -223,13 +220,13 @@ export default function ActivityPage() {
     const stuckDeals = deals
       .filter(d => d.stage !== 'closed_won' && d.stage !== 'closed_lost')
       .map(d => ({ deal: d, lastTouch: dealLastTouch[d.id] || 0 }))
-      .filter(x => x.lastTouch === 0 || daysSince(x.lastTouch) > 14)
+      .filter(x => x.lastTouch === 0 || daysSince(x.lastTouch, todayKey) > 14)
       .sort((a, b) => a.lastTouch - b.lastTouch)
       .slice(0, 6);
 
     const total = coldAccounts.length + neverContacted.length + openLoops.length + stuckDeals.length;
     return { coldAccounts, neverContacted, openLoops, stuckDeals, total };
-  }, [meetings, contacts, companies, deals, activities]);
+  }, [meetings, contacts, companies, deals, activities, todayKey]);
 
   /* ─── Timeline items ─── */
   const items: TimelineItem[] = useMemo(() => {
@@ -249,15 +246,22 @@ export default function ActivityPage() {
   }, [meetings, activities]);
 
   const filtered = useMemo(() => {
-    const now = Date.now();
     const q = search.toLowerCase();
+    const rangeStartKey = range === '7d'
+      ? businessDateKeysEndingAt(now, 7)[0]
+      : range === '30d'
+        ? businessDateKeysEndingAt(now, 30)[0]
+        : null;
+    const isInRange = (dateKey: string) => {
+      if (range === 'all') return true;
+      if (range === 'today') return dateKey === todayKey;
+      return !rangeStartKey || dateKey >= rangeStartKey;
+    };
 
     return items.filter(item => {
       if (item.kind === 'event') {
         if (typeFilter !== 'all' && typeFilter !== 'system') return false;
-        if (range === 'today' && item.ts < new Date().setHours(0, 0, 0, 0)) return false;
-        if (range === '7d' && item.ts < now - 7 * dayMs) return false;
-        if (range === '30d' && item.ts < now - 30 * dayMs) return false;
+        if (!isInRange(businessDateKey(new Date(item.ts)))) return false;
         if (q) {
           const hay = `${item.event.label} ${item.event.description || ''}`.toLowerCase();
           return hay.includes(q);
@@ -267,9 +271,7 @@ export default function ActivityPage() {
       const m = item.meeting;
       if (typeFilter === 'system') return false;
       if (typeFilter !== 'all' && m.type !== typeFilter) return false;
-      if (range === 'today' && toTs(m.date) < new Date().setHours(0, 0, 0, 0)) return false;
-      if (range === '7d' && item.ts < now - 7 * dayMs) return false;
-      if (range === '30d' && item.ts < now - 30 * dayMs) return false;
+      if (!isInRange(m.date)) return false;
       if (q) {
         const contactNames = (m.contact_ids || []).map(contactName).filter(Boolean).join(' ');
         const companyName = companyFor(m.company_id)?.name || '';
@@ -278,13 +280,18 @@ export default function ActivityPage() {
       }
       return true;
     });
-  }, [items, search, typeFilter, range]);
+  }, [items, search, typeFilter, range, now, todayKey]);
 
   const grouped = useMemo(() => {
     const groups: Record<string, TimelineItem[]> = {};
     filtered.forEach(item => {
       const date = new Date(item.ts);
-      const key = date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+      const key = date.toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'short',
+        day: 'numeric',
+        timeZone: 'Asia/Bangkok',
+      });
       if (!groups[key]) groups[key] = [];
       groups[key].push(item);
     });
@@ -302,7 +309,12 @@ export default function ActivityPage() {
     );
   }
 
-  const fmtTime = (ts: number) => new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const fmtTime = (ts: number) => new Date(ts).toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'Asia/Bangkok',
+  });
 
   return (
     <div className="p-4 md:p-6 max-w-6xl pb-20 lg:pb-6">
@@ -502,7 +514,7 @@ export default function ActivityPage() {
               <p className="text-xs text-clay-muted py-3 text-center">Every account is warm. 🔥</p>
             ) : (
               radar.coldAccounts.map(({ company, lastTouch }) => {
-                const days = lastTouch === 0 ? null : daysSince(lastTouch);
+                const days = lastTouch === 0 ? null : daysSince(lastTouch, todayKey);
                 const frozen = lastTouch === 0 || (days !== null && days > 30);
                 return (
                   <div key={company.id} className="flex items-center gap-1">
@@ -622,7 +634,7 @@ export default function ActivityPage() {
                       <span className="text-clay-muted-soft"> · {lane?.shortLabel}</span>
                     </span>
                     <span className="text-[10px] font-semibold text-zams-violet bg-zams-powder/60 px-1.5 py-0.5 rounded shrink-0">
-                      {lastTouch === 0 ? 'Never' : `${daysSince(lastTouch)}d`}
+                      {lastTouch === 0 ? 'Never' : `${daysSince(lastTouch, todayKey)}d`}
                     </span>
                   </button>
                 );

@@ -26,6 +26,17 @@ export function businessDateKey(date: Date = new Date()): string {
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
+/** Consecutive business-calendar date keys, oldest first and ending on `date`'s business day. */
+export function businessDateKeysEndingAt(date: Date, count: number): string[] {
+  if (count <= 0) return [];
+  const [year, month, day] = businessDateKey(date).split('-').map(Number);
+  const end = Date.UTC(year, (month || 1) - 1, day || 1);
+  return Array.from({ length: count }, (_, index) => {
+    const current = new Date(end - (count - 1 - index) * 86400000);
+    return current.toISOString().slice(0, 10);
+  });
+}
+
 /** Days from `from` to `to` on the business calendar (negative when `to` is earlier). */
 export function businessDaysBetween(from: string, to: string): number {
   const parse = (key: string) => {

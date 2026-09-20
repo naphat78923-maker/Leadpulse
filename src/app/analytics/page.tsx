@@ -1,23 +1,12 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useCrm } from '@/components/CrmProvider';
-import { Deal, DealStage, STAGE_LABELS, STAGE_ORDER } from '@/types/crm';
+import { Deal, DealStage, STAGE_LABELS } from '@/types/crm';
+import { ACTIVE_DEAL_STAGES, calculateSourcePerformance, calculateWeightedForecast } from '@/utils/analytics-metrics';
 import { BarChart3, TrendingUp, Target, Clock, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
 import MascotSprite from '@/components/MascotSprite';
-
-// Probability each stage contributes to a weighted forecast.
-const STAGE_PROB: Record<DealStage, number> = {
-  research: 0.1,
-  contacted: 0.25,
-  proposal: 0.5,
-  negotiation: 0.75,
-  closed_won: 1,
-  closed_lost: 0,
-};
-
-const ACTIVE_STAGES: DealStage[] = ['research', 'contacted', 'proposal', 'negotiation'];
 
 const fmtBaht = (n: number) =>
   '฿' + Math.round(n).toLocaleString('en-US');
@@ -26,9 +15,10 @@ export default function AnalyticsPage() {
   const { deals: dbDeals, companies: dbCompanies, loading } = useCrm();
   const deals = dbDeals as Deal[];
   const companies = dbCompanies;
+  const [now] = useState(() => Date.now());
 
   const metrics = useMemo(() => {
-    const active = deals.filter(d => ACTIVE_STAGES.includes(d.stage));
+    const active = deals.filter(d => ACTIVE_DEAL_STAGES.includes(d.stage));
     const won = deals.filter(d => d.stage === 'closed_won');
     const lost = deals.filter(d => d.stage === 'closed_lost');
 
@@ -36,41 +26,26 @@ export default function AnalyticsPage() {
       arr.reduce((s, d) => s + (d.value || 0), 0);
 
     const activeValue = sumVal(active);
-    const weighted =
-      sumVal(active.map(d => ({ ...d, value: (d.value || 0) * STAGE_PROB[d.stage] })) as Deal[]) +
-      sumVal(won);
+    const weighted = calculateWeightedForecast(deals);
 
     const winRate = won.length + lost.length > 0
       ? (won.length / (won.length + lost.length)) * 100
       : 0;
 
-    const now = Date.now();
     const avgAge = active.length > 0
       ? active.reduce((s, d) => s + (now - new Date(d.created_at).getTime()), 0) / active.length / 86400000
       : 0;
 
     // Funnel: active journey + won, with step conversion.
-    const funnelStages: DealStage[] = [...ACTIVE_STAGES, 'closed_won'];
+    const funnelStages: DealStage[] = [...ACTIVE_DEAL_STAGES, 'closed_won'];
     const funnel = funnelStages.map(stage => ({
       stage,
       count: deals.filter(d => d.stage === stage).length,
     }));
     const funnelTop = funnel[0]?.count || 0;
 
-    // Source performance — join deal → company.lead_source.
-    const sourceById = new Map(companies.map(c => [c.id, c.lead_source || 'Unknown']));
-    const bySource = new Map<string, { total: number; won: number }>();
-    deals.forEach(d => {
-      if (d.stage === 'closed_lost') return; // losses don't count toward a source's track record
-      const src = d.company_id ? (sourceById.get(d.company_id) ?? 'No company') : 'No company';
-      const cur = bySource.get(src) || { total: 0, won: 0 };
-      cur.total += 1;
-      if (d.stage === 'closed_won') cur.won += 1;
-      bySource.set(src, cur);
-    });
-    const sourceRows = [...bySource.entries()]
-      .map(([source, v]) => ({ source, ...v, rate: v.total > 0 ? (v.won / v.total) * 100 : 0 }))
-      .sort((a, b) => b.total - a.total);
+    // Source performance is conversion from resolved outcomes only.
+    const sourceRows = calculateSourcePerformance(deals, companies);
 
     // Product mix — value + count across open + won.
     const byProduct = new Map<string, { value: number; count: number }>();
@@ -124,7 +99,7 @@ export default function AnalyticsPage() {
       maxProduct,
       maxWeek,
     };
-  }, [deals, companies]);
+  }, [deals, companies, now]);
 
   if (loading) {
     return (
@@ -162,7 +137,7 @@ export default function AnalyticsPage() {
           icon={<TrendingUp className="w-4 h-4" />}
           label="Weighted Forecast"
           value={fmtBaht(metrics.weighted)}
-          sub="prob. × value"
+          sub="open deals only"
           tone="mint"
         />
         <Kpi

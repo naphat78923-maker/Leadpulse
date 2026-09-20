@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BUSINESS_TIMEZONE, businessDateKey, isDateKey } from './business-time';
+import { BUSINESS_TIMEZONE, businessDateKey, businessDateKeysEndingAt, isDateKey } from './business-time';
 
 describe('business timezone date keys', () => {
   it('names the business timezone explicitly', () => {
@@ -26,6 +26,14 @@ describe('business timezone date keys', () => {
     const instant = new Date('2026-01-01T18:30:00Z');
     expect(businessDateKey(instant)).toBe('2026-01-02');
     expect(businessDateKey(instant)).toBe(businessDateKey(new Date(instant.getTime())));
+  });
+
+  it('builds a recent range from Bangkok calendar days even when UTC is still yesterday', () => {
+    expect(businessDateKeysEndingAt(new Date('2026-09-14T20:00:00Z'), 3)).toEqual([
+      '2026-09-13',
+      '2026-09-14',
+      '2026-09-15',
+    ]);
   });
 
   it('recognises a date-only key', () => {

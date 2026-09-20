@@ -191,6 +191,70 @@ export async function updateDealIfUnchanged(id: string, expectedUpdatedAt: strin
   throw new Error('This deal changed while the interaction was saving. Review its current lane before trying again.');
 }
 
+export interface CloseDealOrder {
+  companyId: string;
+  eventDate: string;
+  amount: number;
+  productLine: string | null;
+}
+
+export class OrderRecordPendingError extends Error {
+  constructor(
+    public readonly deal: Deal,
+    public readonly order: CloseDealOrder,
+    cause: unknown,
+  ) {
+    super('The deal was marked won, but its order record was not saved. Retry the order record.');
+    this.name = 'OrderRecordPendingError';
+    this.cause = cause;
+  }
+}
+
+/**
+ * Stores an explicit closed-won order once. A retry first checks the stable
+ * deal-specific order id, so a lost response cannot manufacture another order.
+ */
+export async function recordOrderForClosedDeal(dealId: string, order: CloseDealOrder) {
+  const orderId = `deal_${dealId}`;
+  const { data: existing, error: existingError } = await supabase
+    .from('account_events')
+    .select('company_id,event_date,amount,product_line,order_id')
+    .eq('order_id', orderId)
+    .maybeSingle();
+  if (existingError) throw existingError;
+  if (existing) return existing;
+
+  return createAccountEvent({
+    company_id: order.companyId,
+    event_date: order.eventDate,
+    amount: order.amount,
+    product_line: order.productLine,
+    order_id: orderId,
+  });
+}
+
+/**
+ * Closes only the version the user reviewed. When a confirmed positive order
+ * cannot be recorded afterwards, the caller gets a retryable error instead of
+ * falsely presenting the sale signal as saved.
+ */
+export async function closeDealWithOrderIfUnchanged(input: {
+  dealId: string;
+  expectedUpdatedAt: string;
+  updates: Partial<Deal>;
+  order: CloseDealOrder | null;
+}): Promise<Deal> {
+  const updatedDeal = await updateDealIfUnchanged(input.dealId, input.expectedUpdatedAt, input.updates);
+  if (!input.order) return updatedDeal as Deal;
+
+  try {
+    await recordOrderForClosedDeal(input.dealId, input.order);
+    return updatedDeal as Deal;
+  } catch (cause) {
+    throw new OrderRecordPendingError(updatedDeal as Deal, input.order, cause);
+  }
+}
+
 // ─── Meetings ───
 export async function getMeetings(): Promise<Meeting[]> {
   const { data, error } = await supabase

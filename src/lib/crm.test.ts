@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const from = vi.hoisted(() => vi.fn());
 vi.mock('./supabase', () => ({ supabase: { from } }));
 
-import { updateDeal, updateDealIfUnchanged } from './crm';
+import { recordOrderForClosedDeal, updateDeal, updateDealIfUnchanged } from './crm';
 
 function mockVersionConflict(current: Record<string, unknown>) {
   const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
@@ -62,6 +62,38 @@ describe('updateDealIfUnchanged', () => {
         last_outcome: 'Customer reply (positive): Asked for pricing',
       },
     )).resolves.toEqual(current);
+  });
+});
+
+describe('recordOrderForClosedDeal', () => {
+  beforeEach(() => from.mockReset());
+
+  it('records a positive closed-won order with a stable deal-specific id', async () => {
+    const existingSingle = vi.fn().mockResolvedValue({ data: null, error: null });
+    const existingEq = vi.fn(() => ({ maybeSingle: existingSingle }));
+    const existingSelect = vi.fn(() => ({ eq: existingEq }));
+    const insertSingle = vi.fn().mockResolvedValue({ data: { order_id: 'deal_deal-1', amount: 4_200 }, error: null });
+    const insertSelect = vi.fn(() => ({ single: insertSingle }));
+    const insert = vi.fn(() => ({ select: insertSelect }));
+    from
+      .mockReturnValueOnce({ select: existingSelect })
+      .mockReturnValueOnce({ insert });
+
+    await expect(recordOrderForClosedDeal('deal-1', {
+      companyId: 'company-1',
+      eventDate: '2026-09-20',
+      amount: 4_200,
+      productLine: 'Butter',
+    })).resolves.toEqual({ order_id: 'deal_deal-1', amount: 4_200 });
+
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({
+      company_id: 'company-1',
+      event_date: '2026-09-20',
+      amount: 4_200,
+      product_line: 'Butter',
+      order_id: 'deal_deal-1',
+      source: 'app_closed_won',
+    }));
   });
 });
 

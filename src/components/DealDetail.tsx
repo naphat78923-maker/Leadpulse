@@ -233,23 +233,19 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
     setSaving(true);
     setError(null);
     try {
-      await crm.updateDeal(deal.id, updates);
-
-      // A sale signal is written ONLY when an explicit positive order value was given.
-      // A blank value stays unknown: no order row is manufactured for the pipeline.
-      if (payload.kind === 'won' && deal.company_id && recordOrderAmount != null) {
-        try {
-          await crm.createAccountEvent({
-            company_id: deal.company_id,
-            event_date: payload.close_date || localDateKey(),
-            amount: recordOrderAmount,
-            product_line: deal.product || null,
-            order_id: `deal_${deal.id}`,
-          });
-        } catch (eventErr) {
-          console.error('Sale recorded for pipeline but not for signals:', eventErr);
-        }
-      }
+      await crm.closeDealWithOrderIfUnchanged({
+        dealId: deal.id,
+        expectedUpdatedAt: deal.updated_at,
+        updates,
+        order: payload.kind === 'won' && deal.company_id && recordOrderAmount != null
+          ? {
+              companyId: deal.company_id,
+              eventDate: payload.close_date || localDateKey(),
+              amount: recordOrderAmount,
+              productLine: deal.product || null,
+            }
+          : null,
+      });
 
       const exitCopy =
         payload.kind === 'won'
@@ -272,6 +268,29 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
       onSaved();
       onClose();
     } catch (err: any) {
+      if (err instanceof crm.OrderRecordPendingError) {
+        logActivity({
+          type: 'edit',
+          entity: 'deal',
+          entityId: deal.id,
+          label: '🎉 Marked won',
+          description: `${dealClientName(deal, companies, contacts)} marked won; order record pending retry`,
+          undoPayload: before,
+        });
+        addToast('Deal marked won; order record needs retry.', 'error', {
+          label: 'Retry',
+          onClick: () => {
+            void crm.recordOrderForClosedDeal(deal.id, err.order)
+              .then(() => addToast('Order record saved'))
+              .catch(() => addToast('Order record still needs retry.', 'error'));
+          },
+        });
+        setUndoSnapshot(before);
+        setExitKind(null);
+        onSaved();
+        onClose();
+        return;
+      }
       setError('Could not save: ' + (err.message || 'Unknown error'));
     } finally {
       setSaving(false);
