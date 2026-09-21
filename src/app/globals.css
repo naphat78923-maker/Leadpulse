@@ -579,3 +579,21 @@ body {
     animation: none !important;
   }
 }
+
+/* ─── Blob mascot (butter pat) ─── */
+/* Body/dots read from CSS so dark mode inverts without JS. */
+.blob-body {
+  fill: #f0c75e; /* butter */
+  stroke: rgba(43, 33, 26, 0.14);
+  stroke-width: 2;
+}
+.blob-dots {
+  fill: #d9a93f;
+}
+.dark .blob-body {
+  fill: #e2b452; /* slightly deeper butter on midnight cocoa */
+  stroke: rgba(246, 243, 234, 0.12);
+}
+.dark .blob-dots {
+  fill: #c49a3f;
+}

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Deal } from '@/types/crm';
 import { LOST_REASON_OPTIONS, type LostReason } from './exit-deal-helpers';
 import { X, Loader2 } from 'lucide-react';
+import { Blob } from '@/components/blob';
 import clsx from 'clsx';
 import { businessDateKey } from '@/utils/business-time';
 import { WON_IS_NOT_CASH_COPY, type CloseActionPlan, type CloseActionResolution } from '@/utils/deal-close';
@@ -126,7 +127,10 @@ export default function ExitDealModal({ deal, kind, onCancel, onConfirm }: ExitD
         <div className="sticky top-0 bg-white dark:bg-clay-card border-b border-clay-hairline px-5 py-4 z-10 flex items-start justify-between gap-3">
           <div>
             <p className="zams-eyebrow mb-0.5">{eyebrow}</p>
-            <h2 className="text-sm font-semibold text-clay-ink">{title} · {deal.client}</h2>
+            <h2 className="text-sm font-semibold text-clay-ink flex items-center gap-2">
+              {kind === 'won' && <Blob state="joy" size={36} aria-label="Celebrating butter mascot" />}
+              {title} · {deal.client}
+            </h2>
           </div>
           <button onClick={onCancel} className="p-2 text-clay-muted hover:bg-clay-surface rounded-lg shrink-0" aria-label="Cancel">
             <X className="w-5 h-5" />
