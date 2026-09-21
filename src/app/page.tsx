@@ -9,7 +9,6 @@ import { useCrm } from '@/components/CrmProvider';
 import { deals as dataDeals, contacts as dataContacts, companies as dataCompanies, meetings as dataMeetings } from '@/data/crmData';
 import CreateModal from '@/components/CreateModal';
 import LogInteractionModal from '@/components/LogInteractionModal';
-import MascotSprite from '@/components/MascotSprite';
 import { Blob } from '@/components/blob';
 import type { BlobState } from '@/components/blob';
 import NudgeLadderRail from '@/components/NudgeLadderRail';
@@ -24,8 +23,7 @@ import * as crm from '@/lib/crm';
 import { useToast } from '@/components/ToastProvider';
 import clsx from 'clsx';
 import { calculateLeadScore, scoreToTier, TIER_LABELS, TIER_COLORS, TIER_BG, PRIORITY_CLASSES, PRIORITY_LABELS } from '@/utils/lead-scoring';
-import { PageTransition, StaggerList, StaggerItem, HexFace } from '@/components/motion';
-import type { ClayKind } from '@/components/motion';
+import { PageTransition, StaggerList, StaggerItem } from '@/components/motion';
 
 const ACTION_VERBS: Record<string, string> = {
   outreach: 'Send outreach',
@@ -37,13 +35,13 @@ const ACTION_VERBS: Record<string, string> = {
   success: 'Won',
 };
 
-const PULSE_ITEMS: { key: string; label: string; clay: ClayKind }[] = [
-  { key: 'call', label: 'Calls', clay: 'call' },
-  { key: 'email', label: 'Emails', clay: 'message' },
-  { key: 'dm', label: 'DMs', clay: 'message' },
-  { key: 'meeting', label: 'Meetings', clay: 'search' },
-  { key: 'sample_sent', label: 'Samples', clay: 'package' },
-  { key: 'nudge', label: 'Nudges', clay: 'pause' },
+const PULSE_ITEMS: { key: string; label: string }[] = [
+  { key: 'call', label: 'Calls' },
+  { key: 'email', label: 'Emails' },
+  { key: 'dm', label: 'DMs' },
+  { key: 'meeting', label: 'Meetings' },
+  { key: 'sample_sent', label: 'Samples' },
+  { key: 'nudge', label: 'Nudges' },
 ];
 
 function daysBetween(a: string, b: string): number {
@@ -276,7 +274,7 @@ export default function TodayPage() {
       {/* Header — weekday · Bangkok, big Today */}
       <div className="flex items-start justify-between mb-5 md:mb-6 gap-3">
         <div className="flex items-start gap-3 min-w-0">
-          <HexFace kind="call" size={48} alt="LeadPulse hex face" />
+          <Blob state="idle" size={48} follow aria-label="Butter mascot" />
           <div className="min-w-0">
             <p className="zams-eyebrow mb-1">
               {headerDate} · Bangkok
@@ -494,10 +492,7 @@ export default function TodayPage() {
               </span>
             </button>
             {dealFollowUps.dueToday.length === 0 ? (
-              <p className="text-xs text-clay-muted flex items-center gap-1.5">
-                <HexFace kind="pause" size={18} framed={false} instant alt="" />
-                Nothing scheduled for today.
-              </p>
+              <p className="text-xs text-clay-muted">Nothing scheduled for today.</p>
             ) : (
               <>
                 <ul className="space-y-1.5">
@@ -545,10 +540,7 @@ export default function TodayPage() {
               </span>
             </button>
             {dealFollowUps.thisWeek.length === 0 ? (
-              <p className="text-xs text-clay-muted flex items-center gap-1.5">
-                <HexFace kind="pause" size={18} framed={false} instant alt="" />
-                Light week ahead.
-              </p>
+              <p className="text-xs text-clay-muted">Light week ahead.</p>
             ) : (
               <>
                 <ul className="space-y-1.5">
@@ -589,20 +581,19 @@ export default function TodayPage() {
       </section>
       <div className="mb-6 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-4 py-2.5 flex items-center gap-3 overflow-x-auto">
         <div className="flex items-center gap-2 shrink-0">
-          <HexFace kind="message" size={22} framed alt="Pulse messenger" />
+          <Blob state="idle" size={22} aria-label="" />
           <p className="zams-mono text-[10px] uppercase tracking-[0.16px] text-clay-muted-soft">Today's pulse</p>
         </div>
         <StaggerList stagger={0.035} className="flex items-center gap-3 shrink-0">
           {PULSE_ITEMS.map(p => (
             <StaggerItem key={p.key} className="flex items-center gap-1.5">
-              <HexFace kind={p.clay} size={20} framed={false} instant alt={p.label} />
+              <span className="w-2 h-2 rounded-full bg-clay-lavender/70" aria-hidden />
               <span className="text-sm font-semibold text-clay-ink leading-none">{todayCounts[p.key] ?? 0}</span>
               <span className="zams-mono text-[9px] uppercase tracking-[0.1px] text-clay-muted-soft">{p.label}</span>
             </StaggerItem>
           ))}
         </StaggerList>
         <span className="text-[11px] text-clay-muted-soft ml-auto shrink-0 flex items-center gap-1.5">
-          {todayMeetings.length === 0 && <HexFace kind="pause" size={18} framed alt="Resting — no touches yet" />}
           {todayMeetings.length === 0 ? 'No touches yet today' : `${todayMeetings.length} ${todayMeetings.length === 1 ? 'touch' : 'touches'} today`}
         </span>
       </div>
@@ -610,7 +601,7 @@ export default function TodayPage() {
       {/* Up next — short queue under hero */}
       <section className="mb-6">
         <div className="flex items-center gap-2.5 mb-3">
-          <MascotSprite src="/assets/mascots/mascot-followup.png" size={24} alt="Follow-up mascot" />
+          <Blob state="nudge" size={24} aria-label="" />
           <div>
             <h2 className="zams-display text-lg leading-tight">Up next</h2>
             <p className="text-[11px] text-clay-muted">
@@ -637,7 +628,7 @@ export default function TodayPage() {
           </div>
         ) : upNext.length === 0 ? (
           <div className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline p-8 flex flex-col items-center gap-3">
-            <HexFace kind="success" size={56} framed alt="All clear — nothing waiting" />
+            <Blob state="joy" size={56} aria-label="All clear — nothing waiting" />
             <p className="text-sm text-clay-muted mb-2">Everything is moving. Nothing waiting.</p>
             <button
               ref={startButtonRef}
@@ -767,13 +758,13 @@ export default function TodayPage() {
       {/* Pulse last 7d — secondary */}
       <div className="mb-6 rounded-xl border border-clay-hairline/80 bg-clay-surface/40 dark:bg-clay-card/40 px-4 py-2.5 flex items-center gap-3 overflow-x-auto">
         <div className="flex items-center gap-2 shrink-0">
-          <MascotSprite src="/assets/mascots/mascot-reply.png" size={18} alt="Listener mascot" />
+          <Blob state="idle" size={18} aria-label="" />
           <p className="zams-mono text-[10px] uppercase tracking-[0.16px] text-clay-muted-soft">Pulse · last 7d</p>
         </div>
         <div className="flex items-center gap-3 shrink-0">
           {PULSE_ITEMS.map(p => (
             <div key={p.key} className="flex items-center gap-1.5 opacity-80">
-              <HexFace kind={p.clay} size={18} framed={false} instant alt="" />
+              <span className="w-2 h-2 rounded-full bg-clay-lavender/70" aria-hidden />
               <span className="text-sm font-semibold text-clay-ink leading-none">{pulseCounts[p.key] ?? 0}</span>
               <span className="zams-mono text-[9px] uppercase tracking-[0.1px] text-clay-muted-soft">{p.label}</span>
             </div>
@@ -788,7 +779,6 @@ export default function TodayPage() {
           className="flex-1 flex items-center justify-between gap-2 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-4 py-3 text-sm text-clay-muted hover:text-clay-ink hover:border-clay-lavender/40 transition-colors"
         >
           <span className="flex items-center gap-2">
-            <MascotSprite src="/assets/mascots/mascot-sample.png" size={20} alt="" />
             Buying signals
           </span>
           <ChevronRight className="w-4 h-4 text-clay-muted-soft" />
@@ -798,7 +788,6 @@ export default function TodayPage() {
           className="flex-1 flex items-center justify-between gap-2 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-4 py-3 text-sm text-clay-muted hover:text-clay-ink hover:border-clay-lavender/40 transition-colors"
         >
           <span className="flex items-center gap-2">
-            <MascotSprite src="/assets/mascots/mascot-reply.png" size={20} alt="" />
             Recent activity
           </span>
           <ChevronRight className="w-4 h-4 text-clay-muted-soft" />

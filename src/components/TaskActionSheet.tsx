@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
 import clsx from 'clsx';
-import MascotSprite from './MascotSprite';
+import { Blob } from '@/components/blob';
 import { overlayVariants, panelVariants, pressScale, springPress, tweenBase, tweenSlow } from '@/lib/motion';
 
 interface TaskActionSheetProps {
@@ -20,7 +20,7 @@ const actions = [
     id: 'follow_up',
     title: 'Follow up with someone',
     description: 'See who needs a touch today.',
-    mascot: '/assets/mascots/mascot-followup.png',
+    blobState: 'nudge' as const,
     accent: 'bg-clay-mint/12',
     accentBorder: 'border-clay-mint/25',
   },
@@ -28,7 +28,7 @@ const actions = [
     id: 'new_lead',
     title: 'Add a new lead',
     description: 'Capture a company or contact before you forget.',
-    mascot: '/assets/mascots/mascot-outreach.png',
+    blobState: 'joy' as const,
     accent: 'bg-clay-lavender/12',
     accentBorder: 'border-clay-lavender/25',
   },
@@ -36,7 +36,7 @@ const actions = [
     id: 'log_touch',
     title: 'Log a touch',
     description: 'Save a call, email, DM, or meeting.',
-    mascot: '/assets/mascots/mascot-reply.png',
+    blobState: 'thinking' as const,
     accent: 'bg-clay-ochre/12',
     accentBorder: 'border-clay-ochre/25',
   },
@@ -164,10 +164,10 @@ export default function TaskActionSheet({
                         action.accent
                       )}
                     >
-                      <MascotSprite
-                        src={action.mascot}
-                        size={92}
-                        alt=""
+                      <Blob
+                        state={action.blobState}
+                        size={80}
+                        aria-label=""
                       />
                     </span>
                   </motion.button>

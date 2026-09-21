@@ -30,7 +30,7 @@ import { Plus, TrendingUp, AlertCircle, Loader2, CalendarDays, ArrowRight, Searc
 import clsx from 'clsx';
 import { PRIORITY_CLASSES, PRIORITY_LABELS } from '@/utils/lead-scoring';
 import { formatBaht, sumLaneValues } from '@/utils/format';
-import { WORKFLOW_LANES, WORKFLOW_BY_ID, LANE_MASCOT_PATHS, LANE_HEX_KIND, getWorkflowAction, isOnJourneyBoard, isJourneyLane, deriveNudge, formatDerivedNudgeBadge, outboundSendCountForDeal, nudgeLabel } from '@/utils/deal-workflow';
+import { WORKFLOW_LANES, WORKFLOW_BY_ID, getWorkflowAction, isOnJourneyBoard, isJourneyLane, deriveNudge, formatDerivedNudgeBadge, outboundSendCountForDeal, nudgeLabel } from '@/utils/deal-workflow';
 import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import { BoardAttentionFilter, dealNeedsReview, reviewReasons, REVIEW_LABEL, buildReviewReport, buildReviewFix, filterAndSortBoardDeals, findDealsMatchingSearch, getDoNowCounts, localDateKey } from '@/utils/deal-board';
@@ -38,7 +38,9 @@ import type { DealCardPrimaryAction as DealCardPrimaryActionSpec } from '@/utils
 import { buildCloseUpdate } from '@/utils/deal-close';
 import { buildLaneGateDecision } from '@/utils/lane-gate';
 import { buildDealCardPresentation } from '@/utils/deal-card';
-import { PageTransition, HexFace, StaggerList, StaggerItem } from '@/components/motion';
+import { PageTransition, StaggerList, StaggerItem } from '@/components/motion';
+import { Blob } from '@/components/blob';
+import { LANE_BLOB_STATE } from '@/utils/lane-blob';
 import { EASE_OUT, pressScale, springPress, tweenBase } from '@/lib/motion';
 
 type ViewMode = 'board' | 'parked' | 'won' | 'lost' | 'table';
@@ -421,7 +423,7 @@ export default function DealsPage() {
     <PageTransition className="p-4 md:px-4 md:py-6 pb-20 lg:pb-6 min-h-full">
       <div className="flex items-start justify-between gap-3 mb-4">
         <div className="flex items-start gap-3 min-w-0">
-          <HexFace kind="call" size={44} className="shrink-0 mt-0.5 hidden sm:block" alt="Deal Action Board" />
+          <Blob state="idle" size={44} className="shrink-0 mt-0.5 hidden sm:block" aria-label="Deal Action Board" />
           <div className="min-w-0">
           <p className="zams-eyebrow mb-1">Pipeline · Action board</p>
           <h1 className="zams-display text-2xl md:text-[28px] leading-tight">Deal Action Board</h1>
@@ -610,7 +612,7 @@ export default function DealsPage() {
 
           {actionBoardDeals.length === 0 && (
             <div className="mb-4 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-6 py-8 flex flex-col sm:flex-row items-center justify-center gap-5 text-center sm:text-left">
-              <HexFace kind="search" size={72} framed alt="No deals on the board yet" />
+              <Blob state="sleep" size={72} aria-label="No deals on the board yet" />
               <div>
                 <p className="text-sm font-medium text-clay-ink mb-1">No deals on the board yet</p>
                 <p className="text-xs text-clay-muted">Create a deal and it will land in the outreach lane, ready for its first action.</p>
@@ -625,7 +627,7 @@ export default function DealsPage() {
           )}
           {actionBoardDeals.length > 0 && visibleActionBoardDeals.length === 0 && (
             <div className="mb-4 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-5 py-6 flex flex-col sm:flex-row items-center justify-center gap-4 text-center sm:text-left">
-              <HexFace kind="search" size={48} framed alt="No deals match filters" />
+              <Blob state="sleep" size={48} aria-label="No deals match filters" />
               <div className="flex-1">
                 {searchQuery.trim() ? (
                   searchEscapeMatches.length > 0 ? (
@@ -678,7 +680,7 @@ export default function DealsPage() {
                     mobileLane === lane.id ? 'bg-clay-ink text-clay-canvas border-clay-ink' : 'bg-white dark:bg-clay-card text-clay-ink border-clay-hairline'
                   )}
                 >
-                  <HexFace kind={LANE_HEX_KIND[lane.id]} size={18} framed={false} instant alt="" />
+                  <Blob state={LANE_BLOB_STATE[lane.id]} size={18} aria-label="" />
                   <span>{lane.shortLabel}</span>
                   <span className={clsx('text-xs', mobileLane === lane.id ? 'text-clay-canvas/70' : 'text-clay-muted')}>{dealsByAction[lane.id].length} · {formatBaht(laneValues[lane.id])}</span>
                 </button>
@@ -691,7 +693,7 @@ export default function DealsPage() {
                 <section data-lane-id={lane.id} className={clsx('rounded-2xl border p-3', lane.className)}>
                   <div data-lane-header className="mb-2 space-y-1">
                     <div data-lane-title className="flex min-w-0 items-center gap-2">
-                      <HexFace kind={LANE_HEX_KIND[lane.id]} size={26} framed alt={lane.label} />
+                      <Blob state={LANE_BLOB_STATE[lane.id]} size={26} aria-label={lane.label} />
                       <h2 className="min-w-0 flex-1 text-base font-semibold text-clay-ink">{lane.label}</h2>
                     </div>
                     <p className="line-clamp-1 min-h-[1.25rem] text-[11px] text-clay-muted">{lane.description}</p>
@@ -715,7 +717,7 @@ export default function DealsPage() {
                     ))}
                     {laneDeals.length === 0 && (
                       <div className="border border-dashed border-clay-hairline rounded-xl px-3 py-8 text-center text-sm text-clay-muted-soft flex flex-col items-center gap-2">
-                        <HexFace kind={LANE_HEX_KIND[lane.id]} size={40} framed alt="" />
+                        <Blob state={LANE_BLOB_STATE[lane.id]} size={40} aria-label="" />
                         <span>No deals in this lane</span>
                       </div>
                     )}
@@ -732,7 +734,7 @@ export default function DealsPage() {
                   <DroppableLane key={lane.id} laneId={lane.id} className={lane.className} reduceMotion={reduceMotion}>
                     <div data-lane-header className="mb-2 shrink-0 space-y-1">
                       <div data-lane-title className="flex min-w-0 items-center gap-2">
-                        <HexFace kind={LANE_HEX_KIND[lane.id]} size={24} framed alt={lane.shortLabel} />
+                        <Blob state={LANE_BLOB_STATE[lane.id]} size={24} aria-label={lane.shortLabel} />
                         <h2 className="min-w-0 flex-1 text-sm font-semibold text-clay-ink">{lane.shortLabel}</h2>
                       </div>
                       <p className="line-clamp-1 min-h-[1.25rem] text-[11px] leading-snug text-clay-muted">{lane.description}</p>
@@ -757,12 +759,12 @@ export default function DealsPage() {
                       {dealsByAction[lane.id].length === 0 && (
                         lane.id === 'parked' ? (
                           <div className="text-center py-6 rounded-lg border-2 border-dashed border-clay-hairline flex flex-col items-center gap-2 opacity-90">
-                            <HexFace kind="pause" size={44} framed alt="Nothing parked" />
+                            <Blob state="sleep" size={44} aria-label="Nothing parked" />
                             <p className="text-xs text-clay-muted-soft">Nothing parked — everything is moving.</p>
                           </div>
                         ) : (
                           <div className="text-center py-6 text-xs text-clay-muted-soft border-2 border-dashed border-clay-hairline rounded-lg flex flex-col items-center gap-2">
-                            <HexFace kind={LANE_HEX_KIND[lane.id]} size={36} framed={false} instant alt="" />
+                            <Blob state={LANE_BLOB_STATE[lane.id]} size={36} aria-label="" />
                             <span>Drop here</span>
                           </div>
                         )
@@ -774,10 +776,10 @@ export default function DealsPage() {
                           animate={{ opacity: 1, scale: 1, y: 0 }}
                           transition={{ duration: 0.24, ease: EASE_OUT }}
                         >
-                          <HexFace
-                            kind={lane.id === 'success' ? 'success' : LANE_HEX_KIND[lane.id]}
+                          <Blob
+                            state={lane.id === 'success' ? 'joy' : LANE_BLOB_STATE[lane.id]}
                             size={40}
-                            alt="Celebrating lane move"
+                            aria-label="Celebrating lane move"
                           />
                         </motion.div>
                       )}
@@ -822,11 +824,10 @@ export default function DealsPage() {
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     transition={{ duration: 0.22, ease: EASE_OUT }}
                   >
-                    <HexFace
-                      kind={LANE_HEX_KIND[getWorkflowAction(deals.find(d => d.id === activeDragId)!)]}
+                    <Blob
+                      state={LANE_BLOB_STATE[getWorkflowAction(deals.find(d => d.id === activeDragId)!)]}
                       size={40}
-                      instant
-                      alt="Carrying deal to a new lane"
+                      aria-label="Carrying deal to a new lane"
                     />
                   </motion.div>
                 </div>

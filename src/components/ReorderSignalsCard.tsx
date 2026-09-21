@@ -13,7 +13,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useCrm } from '@/components/CrmProvider';
-import MascotSprite from '@/components/MascotSprite';
+import { Blob } from '@/components/blob';
 import { ArrowRight } from 'lucide-react';
 import {
   fetchReorderSignalRows,
@@ -67,10 +67,10 @@ export default function ReorderSignalsCard() {
   return (
     <section className="mb-6 rounded-2xl border border-clay-lavender/30 bg-clay-lavender/5 p-4">
       <div className="flex items-center gap-2 mb-3">
-        <MascotSprite
-          src="/assets/mascots/mascot-followup.png"
+        <Blob
+          state="nudge"
           size={28}
-          alt="Reorder signal mascot"
+          aria-label="Reorder signal mascot"
         />
         <div>
           <h2 className="zams-display text-base leading-tight">Buying signals</h2>
