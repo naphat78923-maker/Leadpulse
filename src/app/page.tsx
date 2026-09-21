@@ -10,6 +10,8 @@ import { deals as dataDeals, contacts as dataContacts, companies as dataCompanie
 import CreateModal from '@/components/CreateModal';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import MascotSprite from '@/components/MascotSprite';
+import { Blob } from '@/components/blob';
+import type { BlobState } from '@/components/blob';
 import NudgeLadderRail from '@/components/NudgeLadderRail';
 import TaskActionSheet from '@/components/TaskActionSheet';
 import ReorderSignalsCard from '@/components/ReorderSignalsCard';
@@ -188,6 +190,16 @@ export default function TodayPage() {
     return { deal: pool[0].d, kind: pool[0].kind };
   }, [sortedOverdue, dealFollowUps.dueToday, dealFollowUps.needsAttention]);
 
+  const heroBlobState: BlobState = loading
+    ? 'thinking'
+    : !startHere
+      ? 'idle'
+      : startHere.kind === 'overdue'
+        ? 'alert'
+        : startHere.kind === 'today'
+          ? 'nudge'
+          : 'thinking';
+
   const upNext = useMemo(() => {
     const items: { deal: Deal; kind: 'overdue' | 'today' | 'attention' }[] = [
       ...sortedOverdue.map(d => ({ deal: d, kind: 'overdue' as const })),
@@ -330,10 +342,19 @@ export default function TodayPage() {
       {/* Hero — Do this next */}
       <div className="mb-6 rounded-2xl border border-clay-hairline bg-white dark:bg-clay-card p-5 md:p-6 relative overflow-hidden shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_8px_24px_-12px_rgba(43,33,26,0.28)]">
         <div className="flex items-start gap-3 mb-4">
-          <MascotSprite
-            src={loading || startHere ? '/assets/mascots/mascot-teardrop.png' : '/assets/mascots/mascot-outreach.png'}
-            size={48}
-            alt={loading || startHere ? 'Planner mascot' : 'Scout mascot'}
+          <Blob
+            state={heroBlobState}
+            size={64}
+            follow
+            aria-label={
+              heroBlobState === 'alert'
+                ? 'Butter mascot staring — something is overdue'
+                : heroBlobState === 'nudge'
+                  ? 'Butter mascot pointing at your next move'
+                  : heroBlobState === 'thinking'
+                    ? 'Butter mascot thinking'
+                    : 'Butter mascot'
+            }
           />
           <div className="flex-1 min-w-0">
             <p className="zams-mono text-[10px] uppercase tracking-[0.16px] text-clay-lavender font-semibold mb-1.5">
@@ -729,8 +750,7 @@ export default function TodayPage() {
         {!loading && deals.filter((d: Deal) => d.stage !== 'closed_won' && d.stage !== 'closed_lost').length === 0 && (
           <div className="mt-4 text-center py-10 bg-white dark:bg-clay-card rounded-xl border border-clay-hairline">
             <div className="relative mx-auto mb-4 w-28 h-28 flex items-center justify-center">
-              <div className="absolute inset-0 rounded-full bg-clay-lavender/20" />
-              <HexFace kind="search" size={96} framed className="relative" alt="Search for your next prospect" />
+              <Blob state="sleep" size={104} aria-label="Sleeping butter mascot — no active deals" />
             </div>
             <p className="text-sm font-medium text-clay-ink mb-1">No active deals yet</p>
             <p className="text-xs text-clay-muted mb-4">Your first deal card is waiting to be made.</p>
