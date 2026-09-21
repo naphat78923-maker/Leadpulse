@@ -7,7 +7,7 @@ import { useCrm } from '@/components/CrmProvider';
 import { deals as dataDeals } from '@/data/crmData';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
-import MascotSprite from '@/components/MascotSprite';
+import { Blob } from '@/components/blob';
 import NudgeLadderRail from '@/components/NudgeLadderRail';
 import { Bell, ChevronRight, MessageCircle, Loader2, PauseCircle, Clock } from 'lucide-react';
 import clsx from 'clsx';
@@ -111,7 +111,10 @@ export default function NudgesPage() {
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
           <Loader2 className="w-8 h-8 text-clay-ink animate-spin mx-auto mb-3" />
-          <p className="text-sm text-clay-muted">Loading nudges...</p>
+          <div className="flex items-center gap-2">
+            <Blob state="thinking" size={28} aria-label="" />
+            <span className="text-sm text-clay-muted">Loading nudges…</span>
+          </div>
         </div>
       </div>
     );
@@ -120,7 +123,7 @@ export default function NudgesPage() {
   return (
     <div className="p-4 md:p-6 h-full overflow-y-auto max-w-3xl">
       <div className="mb-5 md:mb-6 flex items-center gap-3">
-        <MascotSprite src="/assets/mascots/mascot-followup.png" size={44} alt="Nudge reviewer mascot" />
+        <Blob state="nudge" size={44} aria-label="Nudge reviewer mascot" />
         <div>
           <h1 className="text-xl md:text-2xl font-semibold text-clay-ink tracking-tight flex items-center gap-2">
             <Bell className="w-6 h-6 text-clay-lavender" /> Nudges
@@ -164,7 +167,7 @@ export default function NudgesPage() {
 
       {list.length === 0 ? (
         <div className="mt-4 bg-white dark:bg-clay-card rounded-xl border border-clay-hairline p-8 flex flex-col items-center gap-3">
-          <MascotSprite src="/assets/mascots/mascot-parked.png" size={44} alt="Sleepy mascot" />
+          <Blob state="sleep" size={44} aria-label="Sleepy mascot" />
           <p className="text-sm text-clay-muted">
             {seg === 'overdue' ? 'Nothing overdue. Clean desk.' : seg === 'soon' ? 'No follow-ups due in the next 2 days.' : 'Nothing due in the next 7 days.'}
           </p>

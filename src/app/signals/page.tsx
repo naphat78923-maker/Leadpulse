@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useCrm } from '@/components/CrmProvider';
 import CompanyDetail from '@/components/CompanyDetail';
-import MascotSprite from '@/components/MascotSprite';
+import { Blob } from '@/components/blob';
 import { X, Clock, Loader2, Radar, Undo2 } from 'lucide-react';
 import {
   fetchReorderSignalRows,
@@ -169,7 +169,7 @@ export default function SignalsPage() {
     <div className="p-4 md:p-6 max-w-6xl pb-24 lg:pb-6">
       {/* Header */}
       <div className="mb-5 md:mb-6 flex items-center gap-3">
-        <MascotSprite src="/assets/mascots/mascot-followup.png" size={44} alt="Buying signals mascot" />
+        <Blob state="nudge" size={44} aria-label="Buying signals mascot" />
         <div>
           <h1 className="text-xl md:text-2xl font-semibold text-clay-ink tracking-tight flex items-center gap-2">
             <Radar className="w-6 h-6 text-clay-lavender" /> Buying signals
@@ -205,10 +205,10 @@ export default function SignalsPage() {
         <div className="text-center py-16 bg-white dark:bg-clay-card rounded-xl border border-clay-hairline">
           <div className="relative mx-auto mb-4 w-24 h-24">
             <div className="absolute inset-0 rounded-full bg-clay-lavender/15" />
-            <MascotSprite
-              src="/assets/mascots/mascot-followup.png"
-              size={96}
-              alt="No signals mascot"
+            <Blob
+              state="sleep"
+              size={88}
+              aria-label="No signals mascot"
             />
           </div>
           <p className="text-sm font-medium text-clay-ink mb-1">No signals right now</p>

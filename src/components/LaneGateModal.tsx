@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import { Deal, DealWorkflowAction, MeetingType, Meeting, SampleStatus, Contact, Company } from '@/types/crm';
-import { WORKFLOW_BY_ID, LANE_MASCOT_PATHS, SAMPLE_STATUS_OPTIONS } from '@/utils/deal-workflow';
-import MascotSprite from '@/components/MascotSprite';
+import { WORKFLOW_BY_ID, SAMPLE_STATUS_OPTIONS } from '@/utils/deal-workflow';
+import { Blob } from '@/components/blob';
+import { LANE_BLOB_STATE } from '@/utils/lane-blob';
 import ContactPicker from '@/components/ContactPicker';
 import { X, Loader2, Phone, Mail, MessageCircle } from 'lucide-react';
 import clsx from 'clsx';
@@ -148,7 +149,7 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
         <div className="sticky top-0 bg-white dark:bg-clay-card border-b border-clay-hairline px-5 py-4 z-10">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
-              <MascotSprite src={LANE_MASCOT_PATHS[targetLane]} size={40} alt={lane.shortLabel} />
+              <Blob state={LANE_BLOB_STATE[targetLane]} size={40} aria-label={lane.shortLabel} />
               <div>
                 <p className="zams-eyebrow mb-0.5">Gate · {lane.shortLabel}</p>
                 <h2 className="text-sm font-semibold text-clay-ink leading-tight">

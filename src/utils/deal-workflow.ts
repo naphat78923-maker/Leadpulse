@@ -95,16 +95,6 @@ export function isJourneyLane(action: DealWorkflowAction): boolean {
 }
 
 /** Claymation mascot per lane / exit. */
-export const LANE_MASCOT_PATHS: Record<DealWorkflowAction, string> = {
-  outreach: '/assets/mascots/mascot-outreach.png',
-  reply: '/assets/mascots/mascot-reply.png',
-  sample: '/assets/mascots/mascot-sample.png',
-  testing: '/assets/mascots/mascot-testing.png',
-  reschedule: '/assets/mascots/mascot-teardrop.png',
-  parked: '/assets/mascots/mascot-parked.png',
-  success: '/assets/mascots/mascot-won-trophy.png',
-};
-
 /**
  * Nudge thresholds by OUTBOUND SEND count (call / email / DM sent to the client).
  * NG-001..004 — the sequence stops at 4 sends; after that the deal should be parked.
@@ -128,16 +118,6 @@ export const NUDGE_SEND_LIMIT = 4;
 
 /** Soft HexFace kind per lane (SVG faces — replaces PNG mascots on the board chrome). */
 export type DealHexKind = 'call' | 'message' | 'package' | 'search' | 'pause' | 'success';
-
-export const LANE_HEX_KIND: Record<DealWorkflowAction, DealHexKind> = {
-  outreach: 'call',
-  reply: 'message',
-  sample: 'package',
-  testing: 'search',
-  reschedule: 'pause',
-  parked: 'pause',
-  success: 'success',
-};
 
 /** @deprecated Prefer DERIVED_NUDGE_OPTIONS — kept for legacy imports. */
 export const NUDGE_OPTIONS = DERIVED_NUDGE_OPTIONS.map(o => ({
