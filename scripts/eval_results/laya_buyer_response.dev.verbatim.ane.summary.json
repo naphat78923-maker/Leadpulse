@@ -1,0 +1,304 @@
+{
+  "meta": {
+    "model": "/Users/pat/laya-coreml/models/ane",
+    "repository": "aac6fef/laya-multilingual-coreml-ane",
+    "source_revision": "052592a15d198d9ad47da779604259b10b47b7aa",
+    "package_sha256": "53ba84d9b002997599dafc89cde611e6edac450572c63c4896e7b9f082b53651"
+  },
+  "fixtures": "scripts/fixtures/laya_buyer_response.dev.verbatim.json",
+  "safeguards": {
+    "pass": true,
+    "rows": [
+      {
+        "id": "english_opt_out",
+        "expected": "not_scored_opt_out",
+        "got": "not_scored_opt_out",
+        "pass": true
+      },
+      {
+        "id": "thai_opt_out",
+        "expected": "not_scored_opt_out",
+        "got": "not_scored_opt_out",
+        "pass": true
+      },
+      {
+        "id": "dev_opt_out_stop_calls",
+        "expected": "not_scored_opt_out",
+        "got": "not_scored_opt_out",
+        "pass": true
+      },
+      {
+        "id": "dev_opt_out_unsubscribe",
+        "expected": "not_scored_opt_out",
+        "got": "not_scored_opt_out",
+        "pass": true
+      },
+      {
+        "id": "dev_closed_won",
+        "expected": "status_only",
+        "got": "status_only",
+        "pass": true
+      },
+      {
+        "id": "lost_deal",
+        "expected": "status_only",
+        "got": "status_only",
+        "pass": true
+      },
+      {
+        "id": "dev_parked",
+        "expected": "status_only",
+        "got": "status_only",
+        "pass": true
+      },
+      {
+        "id": "dev_missing_outcome",
+        "expected": "needs_evidence",
+        "got": "needs_evidence",
+        "pass": true
+      },
+      {
+        "id": "dev_empty_outcome",
+        "expected": "needs_evidence",
+        "got": "needs_evidence",
+        "pass": true
+      }
+    ]
+  },
+  "variants": [
+    {
+      "variant": "v_verbatim",
+      "scored": 0,
+      "refused": 25,
+      "semantic_matches": 0,
+      "semantic_accuracy_pct": 0.0,
+      "handling_matches": 0,
+      "handling_accuracy_pct": 0.0,
+      "per_class_accuracy": {},
+      "latency_ms": {
+        "p50": null,
+        "p95": null
+      },
+      "failures": [],
+      "refusals": [
+        {
+          "id": "quote_request",
+          "code": "input_too_long"
+        },
+        {
+          "id": "sample_request",
+          "code": "input_too_long"
+        },
+        {
+          "id": "later_quarter",
+          "code": "input_too_long"
+        },
+        {
+          "id": "keep_warm",
+          "code": "input_too_long"
+        },
+        {
+          "id": "unknown",
+          "code": "input_too_long"
+        },
+        {
+          "id": "buyer_unknown",
+          "code": "input_too_long"
+        },
+        {
+          "id": "wrong_product",
+          "code": "input_too_long"
+        },
+        {
+          "id": "later_decline",
+          "code": "input_too_long"
+        },
+        {
+          "id": "thai_sample",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_price_request",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_meeting_request",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_order_request",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_thai_price",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_defer_budget",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_defer_season",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_defer_thai",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_decline_price",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_decline_thai",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_ack_only",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_interest_noask",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_thai_ack",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_internal_plan",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_conflict_noorder",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_chronology_declined",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_chronology_returned",
+          "code": "input_too_long"
+        }
+      ]
+    },
+    {
+      "variant": "v_verbatim_revopts",
+      "scored": 0,
+      "refused": 25,
+      "semantic_matches": 0,
+      "semantic_accuracy_pct": 0.0,
+      "handling_matches": 0,
+      "handling_accuracy_pct": 0.0,
+      "per_class_accuracy": {},
+      "latency_ms": {
+        "p50": null,
+        "p95": null
+      },
+      "failures": [],
+      "refusals": [
+        {
+          "id": "quote_request",
+          "code": "input_too_long"
+        },
+        {
+          "id": "sample_request",
+          "code": "input_too_long"
+        },
+        {
+          "id": "later_quarter",
+          "code": "input_too_long"
+        },
+        {
+          "id": "keep_warm",
+          "code": "input_too_long"
+        },
+        {
+          "id": "unknown",
+          "code": "input_too_long"
+        },
+        {
+          "id": "buyer_unknown",
+          "code": "input_too_long"
+        },
+        {
+          "id": "wrong_product",
+          "code": "input_too_long"
+        },
+        {
+          "id": "later_decline",
+          "code": "input_too_long"
+        },
+        {
+          "id": "thai_sample",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_price_request",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_meeting_request",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_order_request",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_thai_price",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_defer_budget",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_defer_season",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_defer_thai",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_decline_price",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_decline_thai",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_ack_only",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_interest_noask",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_thai_ack",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_internal_plan",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_conflict_noorder",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_chronology_declined",
+          "code": "input_too_long"
+        },
+        {
+          "id": "dev_chronology_returned",
+          "code": "input_too_long"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,224 @@
+{
+  "meta": {
+    "model": "/Users/pat/laya-coreml/models/multilingual-1024",
+    "repository": "aac6fef/laya-multilingual-coreml",
+    "source_revision": "052592a15d198d9ad47da779604259b10b47b7aa",
+    "package_sha256": "64e84856a07620d2085f91ce9a0d1a48ccbe9dc824d1a34bed8c104bff1db383"
+  },
+  "fixtures": "scripts/fixtures/laya_buyer_response.dev.verbatim.json",
+  "safeguards": {
+    "pass": true,
+    "rows": [
+      {
+        "id": "english_opt_out",
+        "expected": "not_scored_opt_out",
+        "got": "not_scored_opt_out",
+        "pass": true
+      },
+      {
+        "id": "thai_opt_out",
+        "expected": "not_scored_opt_out",
+        "got": "not_scored_opt_out",
+        "pass": true
+      },
+      {
+        "id": "dev_opt_out_stop_calls",
+        "expected": "not_scored_opt_out",
+        "got": "not_scored_opt_out",
+        "pass": true
+      },
+      {
+        "id": "dev_opt_out_unsubscribe",
+        "expected": "not_scored_opt_out",
+        "got": "not_scored_opt_out",
+        "pass": true
+      },
+      {
+        "id": "dev_closed_won",
+        "expected": "status_only",
+        "got": "status_only",
+        "pass": true
+      },
+      {
+        "id": "lost_deal",
+        "expected": "status_only",
+        "got": "status_only",
+        "pass": true
+      },
+      {
+        "id": "dev_parked",
+        "expected": "status_only",
+        "got": "status_only",
+        "pass": true
+      },
+      {
+        "id": "dev_missing_outcome",
+        "expected": "needs_evidence",
+        "got": "needs_evidence",
+        "pass": true
+      },
+      {
+        "id": "dev_empty_outcome",
+        "expected": "needs_evidence",
+        "got": "needs_evidence",
+        "pass": true
+      }
+    ]
+  },
+  "variants": [
+    {
+      "variant": "v_verbatim",
+      "scored": 25,
+      "refused": 0,
+      "semantic_matches": 13,
+      "semantic_accuracy_pct": 52.0,
+      "handling_matches": 15,
+      "handling_accuracy_pct": 60.0,
+      "per_class_accuracy": {
+        "declined": "4/5",
+        "deferred": "1/4",
+        "no_commitment": "1/4",
+        "requested_next_step": "6/8",
+        "unclear": "1/4"
+      },
+      "latency_ms": {
+        "p50": 296.2,
+        "p95": 435.4
+      },
+      "failures": [
+        {
+          "id": "keep_warm",
+          "choice": "declined",
+          "expected_semantic": "no_commitment",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "buyer_unknown",
+          "choice": "declined",
+          "expected_semantic": "unclear",
+          "expected_handling": "research"
+        },
+        {
+          "id": "dev_meeting_request",
+          "choice": "unclear",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "dev_defer_thai",
+          "choice": "declined",
+          "expected_semantic": "deferred",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "dev_decline_price",
+          "choice": "no_commitment",
+          "expected_semantic": "declined",
+          "expected_handling": "deprioritize"
+        },
+        {
+          "id": "dev_ack_only",
+          "choice": "declined",
+          "expected_semantic": "no_commitment",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "dev_interest_noask",
+          "choice": "declined",
+          "expected_semantic": "no_commitment",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "dev_internal_plan",
+          "choice": "declined",
+          "expected_semantic": "unclear",
+          "expected_handling": "research"
+        },
+        {
+          "id": "dev_conflict_noorder",
+          "choice": "declined",
+          "expected_semantic": "unclear",
+          "expected_handling": "research"
+        },
+        {
+          "id": "dev_chronology_returned",
+          "choice": "declined",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        }
+      ],
+      "refusals": []
+    },
+    {
+      "variant": "v_verbatim_revopts",
+      "scored": 25,
+      "refused": 0,
+      "semantic_matches": 15,
+      "semantic_accuracy_pct": 60.0,
+      "handling_matches": 17,
+      "handling_accuracy_pct": 68.0,
+      "per_class_accuracy": {
+        "declined": "4/5",
+        "deferred": "1/4",
+        "no_commitment": "1/4",
+        "requested_next_step": "8/8",
+        "unclear": "1/4"
+      },
+      "latency_ms": {
+        "p50": 294.5,
+        "p95": 336.6
+      },
+      "failures": [
+        {
+          "id": "keep_warm",
+          "choice": "declined",
+          "expected_semantic": "no_commitment",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "buyer_unknown",
+          "choice": "declined",
+          "expected_semantic": "unclear",
+          "expected_handling": "research"
+        },
+        {
+          "id": "dev_defer_thai",
+          "choice": "declined",
+          "expected_semantic": "deferred",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "dev_ack_only",
+          "choice": "declined",
+          "expected_semantic": "no_commitment",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "dev_interest_noask",
+          "choice": "declined",
+          "expected_semantic": "no_commitment",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "dev_internal_plan",
+          "choice": "declined",
+          "expected_semantic": "unclear",
+          "expected_handling": "research"
+        },
+        {
+          "id": "dev_conflict_noorder",
+          "choice": "declined",
+          "expected_semantic": "unclear",
+          "expected_handling": "research"
+        },
+        {
+          "id": "dev_chronology_declined",
+          "choice": "unclear",
+          "expected_semantic": "declined",
+          "expected_handling": "deprioritize"
+        }
+      ],
+      "refusals": []
+    }
+  ]
+}

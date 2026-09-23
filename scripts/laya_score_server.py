@@ -41,6 +41,20 @@ ATTENTION_QUESTION = {"attention": {
     },
 }}
 ATTENTION_OPTIONS = set(ATTENTION_QUESTION["attention"]["criteria"])
+# Must match LAYA_BUYER_RESPONSE_QUESTION in src/utils/lead-scoring.ts exactly —
+# the boundary test builds the request through the real TypeScript builder.
+BUYER_RESPONSE_QUESTION = {"buyer_response": {
+    "type": "choice",
+    "instructions": "Which option best describes the buyer's latest message?",
+    "criteria": {
+        "unclear": "no buyer response is stated, or responses conflict with no stated order",
+        "no_commitment": "only acknowledges or shows interest, with no request",
+        "declined": "says no, not interested, or that they chose another supplier",
+        "deferred": "asks to revisit later or after a stated time, without declining",
+        "requested_next_step": "requests a sample, quotation, order, contract, or pricing to proceed with a purchase",
+    },
+}}
+ALLOWED_QUESTIONS = (ATTENTION_QUESTION, BUYER_RESPONSE_QUESTION)
 DEFAULT_ALLOWED_ORIGINS = {
     "https://leadpulse-one-ashen.vercel.app",
     "http://localhost:3000",
@@ -166,9 +180,11 @@ class LayaScoreHandler(BaseHTTPRequestHandler):
         if not isinstance(state, str) or not state.strip() or not isinstance(questions, dict):
             json_response(self, HTTPStatus.BAD_REQUEST, {"error": "state and questions are required"})
             return
-        if set(payload) != {"state", "questions"} or questions != ATTENTION_QUESTION:
+        if set(payload) != {"state", "questions"} or not any(questions == allowed for allowed in ALLOWED_QUESTIONS):
             json_response(self, HTTPStatus.BAD_REQUEST, {"error": "Unsupported scoring schema"})
             return
+        question_key = next(iter(questions))
+        expected_options = set(questions[question_key]["criteria"])
 
         scored_state = state.strip()
         if has_explicit_contact_opt_out(scored_state):
@@ -194,19 +210,20 @@ class LayaScoreHandler(BaseHTTPRequestHandler):
             INFERENCE_SLOTS.release()
 
         try:
-            attention = result["answers"]["attention"]
-            probabilities = attention["probabilities"]
-            choice = attention["choice"]
-            confidence = attention["confidence"]
-            if (choice not in ATTENTION_OPTIONS or not isinstance(probabilities, dict) or
-                    set(probabilities) != ATTENTION_OPTIONS or
+            answer = result["answers"][question_key]
+            probabilities = answer["probabilities"]
+            choice = answer["choice"]
+            confidence = answer["confidence"]
+            if (choice not in expected_options or not isinstance(probabilities, dict) or
+                    set(probabilities) != expected_options or
                     not all(isinstance(p, (int, float)) and not isinstance(p, bool) and 0 <= p <= 1 for p in probabilities.values()) or
                     not isinstance(confidence, (int, float)) or isinstance(confidence, bool) or not 0 <= confidence <= 1):
                 raise ValueError("Invalid model result")
         except (KeyError, TypeError, ValueError):
-            json_response(self, HTTPStatus.UNPROCESSABLE_ENTITY, {"error": "Laya returned an invalid attention score"})
+            json_response(self, HTTPStatus.UNPROCESSABLE_ENTITY, {"error": "Laya returned an invalid score"})
             return
         json_response(self, HTTPStatus.OK, {
+            "question": question_key,
             "recommendation": choice, "confidence": confidence,
             "probabilities": probabilities, "usage": result.get("usage", {}),
             "trace": {"scored_input": {"state": scored_state, "questions": questions},

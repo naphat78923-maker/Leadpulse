@@ -1,0 +1,652 @@
+{
+  "meta": {
+    "model": "/Users/pat/laya-coreml/models/multilingual-1024",
+    "repository": "aac6fef/laya-multilingual-coreml",
+    "source_revision": "052592a15d198d9ad47da779604259b10b47b7aa",
+    "package_sha256": "64e84856a07620d2085f91ce9a0d1a48ccbe9dc824d1a34bed8c104bff1db383"
+  },
+  "fixtures": "scripts/fixtures/laya_buyer_response.dev.json",
+  "safeguards": {
+    "pass": true,
+    "rows": [
+      {
+        "id": "english_opt_out",
+        "expected": "not_scored_opt_out",
+        "got": "not_scored_opt_out",
+        "pass": true
+      },
+      {
+        "id": "thai_opt_out",
+        "expected": "not_scored_opt_out",
+        "got": "not_scored_opt_out",
+        "pass": true
+      },
+      {
+        "id": "dev_opt_out_stop_calls",
+        "expected": "not_scored_opt_out",
+        "got": "not_scored_opt_out",
+        "pass": true
+      },
+      {
+        "id": "dev_opt_out_unsubscribe",
+        "expected": "not_scored_opt_out",
+        "got": "not_scored_opt_out",
+        "pass": true
+      },
+      {
+        "id": "dev_closed_won",
+        "expected": "status_only",
+        "got": "status_only",
+        "pass": true
+      },
+      {
+        "id": "lost_deal",
+        "expected": "status_only",
+        "got": "status_only",
+        "pass": true
+      },
+      {
+        "id": "dev_parked",
+        "expected": "status_only",
+        "got": "status_only",
+        "pass": true
+      },
+      {
+        "id": "dev_missing_outcome",
+        "expected": "needs_evidence",
+        "got": "needs_evidence",
+        "pass": true
+      },
+      {
+        "id": "dev_empty_outcome",
+        "expected": "needs_evidence",
+        "got": "needs_evidence",
+        "pass": true
+      }
+    ]
+  },
+  "variants": [
+    {
+      "variant": "old_attention",
+      "scored": 25,
+      "refused": 0,
+      "semantic_matches": 0,
+      "semantic_accuracy_pct": 0.0,
+      "handling_matches": 8,
+      "handling_accuracy_pct": 32.0,
+      "per_class_accuracy": {
+        "declined": "0/5",
+        "deferred": "0/4",
+        "no_commitment": "0/4",
+        "requested_next_step": "0/8",
+        "unclear": "0/4"
+      },
+      "latency_ms": {
+        "p50": 297.7,
+        "p95": 363.3
+      },
+      "failures": [
+        {
+          "id": "quote_request",
+          "choice": "research",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "later_quarter",
+          "choice": "priority",
+          "expected_semantic": "deferred",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "keep_warm",
+          "choice": "deprioritize",
+          "expected_semantic": "no_commitment",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "unknown",
+          "choice": "priority",
+          "expected_semantic": "unclear",
+          "expected_handling": "research"
+        },
+        {
+          "id": "buyer_unknown",
+          "choice": "priority",
+          "expected_semantic": "unclear",
+          "expected_handling": "research"
+        },
+        {
+          "id": "wrong_product",
+          "choice": "priority",
+          "expected_semantic": "declined",
+          "expected_handling": "deprioritize"
+        },
+        {
+          "id": "later_decline",
+          "choice": "priority",
+          "expected_semantic": "declined",
+          "expected_handling": "deprioritize"
+        },
+        {
+          "id": "dev_price_request",
+          "choice": "research",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "dev_defer_budget",
+          "choice": "deprioritize",
+          "expected_semantic": "deferred",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "dev_defer_season",
+          "choice": "research",
+          "expected_semantic": "deferred",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "dev_defer_thai",
+          "choice": "priority",
+          "expected_semantic": "deferred",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "dev_ack_only",
+          "choice": "priority",
+          "expected_semantic": "no_commitment",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "dev_interest_noask",
+          "choice": "priority",
+          "expected_semantic": "no_commitment",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "dev_internal_plan",
+          "choice": "deprioritize",
+          "expected_semantic": "unclear",
+          "expected_handling": "research"
+        },
+        {
+          "id": "dev_conflict_noorder",
+          "choice": "priority",
+          "expected_semantic": "unclear",
+          "expected_handling": "research"
+        },
+        {
+          "id": "dev_chronology_declined",
+          "choice": "priority",
+          "expected_semantic": "declined",
+          "expected_handling": "deprioritize"
+        },
+        {
+          "id": "dev_chronology_returned",
+          "choice": "deprioritize",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        }
+      ],
+      "refusals": []
+    },
+    {
+      "variant": "cand_labeled",
+      "scored": 25,
+      "refused": 0,
+      "semantic_matches": 12,
+      "semantic_accuracy_pct": 48.0,
+      "handling_matches": 15,
+      "handling_accuracy_pct": 60.0,
+      "per_class_accuracy": {
+        "declined": "5/5",
+        "deferred": "1/4",
+        "no_commitment": "2/4",
+        "requested_next_step": "2/8",
+        "unclear": "2/4"
+      },
+      "latency_ms": {
+        "p50": 307.3,
+        "p95": 324.8
+      },
+      "failures": [
+        {
+          "id": "quote_request",
+          "choice": "no_commitment",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "sample_request",
+          "choice": "deferred",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "thai_sample",
+          "choice": "declined",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "dev_meeting_request",
+          "choice": "deferred",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "dev_thai_price",
+          "choice": "declined",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "dev_defer_budget",
+          "choice": "declined",
+          "expected_semantic": "deferred",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "dev_thai_ack",
+          "choice": "declined",
+          "expected_semantic": "no_commitment",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "dev_internal_plan",
+          "choice": "deferred",
+          "expected_semantic": "unclear",
+          "expected_handling": "research"
+        },
+        {
+          "id": "dev_conflict_noorder",
+          "choice": "declined",
+          "expected_semantic": "unclear",
+          "expected_handling": "research"
+        },
+        {
+          "id": "dev_chronology_returned",
+          "choice": "declined",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        }
+      ],
+      "refusals": []
+    },
+    {
+      "variant": "cand_json",
+      "scored": 25,
+      "refused": 0,
+      "semantic_matches": 12,
+      "semantic_accuracy_pct": 48.0,
+      "handling_matches": 14,
+      "handling_accuracy_pct": 56.0,
+      "per_class_accuracy": {
+        "declined": "5/5",
+        "deferred": "2/4",
+        "no_commitment": "0/4",
+        "requested_next_step": "3/8",
+        "unclear": "2/4"
+      },
+      "latency_ms": {
+        "p50": 307.9,
+        "p95": 328.1
+      },
+      "failures": [
+        {
+          "id": "quote_request",
+          "choice": "declined",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "thai_sample",
+          "choice": "declined",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "dev_meeting_request",
+          "choice": "deferred",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "dev_thai_price",
+          "choice": "declined",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "dev_defer_budget",
+          "choice": "declined",
+          "expected_semantic": "deferred",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "dev_defer_thai",
+          "choice": "declined",
+          "expected_semantic": "deferred",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "dev_ack_only",
+          "choice": "declined",
+          "expected_semantic": "no_commitment",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "dev_thai_ack",
+          "choice": "declined",
+          "expected_semantic": "no_commitment",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "dev_internal_plan",
+          "choice": "deferred",
+          "expected_semantic": "unclear",
+          "expected_handling": "research"
+        },
+        {
+          "id": "dev_conflict_noorder",
+          "choice": "declined",
+          "expected_semantic": "unclear",
+          "expected_handling": "research"
+        },
+        {
+          "id": "dev_chronology_returned",
+          "choice": "declined",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        }
+      ],
+      "refusals": []
+    },
+    {
+      "variant": "cand_convo",
+      "scored": 25,
+      "refused": 0,
+      "semantic_matches": 11,
+      "semantic_accuracy_pct": 44.0,
+      "handling_matches": 12,
+      "handling_accuracy_pct": 48.0,
+      "per_class_accuracy": {
+        "declined": "5/5",
+        "deferred": "3/4",
+        "no_commitment": "1/4",
+        "requested_next_step": "1/8",
+        "unclear": "1/4"
+      },
+      "latency_ms": {
+        "p50": 311.7,
+        "p95": 407.9
+      },
+      "failures": [
+        {
+          "id": "quote_request",
+          "choice": "declined",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "sample_request",
+          "choice": "declined",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "keep_warm",
+          "choice": "declined",
+          "expected_semantic": "no_commitment",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "buyer_unknown",
+          "choice": "declined",
+          "expected_semantic": "unclear",
+          "expected_handling": "research"
+        },
+        {
+          "id": "thai_sample",
+          "choice": "declined",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "dev_meeting_request",
+          "choice": "deferred",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "dev_order_request",
+          "choice": "deferred",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "dev_thai_price",
+          "choice": "deferred",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "dev_defer_budget",
+          "choice": "declined",
+          "expected_semantic": "deferred",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "dev_thai_ack",
+          "choice": "declined",
+          "expected_semantic": "no_commitment",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "dev_internal_plan",
+          "choice": "deferred",
+          "expected_semantic": "unclear",
+          "expected_handling": "research"
+        },
+        {
+          "id": "dev_conflict_noorder",
+          "choice": "declined",
+          "expected_semantic": "unclear",
+          "expected_handling": "research"
+        },
+        {
+          "id": "dev_chronology_returned",
+          "choice": "declined",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        }
+      ],
+      "refusals": []
+    },
+    {
+      "variant": "cand_note_only",
+      "scored": 25,
+      "refused": 0,
+      "semantic_matches": 12,
+      "semantic_accuracy_pct": 48.0,
+      "handling_matches": 13,
+      "handling_accuracy_pct": 52.0,
+      "per_class_accuracy": {
+        "declined": "4/5",
+        "deferred": "3/4",
+        "no_commitment": "1/4",
+        "requested_next_step": "2/8",
+        "unclear": "2/4"
+      },
+      "latency_ms": {
+        "p50": 346.0,
+        "p95": 376.5
+      },
+      "failures": [
+        {
+          "id": "quote_request",
+          "choice": "declined",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "sample_request",
+          "choice": "deferred",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "thai_sample",
+          "choice": "deferred",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "dev_meeting_request",
+          "choice": "deferred",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "dev_thai_price",
+          "choice": "declined",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "dev_defer_budget",
+          "choice": "declined",
+          "expected_semantic": "deferred",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "dev_ack_only",
+          "choice": "declined",
+          "expected_semantic": "no_commitment",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "dev_thai_ack",
+          "choice": "declined",
+          "expected_semantic": "no_commitment",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "dev_internal_plan",
+          "choice": "deferred",
+          "expected_semantic": "unclear",
+          "expected_handling": "research"
+        },
+        {
+          "id": "dev_conflict_noorder",
+          "choice": "declined",
+          "expected_semantic": "unclear",
+          "expected_handling": "research"
+        },
+        {
+          "id": "dev_chronology_declined",
+          "choice": "no_commitment",
+          "expected_semantic": "declined",
+          "expected_handling": "deprioritize"
+        },
+        {
+          "id": "dev_chronology_returned",
+          "choice": "declined",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        }
+      ],
+      "refusals": []
+    },
+    {
+      "variant": "cand_convo_revopts",
+      "scored": 25,
+      "refused": 0,
+      "semantic_matches": 11,
+      "semantic_accuracy_pct": 44.0,
+      "handling_matches": 14,
+      "handling_accuracy_pct": 56.0,
+      "per_class_accuracy": {
+        "declined": "5/5",
+        "deferred": "0/4",
+        "no_commitment": "3/4",
+        "requested_next_step": "1/8",
+        "unclear": "2/4"
+      },
+      "latency_ms": {
+        "p50": 337.3,
+        "p95": 373.1
+      },
+      "failures": [
+        {
+          "id": "quote_request",
+          "choice": "no_commitment",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "sample_request",
+          "choice": "declined",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "thai_sample",
+          "choice": "no_commitment",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "dev_meeting_request",
+          "choice": "deferred",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "dev_order_request",
+          "choice": "declined",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "dev_thai_price",
+          "choice": "declined",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        },
+        {
+          "id": "dev_defer_budget",
+          "choice": "declined",
+          "expected_semantic": "deferred",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "dev_defer_thai",
+          "choice": "declined",
+          "expected_semantic": "deferred",
+          "expected_handling": "nurture"
+        },
+        {
+          "id": "dev_internal_plan",
+          "choice": "declined",
+          "expected_semantic": "unclear",
+          "expected_handling": "research"
+        },
+        {
+          "id": "dev_conflict_noorder",
+          "choice": "declined",
+          "expected_semantic": "unclear",
+          "expected_handling": "research"
+        },
+        {
+          "id": "dev_chronology_returned",
+          "choice": "declined",
+          "expected_semantic": "requested_next_step",
+          "expected_handling": "priority"
+        }
+      ],
+      "refusals": []
+    }
+  ]
+}

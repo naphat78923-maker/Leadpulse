@@ -102,6 +102,14 @@ export interface Deal {
   draft_primary_ask?: string | null;
   followup_date: string | null;
   last_outcome: string | null;
+  /**
+   * The buyer's reply VERBATIM (first-person, exactly as received — email/LINE/
+   * call transcript excerpt). Distinct from `last_outcome`, which is the rep's
+   * paraphrase. The local Laya buyer-response interpretation reads this field
+   * first because it handles first-person buyer text far better than reported
+   * speech (scripts/eval_results/2026-09-23-buyer-response-eval-report.md).
+   */
+  buyer_reply?: string | null;
   nudge_count: number;
   workflow_action?: DealWorkflowAction | null;
   nudge_stage?: NudgeStage | null;

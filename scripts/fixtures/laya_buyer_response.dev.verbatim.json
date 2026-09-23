@@ -1,0 +1,48 @@
+{
+  "schema": "laya-buyer-response-fixtures/v1",
+  "set": "dev-verbatim",
+  "status": "reviewed 2026-09-23 — first-person buyer_reply twin of the dev set; tests the pipeline the buyer_reply field enables (buildLayaBuyerResponseInput).",
+  "notes": [
+    "Same case ids and labels as laya_buyer_response.dev.json, but the buyer evidence is the buyer's verbatim first-person reply, not the rep's paraphrase.",
+    "Cases whose evidence is inherently NOT a buyer reply (internal plan, no identified buyer, literal 'unknown') keep outcome-only and exercise the note-fallback path (verbatim=false).",
+    "Missing/empty evidence and all safety cases are unchanged in expectation."
+  ],
+  "scoreable": [
+    {"id": "quote_request", "lang": "en", "buyer_reply": "The butter works well in our croissants. Please send us a quotation for 20 kg today.", "expected_semantic": "requested_next_step", "expected_handling": "priority"},
+    {"id": "sample_request", "lang": "en", "buyer_reply": "Can you arrange a butter sample for our paid menu trial?", "expected_semantic": "requested_next_step", "expected_handling": "priority"},
+    {"id": "later_quarter", "lang": "en", "buyer_reply": "Your butter fits our bakery, but please revisit this next quarter; we have no purchasing need right now.", "expected_semantic": "deferred", "expected_handling": "nurture"},
+    {"id": "keep_warm", "lang": "en", "buyer_reply": "We like the butter and are happy to receive occasional updates. No order, sample, meeting, or price request from us right now.", "expected_semantic": "no_commitment", "expected_handling": "nurture"},
+    {"id": "unknown", "lang": "en", "outcome": "unknown", "expected_semantic": "unclear", "expected_handling": "research"},
+    {"id": "buyer_unknown", "lang": "en", "outcome": "We have not identified who buys ingredients or whether this business uses butter. No buyer response.", "expected_semantic": "unclear", "expected_handling": "research"},
+    {"id": "wrong_product", "lang": "en", "buyer_reply": "We only use vegetable oil and will not buy butter.", "expected_semantic": "declined", "expected_handling": "deprioritize"},
+    {"id": "later_decline", "lang": "en", "stage": "negotiation", "value": 300000, "buyer_reply": "We initially asked for samples, but after testing them we have decided we will not proceed.", "expected_semantic": "declined", "expected_handling": "deprioritize"},
+    {"id": "thai_sample", "lang": "th", "buyer_reply": "วันนี้ผมอยากขอราคาเนยและตัวอย่างเพื่อทดลองทำครัวซองต์ครับ", "expected_semantic": "requested_next_step", "expected_handling": "priority"},
+    {"id": "dev_price_request", "lang": "en", "buyer_reply": "Please send us your price list for 25 kg butter blocks and your delivery terms.", "expected_semantic": "requested_next_step", "expected_handling": "priority"},
+    {"id": "dev_meeting_request", "lang": "en", "buyer_reply": "Can we meet next week to discuss a butter supply contract?", "expected_semantic": "requested_next_step", "expected_handling": "priority"},
+    {"id": "dev_order_request", "lang": "en", "buyer_reply": "Please prepare our first order of 100 kg for next month.", "expected_semantic": "requested_next_step", "expected_handling": "priority"},
+    {"id": "dev_thai_price", "lang": "th", "buyer_reply": "ขอใบเสนอราคาเนยจำนวน 50 กิโลกรัมสำหรับร้านอาหารของเราครับ", "expected_semantic": "requested_next_step", "expected_handling": "priority"},
+    {"id": "dev_defer_budget", "lang": "en", "buyer_reply": "We like the product, but please come back after our budget resets in January.", "expected_semantic": "deferred", "expected_handling": "nurture"},
+    {"id": "dev_defer_season", "lang": "en", "buyer_reply": "We are interested, but we only review suppliers after the peak season ends.", "expected_semantic": "deferred", "expected_handling": "nurture"},
+    {"id": "dev_defer_thai", "lang": "th", "buyer_reply": "ติดต่อกลับมาใหม่ไตรมาสหน้านะครับ ตอนนี้เรายังไม่มีความต้องการสั่งซื้อ", "expected_semantic": "deferred", "expected_handling": "nurture"},
+    {"id": "dev_decline_price", "lang": "en", "buyer_reply": "Your price is too high. We are staying with our current supplier.", "expected_semantic": "declined", "expected_handling": "deprioritize"},
+    {"id": "dev_decline_thai", "lang": "th", "buyer_reply": "เราไม่สนใจครับ ตอนนี้เราซื้อจากเจ้าเดิมแล้ว", "expected_semantic": "declined", "expected_handling": "deprioritize"},
+    {"id": "dev_ack_only", "lang": "en", "buyer_reply": "Thank you for the introduction. The butter sounds good.", "expected_semantic": "no_commitment", "expected_handling": "nurture"},
+    {"id": "dev_interest_noask", "lang": "en", "buyer_reply": "The idea of premium butter sounds interesting. We are not requesting samples or pricing yet.", "expected_semantic": "no_commitment", "expected_handling": "nurture"},
+    {"id": "dev_thai_ack", "lang": "th", "buyer_reply": "ขอบคุณสำหรับข้อมูลครับ สินค้าน่าสนใจดี", "expected_semantic": "no_commitment", "expected_handling": "nurture"},
+    {"id": "dev_internal_plan", "lang": "en", "outcome": "We should visit this shop again and push the premium line. They have not replied to our last two messages.", "expected_semantic": "unclear", "expected_handling": "research"},
+    {"id": "dev_conflict_noorder", "lang": "en", "buyer_reply": "Please send us a quotation. We have decided to decline the offer.", "expected_semantic": "unclear", "expected_handling": "research"},
+    {"id": "dev_chronology_declined", "lang": "en", "buyer_reply": "In April we asked you for samples. In July we signed with a competitor.", "expected_semantic": "declined", "expected_handling": "deprioritize"},
+    {"id": "dev_chronology_returned", "lang": "en", "buyer_reply": "Last year we declined. This week we came back — please send a new quotation for 30 kg.", "expected_semantic": "requested_next_step", "expected_handling": "priority"},
+    {"id": "dev_missing_outcome", "lang": "en", "outcome": null, "expected_semantic": null, "expected_handling": "needs_evidence"},
+    {"id": "dev_empty_outcome", "lang": "en", "outcome": "", "expected_semantic": null, "expected_handling": "needs_evidence"}
+  ],
+  "safety": [
+    {"id": "english_opt_out", "lang": "en", "buyer_reply": "We are not interested. Please do not contact us again.", "expected_handling": "not_scored_opt_out"},
+    {"id": "thai_opt_out", "lang": "th", "buyer_reply": "ขอไม่ให้ติดต่ออีกครับ", "expected_handling": "not_scored_opt_out"},
+    {"id": "dev_opt_out_stop_calls", "lang": "en", "buyer_reply": "Stop contacting our office, and do not email us again.", "expected_handling": "not_scored_opt_out"},
+    {"id": "dev_opt_out_unsubscribe", "lang": "en", "buyer_reply": "Unsubscribe. Do not email this address again.", "expected_handling": "not_scored_opt_out"},
+    {"id": "dev_closed_won", "lang": "en", "stage": "closed_won", "outcome": "Signed a 12-month butter supply contract.", "expected_handling": "status_only"},
+    {"id": "lost_deal", "lang": "en", "stage": "closed_lost", "outcome": "Buyer selected another supplier and declined our offer.", "expected_handling": "status_only"},
+    {"id": "dev_parked", "lang": "en", "workflow": "parked", "buyer_reply": "Please send a quotation for 40 kg.", "expected_handling": "status_only"}
+  ]
+}

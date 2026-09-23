@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Company, Deal } from '@/types/crm';
-import { buildLayaAttentionInput } from './lead-scoring';
+import { buildLayaAttentionInput, buildLayaBuyerResponseInput, buyerResponseSignal } from './lead-scoring';
 
 const deal: Pick<Deal, 'product' | 'stage' | 'value' | 'followup_date' | 'last_outcome'> = {
   stage: 'contacted', product: 'Butter', value: 30000, followup_date: '2026-09-21',
@@ -60,5 +60,75 @@ describe('buildLayaAttentionInput', () => {
     expect(input.state).toContain('Value: unknown.');
     expect(input.state).toContain('Follow-up: unscheduled.');
     expect(input.state).toContain('Outcome: unknown.');
+  });
+});
+
+describe('buildLayaBuyerResponseInput', () => {
+  const baseDeal = { product: 'Butter', last_outcome: 'Buyer asked for a sample price' };
+
+  it('prefers the verbatim buyer reply and marks the state as verbatim', () => {
+    const input = buildLayaBuyerResponseInput({
+      deal: { ...baseDeal, buyer_reply: 'Please send us a quotation for 20 kg.' },
+    });
+    expect(input).not.toBeNull();
+    expect(input!.verbatim).toBe(true);
+    expect(input!.state).toBe(
+      'We supply Butter to this account. The buyer\'s latest reply: "Please send us a quotation for 20 kg."',
+    );
+    // Frozen reversed option order — the measured v_verbatim_revopts configuration.
+    expect(Object.keys(input!.questions.buyer_response.criteria)).toEqual([
+      'unclear', 'no_commitment', 'declined', 'deferred', 'requested_next_step',
+    ]);
+  });
+
+  it('falls back to the paraphrased outcome note and marks it as not verbatim', () => {
+    const input = buildLayaBuyerResponseInput({ deal: baseDeal });
+    expect(input!.verbatim).toBe(false);
+    expect(input!.state).toBe(
+      'We supply Butter to this account. The latest recorded outcome note says: "Buyer asked for a sample price"',
+    );
+  });
+
+  it('returns null when there is no buyer text — a code-layer needs_evidence safeguard', () => {
+    expect(buildLayaBuyerResponseInput({ deal: { product: 'Butter', last_outcome: null } })).toBeNull();
+    expect(buildLayaBuyerResponseInput({
+      deal: { product: 'Butter', last_outcome: '  ', buyer_reply: '' },
+    })).toBeNull();
+  });
+
+  it('preserves long or multilingual replies without shortening', () => {
+    const reply = 'กรุณาส่งใบเสนอราคาเนย 20 กก. ให้หน่อยครับ ' + 'x'.repeat(500);
+    const input = buildLayaBuyerResponseInput({ deal: { ...baseDeal, buyer_reply: reply } });
+    expect(input!.state).toContain(reply);
+  });
+
+  it('excludes fields outside the declared recipe and handles missing product', () => {
+    const input = buildLayaBuyerResponseInput({
+      deal: { product: '', last_outcome: null, buyer_reply: 'No, thank you.',
+        client: 'Private client', stage: 'contacted' } as never,
+    });
+    expect(input!.state).toBe(
+      'We supply our products to this account. The buyer\'s latest reply: "No, thank you."',
+    );
+    expect(input!.state).not.toContain('Private');
+    expect(input!.state).not.toContain('contacted');
+  });
+});
+
+describe('buyerResponseSignal — shipped 2-class slice (eval report option 1)', () => {
+  it('flags a verbatim requested_next_step as buyer_requested', () => {
+    expect(buyerResponseSignal('requested_next_step', true)).toBe('buyer_requested');
+  });
+
+  it('routes every other verbatim class to manual triage — they measured ~1/4 each', () => {
+    for (const level of ['deferred', 'declined', 'no_commitment', 'unclear'] as const) {
+      expect(buyerResponseSignal(level, true)).toBe('manual_triage');
+    }
+  });
+
+  it('never raises the flag on paraphrased notes, even for requested_next_step', () => {
+    // Third-person notes measured 2/8 on requested_next_step — human review only.
+    expect(buyerResponseSignal('requested_next_step', false)).toBe('manual_triage');
+    expect(buyerResponseSignal('declined', false)).toBe('manual_triage');
   });
 });

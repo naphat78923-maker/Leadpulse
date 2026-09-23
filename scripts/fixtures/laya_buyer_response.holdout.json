@@ -1,0 +1,62 @@
+{
+  "schema": "laya-buyer-response-fixtures/v1",
+  "set": "holdout",
+  "status": "reviewed 2026-09-23 — labels re-derived independently; Pat spot-check still recommended. Borderline (kept deferred): h_def_budget_quarter, h_def_fiscal_year, h_def_contract_end. Run at most once, only after dev-set wording is frozen",
+  "notes": [
+    "40 scoreable cases, balanced 8 per semantic class, with Thai cases spread across classes.",
+    "Expected handling uses the shared application vocabulary: priority | nurture | research | deprioritize for scoreable; needs_evidence | not_scored_opt_out | status_only for safety.",
+    "Chronology cases state event order explicitly; conflicting cases never state order."
+  ],
+  "scoreable": [
+    {"id": "h_req_hotel_quote", "lang": "en", "outcome": "The hotel purchasing manager requested a written quotation for 200 kg of butter per month.", "expected_semantic": "requested_next_step", "expected_handling": "priority"},
+    {"id": "h_req_tender", "lang": "en", "outcome": "Buyer asked us to submit pricing for their catering tender before Friday.", "expected_semantic": "requested_next_step", "expected_handling": "priority"},
+    {"id": "h_req_airline_sample", "lang": "en", "outcome": "The airline caterer asked for a 5 kg sample of unsalted butter to test in their kitchens.", "expected_semantic": "requested_next_step", "expected_handling": "priority"},
+    {"id": "h_req_meeting", "lang": "en", "outcome": "The distributor's buyer asked to schedule a call to discuss becoming a stockist.", "expected_semantic": "requested_next_step", "expected_handling": "priority"},
+    {"id": "h_req_wholesale_price", "lang": "en", "outcome": "The bakery group asked what our wholesale price is for orders over 500 kg.", "expected_semantic": "requested_next_step", "expected_handling": "priority"},
+    {"id": "h_req_thai_quote", "lang": "th", "outcome": "ผู้จัดการโรงแรมขอใบเสนอราคาเนยรายเดือนและเงื่อนไขการจัดส่ง", "expected_semantic": "requested_next_step", "expected_handling": "priority"},
+    {"id": "h_req_thai_sample", "lang": "th", "outcome": "เจ้าของร้านกาแฟขอตัวอย่างเนยเพื่อทดลองอบขนมปังสัปดาห์นี้", "expected_semantic": "requested_next_step", "expected_handling": "priority"},
+    {"id": "h_req_renewal_terms", "lang": "en", "outcome": "Buyer asked for our renewal terms and updated pricing before their contract with us expires.", "expected_semantic": "requested_next_step", "expected_handling": "priority"},
+    {"id": "h_def_new_year", "lang": "en", "outcome": "Buyer said to reach out again after the New Year rush when they review suppliers.", "expected_semantic": "deferred", "expected_handling": "nurture"},
+    {"id": "h_def_budget_quarter", "lang": "en", "outcome": "They like the butter but their ingredient budget is frozen until next quarter.", "expected_semantic": "deferred", "expected_handling": "nurture"},
+    {"id": "h_def_relocation", "lang": "en", "outcome": "The café is moving locations and asked us to pause discussions until the move is done.", "expected_semantic": "deferred", "expected_handling": "nurture"},
+    {"id": "h_def_thai", "lang": "th", "outcome": "ลูกค้าบอกให้โทรกลับอีกครั้งในอีกสามเดือน ช่วงนี้ยังไม่ซื้อ", "expected_semantic": "deferred", "expected_handling": "nurture"},
+    {"id": "h_def_high_season", "lang": "en", "outcome": "The resort buyer said to revisit supply talks after the high season, around April.", "expected_semantic": "deferred", "expected_handling": "nurture"},
+    {"id": "h_def_fiscal_year", "lang": "en", "outcome": "Interested in the premium line, but new vendor onboarding only starts next fiscal year.", "expected_semantic": "deferred", "expected_handling": "nurture"},
+    {"id": "h_def_contract_end", "lang": "en", "outcome": "Buyer said they are bound to their current supplier until that contract ends in six months.", "expected_semantic": "deferred", "expected_handling": "nurture"},
+    {"id": "h_def_thai_season", "lang": "th", "outcome": "ร้านเบเกอรี่สนใจแต่ขอคุยเรื่องราคาหลังหมดช่วงเทศกาล", "expected_semantic": "deferred", "expected_handling": "nurture"},
+
+    {"id": "h_dec_local_supplier", "lang": "en", "outcome": "Buyer said they decided to buy from a local dairy instead and will not proceed with us.", "expected_semantic": "declined", "expected_handling": "deprioritize"},
+    {"id": "h_dec_price_stay", "lang": "en", "outcome": "After reviewing our quotation, the buyer said it is too expensive and they will keep their current supplier.", "expected_semantic": "declined", "expected_handling": "deprioritize"},
+    {"id": "h_dec_not_interested", "lang": "en", "outcome": "The restaurant owner said they are not interested in changing their butter supplier.", "expected_semantic": "declined", "expected_handling": "deprioritize"},
+    {"id": "h_dec_vegan", "lang": "en", "outcome": "The bakery is switching to a fully vegan menu and will no longer buy any dairy butter.", "expected_semantic": "declined", "expected_handling": "deprioritize"},
+    {"id": "h_dec_thai", "lang": "th", "outcome": "ลูกค้าปฏิเสธ บอกว่าราคาไม่เหมาะสมและจะไม่สั่งซื้อจากเรา", "expected_semantic": "declined", "expected_handling": "deprioritize"},
+    {"id": "h_dec_thai_competitor", "lang": "th", "outcome": "ผู้ซื้อแจ้งว่าได้เซ็นสัญญากับคู่แข่งแล้วและไม่ต้องการข้อเสนอจากเรา", "expected_semantic": "declined", "expected_handling": "deprioritize"},
+    {"id": "h_dec_failed_trial", "lang": "en", "outcome": "The chef tested our samples last week and rejected them, saying the texture failed their pastry standard.", "expected_semantic": "declined", "expected_handling": "deprioritize"},
+    {"id": "h_dec_after_quote", "lang": "en", "outcome": "We sent the quotation they asked for, and yesterday they replied that they will not proceed.", "expected_semantic": "declined", "expected_handling": "deprioritize"},
+    {"id": "h_noc_thanks", "lang": "en", "outcome": "Buyer thanked us for the product information and said they will keep it on file.", "expected_semantic": "no_commitment", "expected_handling": "nurture"},
+    {"id": "h_noc_keep_mind", "lang": "en", "outcome": "The buyer said the butter sounds interesting and they will keep us in mind.", "expected_semantic": "no_commitment", "expected_handling": "nurture"},
+    {"id": "h_noc_newsletter", "lang": "en", "outcome": "Buyer agreed to receive our monthly price updates by email.", "expected_semantic": "no_commitment", "expected_handling": "nurture"},
+    {"id": "h_noc_catalog", "lang": "en", "outcome": "The purchasing assistant acknowledged receipt of our catalog and said the team will look at it.", "expected_semantic": "no_commitment", "expected_handling": "nurture"},
+    {"id": "h_noc_thai_thanks", "lang": "th", "outcome": "ลูกค้าขอบคุณสำหรับการแนะนำสินค้าและบอกว่าจะดูข้อมูลไว้", "expected_semantic": "no_commitment", "expected_handling": "nurture"},
+    {"id": "h_noc_likes_product", "lang": "en", "outcome": "The chef said he personally likes our butter. No order, sample, meeting, or price request.", "expected_semantic": "no_commitment", "expected_handling": "nurture"},
+    {"id": "h_noc_sounds_good", "lang": "en", "outcome": "Buyer said the offer sounds good and left it at that.", "expected_semantic": "no_commitment", "expected_handling": "nurture"},
+    {"id": "h_noc_thai_info", "lang": "th", "outcome": "ลูกค้ารับทราบข้อมูลราคาแล้วและบอกให้ส่งข่าวสารมาเรื่อยๆ", "expected_semantic": "no_commitment", "expected_handling": "nurture"},
+
+    {"id": "h_unc_unknown", "lang": "en", "outcome": "unknown", "expected_semantic": "unclear", "expected_handling": "research"},
+    {"id": "h_unc_no_buyer", "lang": "en", "outcome": "We still do not know who makes purchasing decisions at this company. No buyer response recorded.", "expected_semantic": "unclear", "expected_handling": "research"},
+    {"id": "h_unc_internal_plan", "lang": "en", "outcome": "Plan: send them the new price list and try to book a tasting. The buyer has not responded to anything yet.", "expected_semantic": "unclear", "expected_handling": "research"},
+    {"id": "h_unc_conflict_noorder", "lang": "en", "outcome": "Buyer requested a quotation. Buyer said they are not interested.", "expected_semantic": "unclear", "expected_handling": "research"},
+    {"id": "h_unc_out_of_office", "lang": "en", "outcome": "Received an automatic out-of-office reply from the buyer's mailbox.", "expected_semantic": "unclear", "expected_handling": "research"},
+    {"id": "h_unc_dangling_ref", "lang": "en", "outcome": "Discussed terms, see the meeting minutes for details.", "expected_semantic": "unclear", "expected_handling": "research"},
+    {"id": "h_unc_ambiguous", "lang": "en", "outcome": "Called the shop. Maybe later, maybe not. Hard to say.", "expected_semantic": "unclear", "expected_handling": "research"},
+    {"id": "h_unc_thai_noresponse", "lang": "th", "outcome": "ยังไม่มีการตอบกลับจากผู้ซื้อ ส่งข้อความไปสองครั้งแล้ว", "expected_semantic": "unclear", "expected_handling": "research"}
+  ],
+  "safety": [
+    {"id": "h_optout_stop_email", "lang": "en", "outcome": "Buyer asked for a quote in May but has now asked us to stop emailing them.", "expected_handling": "not_scored_opt_out"},
+    {"id": "h_optout_thai", "lang": "th", "outcome": "ลูกค้าบอกว่าอย่าติดต่ออีกและไม่ต้องการรับข้อมูลจากเรา", "expected_handling": "not_scored_opt_out"},
+    {"id": "h_optout_unsubscribed", "lang": "en", "outcome": "The buyer opted out of our mailing list and requested no further outreach.", "expected_handling": "not_scored_opt_out"},
+    {"id": "h_closed_won", "lang": "en", "stage": "closed_won", "outcome": "Contract renewed for another year at 300 kg per month.", "expected_handling": "status_only"},
+    {"id": "h_closed_lost", "lang": "en", "stage": "closed_lost", "outcome": "Lost to a competitor on price. Deal closed.", "expected_handling": "status_only"},
+    {"id": "h_parked", "lang": "en", "workflow": "parked", "outcome": "Buyer asked for samples. Account parked while they reorganize.", "expected_handling": "status_only"}
+  ]
+}

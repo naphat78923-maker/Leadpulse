@@ -69,6 +69,101 @@ export function buildLayaAttentionInput(input: {
   };
 }
 
+// ─── Buyer-response interpretation (narrow question) ───
+// Evidence: scripts/eval_results/2026-09-23-buyer-response-eval-report.md
+// The model reads the buyer's OWN WORDS far better than paraphrased CRM notes,
+// and a small sentence-form state beats any structured/compacted format.
+// Stage, value, follow-up, and tags are deliberately excluded: they are policy
+// inputs owned by code, not part of the language judgment.
+
+export type LayaBuyerResponseLevel =
+  'requested_next_step' | 'deferred' | 'declined' | 'no_commitment' | 'unclear';
+
+export interface LayaBuyerResponseInput {
+  state: string;
+  questions: {
+    buyer_response: {
+      type: 'choice';
+      instructions: string;
+      criteria: Record<LayaBuyerResponseLevel, string>;
+    };
+  };
+  /** false when the state paraphrases an outcome note instead of the buyer's verbatim reply */
+  verbatim: boolean;
+}
+
+// Option order is FROZEN reversed (eval variant v_verbatim_revopts): measured
+// 8/8 requested_next_step recalled with only 2 false positives, vs visible
+// decline over-prediction in the original order. Must stay byte-identical to
+// BUYER_RESPONSE_QUESTION in scripts/laya_score_server.py.
+const LAYA_BUYER_RESPONSE_QUESTION: LayaBuyerResponseInput['questions'] = {
+  buyer_response: {
+    type: 'choice',
+    instructions: "Which option best describes the buyer's latest message?",
+    criteria: {
+      unclear: 'no buyer response is stated, or responses conflict with no stated order',
+      no_commitment: 'only acknowledges or shows interest, with no request',
+      declined: 'says no, not interested, or that they chose another supplier',
+      deferred: 'asks to revisit later or after a stated time, without declining',
+      requested_next_step: 'requests a sample, quotation, order, contract, or pricing to proceed with a purchase',
+    },
+  },
+};
+
+/**
+ * Small sentence-form state for the narrow buyer-response question.
+ *
+ * Prefers `buyer_reply` (verbatim, first-person) and marks the result verbatim;
+ * falls back to the paraphrased `last_outcome` note marked verbatim: false so the
+ * caller can route those to human review. Returns null when there is no buyer
+ * text at all — a needs_evidence safeguard handled in code, never by the model.
+ * The complete selected text is preserved; the worker's input-budget guard
+ * refuses oversized input instead of cutting it.
+ */
+export function buildLayaBuyerResponseInput(input: {
+  deal: Pick<Deal, 'product' | 'last_outcome'> & { buyer_reply?: string | null };
+}): LayaBuyerResponseInput | null {
+  const product = input.deal.product?.trim() || 'our products';
+  const reply = input.deal.buyer_reply?.trim();
+  const note = input.deal.last_outcome?.trim();
+
+  if (reply) {
+    return {
+      state: `We supply ${product} to this account. The buyer's latest reply: "${reply}"`,
+      questions: LAYA_BUYER_RESPONSE_QUESTION,
+      verbatim: true,
+    };
+  }
+  if (note) {
+    return {
+      state: `We supply ${product} to this account. The latest recorded outcome note says: "${note}"`,
+      questions: LAYA_BUYER_RESPONSE_QUESTION,
+      verbatim: false,
+    };
+  }
+  return null;
+}
+
+// ─── Shipped handling: 2-class slice only (eval report option 1, frozen 2026-09-23) ───
+// Evidence: scripts/eval_results/2026-09-23-buyer-response-eval-report.md.
+// On verbatim replies (reversed option order) the model recalls
+// requested_next_step 8/8 with only 2 false positives, while the other four
+// classes collapse into each other (~1/4 each) — so ONLY a verbatim
+// requested_next_step may raise the buyer-asked flag. Paraphrased outcome
+// notes (verbatim: false) never raise it: the same question measured 2/8 on
+// third-person notes. Everything else routes to manual triage with no label.
+
+export type LayaBuyerSignal = 'buyer_requested' | 'manual_triage';
+
+export const LAYA_BUYER_REQUEST_LABEL = 'Buyer asked for something — prioritize this deal';
+
+export function buyerResponseSignal(
+  level: LayaBuyerResponseLevel,
+  verbatim: boolean,
+): LayaBuyerSignal {
+  return verbatim && level === 'requested_next_step' ? 'buyer_requested' : 'manual_triage';
+}
+
 // ── Stage scoring (max 30) ──
 export const STAGE_WEIGHTS: Record<DealStage, number> = {
   research: 5,
