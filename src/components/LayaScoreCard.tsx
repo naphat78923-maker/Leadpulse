@@ -16,6 +16,10 @@ const LABELS = {
 } as const;
 
 type AttentionLevel = keyof typeof LABELS;
+const LOCAL_ENGINES = ['cpu_ne', 'cpu_gpu'] as const;
+function isLocalEngine(value: unknown): boolean {
+  return typeof value === 'string' && LOCAL_ENGINES.some(engine => engine === value);
+}
 
 type ScoreResult = {
   recommendation: AttentionLevel;
@@ -48,7 +52,7 @@ function isScoreResult(value: unknown): value is ScoreResult {
     typeof result.trace.model?.repository === 'string' &&
     typeof result.trace.model?.source_revision === 'string' &&
     typeof result.trace.model?.package_sha256 === 'string' &&
-    result.trace.model?.engine === 'cpu_ne' &&
+    isLocalEngine(result.trace.model?.engine) &&
     typeof result.trace.scored_at === 'string' &&
     Number.isFinite(Date.parse(result.trace.scored_at))
   );
@@ -75,7 +79,7 @@ function LayaConnectionCheck() {
     try {
       const { ok, payload } = await requestLocalLaya('/health', { signal: controller.signal });
       if (!isCurrent()) return;
-      if (!ok || !payload || typeof payload !== 'object' || !('status' in payload) || payload.status !== 'ready' || !('engine' in payload) || payload.engine !== 'cpu_ne') {
+      if (!ok || !payload || typeof payload !== 'object' || !('status' in payload) || payload.status !== 'ready' || !('engine' in payload) || !isLocalEngine(payload.engine)) {
         throw new Error('The local endpoint did not report a ready Laya worker. Check the worker and port, then retry.');
       }
       setMessage('Local worker responded to this check; not a score or a guarantee the next request will succeed.');

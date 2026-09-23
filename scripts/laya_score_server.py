@@ -13,12 +13,23 @@ from pathlib import Path
 from typing import Any
 
 import laya_coreml as laya
-from laya_input import InputRejected, check_input_budget
+from laya_input import InputRejected, check_input_budget, has_explicit_contact_opt_out
 
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("LAYA_SCORE_PORT", "8765"))
 MODEL_PATH = Path(os.environ["LAYA_COREML_MODEL_PATH"]).expanduser().resolve()
 MAX_BODY_BYTES = 16_384
+manifest = json.loads((MODEL_PATH / "coreml_config.json").read_text(encoding="utf-8"))
+
+def model_engine(model_manifest: dict[str, Any]) -> str:
+    model_format = model_manifest.get("format")
+    if model_format == "laya-coreml-ane":
+        return "cpu_ne"
+    if model_format == "laya-coreml":
+        return "cpu_gpu"
+    raise ValueError("Unsupported local Laya bundle format")
+
+MODEL_ENGINE = model_engine(manifest)
 INFERENCE_SLOTS = threading.BoundedSemaphore(1)
 ATTENTION_QUESTION = {"attention": {
     "type": "choice", "instructions": "Best sales attention?",
@@ -82,16 +93,15 @@ def json_response(handler: BaseHTTPRequestHandler, status: HTTPStatus, payload: 
 def load_agent():
     if not MODEL_PATH.is_dir():
         raise RuntimeError(f"LAYA_COREML_MODEL_PATH is not a model directory: {MODEL_PATH}")
-    return laya.load(str(MODEL_PATH), local_files_only=True, compute_units="cpu_ne")
+    return laya.load(str(MODEL_PATH), local_files_only=True, compute_units=MODEL_ENGINE)
 
 
 AGENT = load_agent()
-manifest = json.loads((MODEL_PATH / "coreml_config.json").read_text(encoding="utf-8"))
 MODEL_IDENTITY = {
     "repository": manifest["repository"],
     "source_revision": manifest["source_revision"],
     "package_sha256": manifest["package_sha256"],
-    "engine": "cpu_ne",
+    "engine": MODEL_ENGINE,
 }
 
 
@@ -119,7 +129,7 @@ class LayaScoreHandler(BaseHTTPRequestHandler):
         if self.path != "/health":
             json_response(self, HTTPStatus.NOT_FOUND, {"error": "Not found"})
             return
-        json_response(self, HTTPStatus.OK, {"status": "ready", "engine": "cpu_ne"})
+        json_response(self, HTTPStatus.OK, {"status": "ready", "engine": MODEL_ENGINE})
 
     def do_POST(self) -> None:
         if not host_is_allowed(self) or not origin_is_allowed(self):
@@ -161,6 +171,12 @@ class LayaScoreHandler(BaseHTTPRequestHandler):
             return
 
         scored_state = state.strip()
+        if has_explicit_contact_opt_out(scored_state):
+            json_response(self, HTTPStatus.UNPROCESSABLE_ENTITY, {
+                "status": "not_scored", "code": "contact_opt_out",
+                "error": "Not scored: possible no-contact request in the deal evidence. Review manually; do not initiate outreach from this recommendation.",
+            })
+            return
         if not INFERENCE_SLOTS.acquire(blocking=False):
             json_response(self, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Local Laya is busy. Retry shortly."})
             return

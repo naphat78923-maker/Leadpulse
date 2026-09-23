@@ -3,7 +3,23 @@
 Do not shorten evidence to fit. Count the full encoded question, including every
 option, marker and separator, before Laya's own prompt builder can truncate it.
 """
+import re
+
 from laya_coreml.common import render_options
+
+# A conservative, explicit-language gate, not a complete consent classifier.
+# Check the full selected state, including the end of the outcome, before inference.
+_OPT_OUT_PATTERNS = (
+    re.compile(r"\b(?:do not|don't|dont|never)\s+(?:contact|call|email|message|reach out(?: to)?)\b", re.I),
+    re.compile(r"\b(?:asked|requested|requests?|wants?|prefers?|said|told us)\s+(?:us\s+)?(?:for\s+)?(?:no\s+(?:further\s+)?(?:contact|outreach)|not\s+to\s+(?:be\s+)?(?:contact(?:ed)?|call|email|message))\b", re.I),
+    re.compile(r"\b(?:asked|requested|requests?|wants?|prefers?|said|told us)\s+(?:us\s+)?(?:to\s+)?stop\s+(?:calling|contacting|emailing|messaging)\b", re.I),
+    re.compile(r"\b(?:stop|cease)\s+(?:all\s+)?(?:contacting|contact|outreach|messaging|emails?)\b", re.I),
+    re.compile(r"\b(?:unsubscribe|unsubscribed|opted[\s-]+out)\b", re.I),
+    re.compile(r"(?:ไม่ต้อง|อย่า|ห้าม|งด|ขอไม่ให้|ไม่ต้องการ(?:ให้)?)\s*(?:ติดต่อ|ทัก|โทร)"),
+)
+
+def has_explicit_contact_opt_out(state: str) -> bool:
+    return any(pattern.search(state) for pattern in _OPT_OUT_PATTERNS)
 
 
 class InputRejected(ValueError):

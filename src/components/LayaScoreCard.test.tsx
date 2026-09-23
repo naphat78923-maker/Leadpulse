@@ -68,6 +68,26 @@ describe('LayaScoreCard', () => {
     expect(screen.queryByText('Prioritise')).toBeNull();
   });
 
+  it('accepts readiness from the longer local CPU/GPU model', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ status: 'ready', engine: 'cpu_gpu' }) }));
+    render(<LayaScoreCard deal={deal} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Check local connection' }));
+    await screen.findByText(/Local worker responded.*not a score/i);
+  });
+
+  it('shows a verified scoring trace from the longer local CPU/GPU model', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => {
+      const response = success();
+      const payload = await response.json();
+      payload.trace.model.engine = 'cpu_gpu';
+      payload.trace.model.repository = 'aac6fef/laya-multilingual-coreml';
+      return { ok: true, json: async () => payload };
+    }));
+    render(<LayaScoreCard deal={deal} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Score with Laya' }));
+    expect(await screen.findByText('Prioritise')).toBeTruthy();
+  });
+
   it('times out scoring, releases retry, and ignores its late success', async () => {
     vi.useFakeTimers();
     const old = deferred<ReturnType<typeof success>>();
@@ -414,12 +434,12 @@ describe('LayaScoreCard', () => {
     vi.unstubAllGlobals();
   });
 
-  it('shows the input refusal without displaying a recommendation and sends the complete outcome', async () => {
-    const message = 'Not scored: full input needs 112 tokens; this model supports 96. Nothing was shortened and no recommendation was made. Review the full evidence manually.';
+  it('shows an opt-out refusal without displaying a recommendation and sends the complete outcome', async () => {
+    const message = 'Not scored: possible no-contact request in the deal evidence. Review manually; do not initiate outreach from this recommendation.';
     const fetchMock = vi.fn().mockResolvedValue({
       ok: false,
       status: 422,
-      json: async () => ({ status: 'not_scored', code: 'input_too_long', input_tokens: 112, token_limit: 96, error: message }),
+      json: async () => ({ status: 'not_scored', code: 'contact_opt_out', error: message }),
     });
     vi.stubGlobal('fetch', fetchMock);
     const outcome = 'Buyer asked for a sample price but later declined and requested no contact';
