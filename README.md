@@ -64,12 +64,23 @@ npm run laya:serve  # local Laya worker for lead recommendations
 
 ### Local Laya lead recommendations
 
-Laya runs on this Mac, not on Vercel. Start the local worker before opening a deal:
+Laya runs on this Mac, not on Vercel. The default is the local multilingual
+**1,024-token CPU/GPU** Core ML bundle (not the earlier 96-token ANE export).
+Download the pinned model revision once, then start the local worker before
+opening a deal:
 
 ```bash
 cd ~/Projects/LeadPulse
+~/laya-coreml/.venv/bin/hf download aac6fef/laya-multilingual-coreml \
+  --revision 8139e9089273319512c730218903784074133187 \
+  --local-dir ~/laya-coreml/models/multilingual-1024
 npm run laya:serve
 ```
+
+The model stays on this Mac and loads offline after download. The older
+`~/laya-coreml/models/ane` bundle is retained for rollback; `LAYA_COREML_MODEL_PATH`
+can override the default directory. The worker identifies the loaded bundle in
+each scoring trace and reports its selected compute units in `/health`.
 
 Then use **Score with Laya** in a deal. The live LeadPulse page calls only
 `http://127.0.0.1:8765` on the Mac that opened it; the worker is bound to loopback
@@ -82,18 +93,30 @@ The result is recommendation-only; it never changes CRM data.
 
 **Input safety (slice 1):** the local worker counts the complete encoded input with
 the installed model tokenizer, including instructions, options and special tokens.
-Each question must fit the model's sequence limit (96 for this ANE bundle). If the
-full evidence does not fit, the worker returns HTTP 422 with `status: not_scored`,
+Each question must fit the model's sequence limit (1,024 for the default bundle;
+96 for the older ANE bundle). If the full evidence does not fit, the worker returns HTTP 422 with `status: not_scored`,
 `code: input_too_long`, `input_tokens` and `token_limit`. The existing card displays
 the refusal message, not a recommendation. No inference runs, nothing is shortened,
 and no CRM field changes. Review the evidence manually; do not remove a refusal or
-no-contact request just to make a prompt fit. Longer records will intentionally
-remain unscored until a separately reviewed input strategy is available.
+no-contact request just to make a prompt fit. Records exceeding the new limit
+will intentionally remain unscored; the HTTP request body is also capped at
+16,384 bytes. The larger input budget does not establish better recommendations.
 
 The guard also rejects inputs that Laya's native prompt preparation would alter
 (`input_would_change`). Only leading/trailing field whitespace and empty tags are
 normalized by the recipe. This guards input integrity, not model judgment accuracy
 or outreach authorization. Other pre-deployment review slices remain unresolved.
+
+**Explicit no-contact gate:** before token budgeting or model inference, the worker
+checks the complete selected state for a bounded set of explicit English and Thai
+opt-out phrases (for example, "do not contact", "requested no contact", or
+"ขอไม่ให้ติดต่อ"). A match returns HTTP 422 with `code: contact_opt_out` and a
+generic manual-review message. It does not return a Choice recommendation or
+store anything in the CRM. This is deliberately conservative but **not** a
+complete consent or language classifier; missed, ambiguous, or contradictory
+notes still need human review. A negated phrase such as "did not request no
+contact" may also be refused for manual review rather than interpreted as
+permission. No Laya output authorizes outreach.
 
 **Judgment scope:** only `Choice` is active: attention advice, not purchase odds,
 qualification or contact authorization. `Noul` is deferred until a narrow evidence
@@ -200,11 +223,12 @@ the downloaded model tokenizer/config files (no neural inference in this suite):
 npm test -- src/utils/lead-scoring.laya.test.ts src/components/LayaScoreCard.test.tsx
 ```
 
-The default paths match Pat's install. Override either only if Laya lives elsewhere:
+The default paths match Pat's install. Override either only if Laya lives elsewhere;
+to roll back specifically to the retained 96-token bundle, use:
 
 ```bash
-LAYA_COREML_PYTHON=/path/to/python \
-LAYA_COREML_MODEL_PATH=/path/to/models/ane \
+LAYA_COREML_PYTHON=/Users/pat/laya-coreml/.venv/bin/python \
+LAYA_COREML_MODEL_PATH=/Users/pat/laya-coreml/models/ane \
 npm run laya:serve
 ```
 

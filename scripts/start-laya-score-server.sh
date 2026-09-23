@@ -2,7 +2,7 @@
 set -eu
 
 PYTHON="${LAYA_COREML_PYTHON:-/Users/pat/laya-coreml/.venv/bin/python}"
-MODEL="${LAYA_COREML_MODEL_PATH:-/Users/pat/laya-coreml/models/ane}"
+MODEL="${LAYA_COREML_MODEL_PATH:-/Users/pat/laya-coreml/models/multilingual-1024}"
 
 if [ ! -x "$PYTHON" ]; then
   printf '%s\n' "Laya Python was not found: $PYTHON" >&2
