@@ -2,9 +2,8 @@
 
 import { useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
 import Link from 'next/link';
-import { Deal, Contact, Meeting, STAGE_LABELS, DealStage } from '@/types/crm';
+import { Deal, Contact, Meeting } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
 import CreateModal from '@/components/CreateModal';
 import LogInteractionModal from '@/components/LogInteractionModal';
@@ -12,16 +11,14 @@ import { Blob } from '@/components/blob';
 import type { BlobState } from '@/components/blob';
 import NudgeLadderRail from '@/components/NudgeLadderRail';
 import TaskActionSheet from '@/components/TaskActionSheet';
-import ReorderSignalsCard from '@/components/ReorderSignalsCard';
-import { Plus, ChevronRight, MessageCircle, Phone, Mail, Users, Package, Bell, Clock } from 'lucide-react';
-import { WORKFLOW_BY_ID, WORKFLOW_LANES, getWorkflowAction, deriveNudge, formatDerivedNudgeBadge, nudgeColorClass, addDaysToDateKey, outboundSendCountForDeal, SEND_LADDER_RUNGS, nudgeLabel } from '@/utils/deal-workflow';
+import { Plus, ChevronRight, MessageCircle, Clock } from 'lucide-react';
+import { WORKFLOW_BY_ID, getWorkflowAction, deriveNudge, formatDerivedNudgeBadge, nudgeColorClass, addDaysToDateKey, outboundSendCountForDeal, SEND_LADDER_RUNGS } from '@/utils/deal-workflow';
 import { dealNeedsReview } from '@/utils/deal-board';
 import { dealClientName } from '@/utils/dealLabel';
-import { formatBaht, bangkokDateKey, formatBangkokWeekdayDate, bangkokHour } from '@/utils/format';
+import { formatBaht, bangkokDateKey, formatBangkokWeekdayDate } from '@/utils/format';
 import * as crm from '@/lib/crm';
 import { useToast } from '@/components/ToastProvider';
 import clsx from 'clsx';
-import { calculateLeadScore, scoreToTier, TIER_LABELS, TIER_COLORS, TIER_BG, PRIORITY_CLASSES, PRIORITY_LABELS } from '@/utils/lead-scoring';
 import { PageTransition, StaggerList, StaggerItem } from '@/components/motion';
 
 const ACTION_VERBS: Record<string, string> = {
@@ -33,15 +30,6 @@ const ACTION_VERBS: Record<string, string> = {
   parked: 'Revisit',
   success: 'Won',
 };
-
-const PULSE_ITEMS: { key: string; label: string }[] = [
-  { key: 'call', label: 'Calls' },
-  { key: 'email', label: 'Emails' },
-  { key: 'dm', label: 'DMs' },
-  { key: 'meeting', label: 'Meetings' },
-  { key: 'sample_sent', label: 'Samples' },
-  { key: 'nudge', label: 'Nudges' },
-];
 
 function daysBetween(a: string, b: string): number {
   const msA = new Date(`${a}T12:00:00`).getTime();
@@ -129,8 +117,6 @@ export default function TodayPage() {
 
   const todayKey = bangkokDateKey();
   const headerDate = formatBangkokWeekdayDate();
-  const hour = bangkokHour();
-  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
   const dealFollowUps = useMemo(() => {
     const needsAttention: Deal[] = [];
@@ -160,12 +146,6 @@ export default function TodayPage() {
 
     return { needsAttention, overdue, dueToday, thisWeek };
   }, [deals, todayKey]);
-
-  const needsReviewCount = useMemo(
-    () => deals.filter((d: Deal) => d.stage !== 'closed_won' && d.stage !== 'closed_lost' && dealNeedsReview(d)).length,
-    [deals]
-  );
-  const wonCount = useMemo(() => deals.filter((d: Deal) => d.stage === 'closed_won').length, [deals]);
 
   const priorityRank: Record<string, number> = { high: 0, medium: 1, low: 2 };
   const sortedOverdue = dealFollowUps.overdue;
@@ -206,31 +186,6 @@ export default function TodayPage() {
     const heroId = startHere?.deal.id;
     return items.filter(i => i.deal.id !== heroId).slice(0, 5);
   }, [sortedOverdue, dealFollowUps.dueToday, dealFollowUps.needsAttention, startHere]);
-
-  // Pulse: last 7 Bangkok days (secondary)
-  const weekAgoKey = addDaysToDateKey(todayKey, -6);
-  const weekMeetings = meetings.filter((m: Meeting) => m.date >= weekAgoKey && m.date <= todayKey);
-  const pulseCounts: Record<string, number> = { call: 0, email: 0, dm: 0, meeting: 0, sample_sent: 0, nudge: 0 };
-  weekMeetings.forEach((m: Meeting) => {
-    if (pulseCounts[m.type] !== undefined) pulseCounts[m.type]++;
-  });
-  pulseCounts.sample_sent = deals.filter(
-    d => (d.workflow_action === 'sample' || d.workflow_action === 'testing') && d.stage !== 'closed_won' && d.stage !== 'closed_lost'
-  ).length;
-  pulseCounts.nudge = deals.filter(d => {
-    const n = deriveNudge(d, todayKey, {
-      sendCount: outboundSendCountForDeal(meetings, d.id),
-    });
-    return Boolean(n) && d.stage !== 'closed_won' && d.stage !== 'closed_lost';
-  }).length;
-
-  // Today's pulse (featured strip under the hero)
-  const todayLocal = bangkokDateKey();
-  const todayMeetings = meetings.filter((m: Meeting) => m.date === todayLocal);
-  const todayCounts: Record<string, number> = { call: 0, email: 0, dm: 0, meeting: 0, sample_sent: 0, nudge: 0, note: 0 };
-  todayMeetings.forEach((m: Meeting) => { if (todayCounts[m.type] !== undefined) todayCounts[m.type]++; });
-  todayCounts.sample_sent = deals.filter(d => (d.workflow_action === 'sample' || d.workflow_action === 'testing') && d.stage !== 'closed_won' && d.stage !== 'closed_lost').length;
-  todayCounts.nudge = deals.filter(d => d.nudge_stage && d.stage !== 'closed_won' && d.stage !== 'closed_lost').length;
 
   const handleCreate = async (data: any) => {
     await createDeal(data);
@@ -279,9 +234,6 @@ export default function TodayPage() {
               {headerDate} · Bangkok
             </p>
             <h1 className="zams-display text-3xl md:text-[34px] leading-none">Today</h1>
-            <p className="text-xs md:text-sm text-clay-muted mt-1.5">
-              one next move, then the queue
-            </p>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -307,13 +259,12 @@ export default function TodayPage() {
         </button>
       </div>
 
-      {/* Whisper counters — not a competing metric strip */}
+      {/* Whisper counters — just what drives today's queue */}
       <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1.5 px-0.5" aria-label="Today counters">
         {loading ? (
           <div className="flex items-center gap-3 animate-pulse" aria-busy="true">
             <div className="h-3 w-16 rounded bg-clay-surface" />
             <div className="h-3 w-20 rounded bg-clay-surface/80" />
-            <div className="h-3 w-24 rounded bg-clay-surface/60" />
           </div>
         ) : (
           <>
@@ -323,14 +274,6 @@ export default function TodayPage() {
             <span className="text-clay-muted-soft/60 text-[10px]" aria-hidden>·</span>
             <span className="zams-mono text-[10px] uppercase tracking-[0.14px] text-clay-ochre">
               {dealFollowUps.dueToday.length} due today
-            </span>
-            <span className="text-clay-muted-soft/60 text-[10px]" aria-hidden>·</span>
-            <span className="zams-mono text-[10px] uppercase tracking-[0.14px] text-clay-muted">
-              {needsReviewCount} needs review
-            </span>
-            <span className="text-clay-muted-soft/60 text-[10px]" aria-hidden>·</span>
-            <span className="zams-mono text-[10px] uppercase tracking-[0.14px] text-clay-muted-soft">
-              {wonCount} won
             </span>
           </>
         )}
@@ -381,7 +324,7 @@ export default function TodayPage() {
               <>
                 <h2 className="zams-display text-xl md:text-2xl leading-tight mb-1.5">All clear</h2>
                 <p className="text-sm text-clay-muted">
-                  {greeting}, Pat — nothing due or overdue. Time to find your next prospect.
+                  Nothing due or overdue — go find the next prospect.
                 </p>
               </>
             )}
@@ -413,16 +356,6 @@ export default function TodayPage() {
             {startHere.deal.value != null && startHere.deal.value > 0 && (
               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border border-clay-mint/40 bg-clay-mint/10 text-clay-teal">
                 {formatBaht(startHere.deal.value)} open
-              </span>
-            )}
-            {startHere.kind === 'overdue' && (
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-clay-error/10 text-clay-error border border-clay-error/20">
-                Overdue
-              </span>
-            )}
-            {startHere.kind === 'today' && (
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-clay-ochre/15 text-clay-ochre border border-clay-ochre/25">
-                Due today
               </span>
             )}
             {heroNudge && (
@@ -475,59 +408,9 @@ export default function TodayPage() {
         </div>
       </div>
 
-      {/* Due today / this week — the day's commitments at a glance */}
+      {/* This week — the forward horizon (due-today lives in the hero + queue) */}
       <section className="mb-6">
-        <div className="grid gap-4 sm:grid-cols-2">
-          {/* Due today */}
-          <div className="rounded-2xl border border-clay-ochre/30 bg-clay-ochre/5 p-4">
-            <button
-              onClick={() => router.push('/deals')}
-              className="w-full flex items-center gap-2 mb-3 text-left group"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-clay-ochre" aria-hidden />
-              <h2 className="zams-display text-base leading-tight group-hover:text-clay-ochre transition-colors">Due today</h2>
-              <span className="ml-auto text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-clay-ochre/15 text-clay-ochre">
-                {dealFollowUps.dueToday.length}
-              </span>
-            </button>
-            {dealFollowUps.dueToday.length === 0 ? (
-              <p className="text-xs text-clay-muted">Nothing scheduled for today.</p>
-            ) : (
-              <>
-                <ul className="space-y-1.5">
-                  {dealFollowUps.dueToday.slice(0, 4).map(d => {
-                    const verb = ACTION_VERBS[getWorkflowAction(d)] || 'Follow up';
-                    return (
-                      <li key={d.id}>
-                        <button
-                          onClick={() => router.push('/deals?deal=' + d.id)}
-                          className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-clay-card border border-clay-hairline hover:border-clay-ochre/40 transition-colors min-h-[44px]"
-                        >
-                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-clay-ochre/15 text-clay-ochre shrink-0">Today</span>
-                          <span className="flex-1 min-w-0">
-                            <span className="block text-sm font-medium text-clay-ink truncate">{dealClientName(d, companies, contacts)}</span>
-                            <span className="block text-xs text-clay-muted truncate">{verb}{d.next_action ? ` — ${d.next_action}` : ''}</span>
-                          </span>
-                          <ChevronRight className="w-4 h-4 text-clay-muted-soft shrink-0" />
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-                {dealFollowUps.dueToday.length > 4 && (
-                  <button
-                    onClick={() => router.push('/deals')}
-                    className="mt-2 w-full text-[11px] font-semibold text-clay-ochre hover:text-clay-ink transition-colors flex items-center justify-center gap-1"
-                  >
-                    View all {dealFollowUps.dueToday.length} <ChevronRight className="w-3 h-3" />
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* This week */}
-          <div className="rounded-2xl border border-clay-lavender/30 bg-clay-lavender/5 p-4">
+        <div className="rounded-2xl border border-clay-lavender/30 bg-clay-lavender/5 p-4">
             <button
               onClick={() => router.push('/deals')}
               className="w-full flex items-center gap-2 mb-3 text-left group"
@@ -575,42 +458,14 @@ export default function TodayPage() {
                 )}
               </>
             )}
-          </div>
         </div>
       </section>
-      <div className="mb-6 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-4 py-2.5 flex items-center gap-3 overflow-x-auto">
-        <div className="flex items-center gap-2 shrink-0">
-          <Blob state="idle" size={22} aria-label="" />
-          <p className="zams-mono text-[10px] uppercase tracking-[0.16px] text-clay-muted-soft">Today's pulse</p>
-        </div>
-        <StaggerList stagger={0.035} className="flex items-center gap-3 shrink-0">
-          {PULSE_ITEMS.map(p => (
-            <StaggerItem key={p.key} className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-clay-lavender/70" aria-hidden />
-              <span className="text-sm font-semibold text-clay-ink leading-none">{todayCounts[p.key] ?? 0}</span>
-              <span className="zams-mono text-[9px] uppercase tracking-[0.1px] text-clay-muted-soft">{p.label}</span>
-            </StaggerItem>
-          ))}
-        </StaggerList>
-        <span className="text-[11px] text-clay-muted-soft ml-auto shrink-0 flex items-center gap-1.5">
-          {todayMeetings.length === 0 ? 'No touches yet today' : `${todayMeetings.length} ${todayMeetings.length === 1 ? 'touch' : 'touches'} today`}
-        </span>
-      </div>
 
       {/* Up next — short queue under hero */}
       <section className="mb-6">
         <div className="flex items-center gap-2.5 mb-3">
           <Blob state="nudge" size={24} aria-label="" />
-          <div>
-            <h2 className="zams-display text-lg leading-tight">Up next</h2>
-            <p className="text-[11px] text-clay-muted">
-              {loading
-                ? 'Loading queue…'
-                : upNext.length === 0
-                  ? 'Queue empty after this move'
-                  : `${upNext.length} waiting after you finish`}
-            </p>
-          </div>
+          <h2 className="zams-display text-lg leading-tight">Up next</h2>
         </div>
 
         {loading ? (
@@ -753,23 +608,6 @@ export default function TodayPage() {
           </div>
         )}
       </section>
-
-      {/* Pulse last 7d — secondary */}
-      <div className="mb-6 rounded-xl border border-clay-hairline/80 bg-clay-surface/40 dark:bg-clay-card/40 px-4 py-2.5 flex items-center gap-3 overflow-x-auto">
-        <div className="flex items-center gap-2 shrink-0">
-          <Blob state="idle" size={18} aria-label="" />
-          <p className="zams-mono text-[10px] uppercase tracking-[0.16px] text-clay-muted-soft">Pulse · last 7d</p>
-        </div>
-        <div className="flex items-center gap-3 shrink-0">
-          {PULSE_ITEMS.map(p => (
-            <div key={p.key} className="flex items-center gap-1.5 opacity-80">
-              <span className="w-2 h-2 rounded-full bg-clay-lavender/70" aria-hidden />
-              <span className="text-sm font-semibold text-clay-ink leading-none">{pulseCounts[p.key] ?? 0}</span>
-              <span className="zams-mono text-[9px] uppercase tracking-[0.1px] text-clay-muted-soft">{p.label}</span>
-            </div>
-          ))}
-        </div>
-      </div>
 
       {/* Demoted secondary links — Buying signals + Recent activity off the fold */}
       <div className="flex flex-col sm:flex-row gap-2 mb-2">

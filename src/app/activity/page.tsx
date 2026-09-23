@@ -107,16 +107,6 @@ export default function ActivityPage() {
     return { byType, outcomes, days, total: inWeek.length, outcomeTotal: Object.values(outcomes).reduce((a, b) => a + b, 0) };
   }, [meetings, now, todayKey]);
 
-  const typeStats = [
-    { key: 'call', label: 'Calls', icon: <Phone className="w-3.5 h-3.5" />, cls: 'bg-clay-mint/20 text-clay-teal' },
-    { key: 'email', label: 'Emails', icon: <Mail className="w-3.5 h-3.5" />, cls: 'bg-clay-pink/20 text-clay-pink' },
-    { key: 'dm', label: 'DMs', icon: <MessageCircle className="w-3.5 h-3.5" />, cls: 'bg-zams-powder/50 text-zams-deep' },
-    { key: 'meeting', label: 'Meetings', icon: <Users className="w-3.5 h-3.5" />, cls: 'bg-clay-lavender/20 text-clay-lavender' },
-    { key: 'sample_sent', label: 'Samples', icon: <Package className="w-3.5 h-3.5" />, cls: 'bg-clay-ochre/20 text-clay-ochre' },
-    { key: 'nudge', label: 'Nudges', icon: <Bell className="w-3.5 h-3.5" />, cls: 'bg-clay-coral/20 text-clay-coral' },
-    { key: 'note', label: 'Notes', icon: <FileText className="w-3.5 h-3.5" />, cls: 'bg-clay-card text-clay-muted' },
-  ];
-
   const outcomeStats = [
     { key: 'positive', label: 'Positive', cls: 'bg-clay-success/10 text-clay-success border-clay-success/20' },
     { key: 'neutral', label: 'Neutral', cls: 'bg-clay-card text-clay-body border-clay-hairline' },
@@ -322,7 +312,7 @@ export default function ActivityPage() {
       <div className="flex items-center justify-between mb-4">
         <div>
           <p className="zams-eyebrow mb-1">
-            Activity · {items.length} events{radar.total > 0 ? ` · ${radar.total} need attention` : ''}
+            {items.length} events{radar.total > 0 ? ` · ${radar.total} need attention` : ''}
           </p>
           <h1 className="zams-display text-2xl md:text-[28px] leading-none">Activity</h1>
         </div>
@@ -337,26 +327,10 @@ export default function ActivityPage() {
           <p className="zams-eyebrow">Pulse · Last 7 days</p>
           <span className="zams-mono text-[10px] uppercase tracking-[0.18px] text-zams-violet">{pulse.total} touchpoints</span>
         </div>
-        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-4">
-          {typeStats.map(s => (
-            <div key={s.key} className="flex items-center gap-2 bg-clay-surface/60 dark:bg-clay-card rounded px-2.5 py-2">
-              <span className={clsx('w-6 h-6 rounded flex items-center justify-center shrink-0', s.cls)}>{s.icon}</span>
-              <div className="min-w-0">
-                <p className="text-sm font-bold text-clay-ink leading-none">{pulse.byType[s.key] || 0}</p>
-                <p className="zams-mono text-[9px] uppercase tracking-[0.14px] text-clay-muted truncate">{s.label}</p>
-              </div>
-            </div>
-          ))}
-        </div>
         <div className="flex flex-wrap items-center gap-2 mb-4">
           {outcomeStats.map(o => (
             <span key={o.key} className={clsx('inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-1 rounded-full border', o.cls)}>
               {pulse.outcomes[o.key] || 0}
-              {pulse.outcomeTotal > 0 && (
-                <span className="opacity-60">
-                  ({Math.round(((pulse.outcomes[o.key] || 0) / pulse.outcomeTotal) * 100)}%)
-                </span>
-              )}
               {o.label}
             </span>
           ))}
@@ -508,7 +482,7 @@ export default function ActivityPage() {
             icon={<Snowflake className="w-4 h-4" />}
             accent="text-clay-coral"
             count={radar.coldAccounts.length}
-            hint="No touch in 14+ days · amber = 14–30d · coral = 30d+ or never"
+            hint="Quiet 14+ days"
           >
             {radar.coldAccounts.length === 0 ? (
               <p className="text-xs text-clay-muted py-3 text-center">Every account is warm. 🔥</p>
