@@ -10,7 +10,7 @@ A solo-operator B2B CRM for butter & condensed-milk sales. Built to solve one pr
 
 - **Deployed:** Vercel, auto-deploys from `main`
 - **Data:** Supabase Postgres — 20 migrations applied, soft-delete + undo on all entities
-- **Tests:** 39 Vitest suites covering workflow, scoring, scheduling, and component logic
+- **Tests:** 44 Vitest suites covering workflow, scoring, scheduling, and component logic
 - **Installable:** PWA manifest + iOS meta ship with every build — "Add to Home Screen" opens it standalone
 
 ## How It Works
@@ -57,8 +57,155 @@ npm run dev        # http://localhost:3000
 ```bash
 npm run dev     # dev server
 npm run build   # production build
-npm run test    # vitest run (39 suites)
+npm run test    # vitest run (44 suites)
 npm run lint    # eslint
+npm run laya:serve  # local Laya worker for lead recommendations
+```
+
+### Local Laya lead recommendations
+
+Laya runs on this Mac, not on Vercel. Start the local worker before opening a deal:
+
+```bash
+cd ~/Projects/LeadPulse
+npm run laya:serve
+```
+
+Then use **Score with Laya** in a deal. The live LeadPulse page calls only
+`http://127.0.0.1:8765` on the Mac that opened it; the worker is bound to loopback
+and accepts the production app plus local development origins. Its input recipe is
+industry, all tags, product, stage, value, follow-up status, and the complete latest
+outcome. Selected text is not word-clipped. Dedicated identity, contact, address,
+URL and company-note fields are excluded; free-text outcomes and tags can still
+contain personal information. This is field minimization, **not anonymization**.
+The result is recommendation-only; it never changes CRM data.
+
+**Input safety (slice 1):** the local worker counts the complete encoded input with
+the installed model tokenizer, including instructions, options and special tokens.
+Each question must fit the model's sequence limit (96 for this ANE bundle). If the
+full evidence does not fit, the worker returns HTTP 422 with `status: not_scored`,
+`code: input_too_long`, `input_tokens` and `token_limit`. The existing card displays
+the refusal message, not a recommendation. No inference runs, nothing is shortened,
+and no CRM field changes. Review the evidence manually; do not remove a refusal or
+no-contact request just to make a prompt fit. Longer records will intentionally
+remain unscored until a separately reviewed input strategy is available.
+
+The guard also rejects inputs that Laya's native prompt preparation would alter
+(`input_would_change`). Only leading/trailing field whitespace and empty tags are
+normalized by the recipe. This guards input integrity, not model judgment accuracy
+or outreach authorization. Other pre-deployment review slices remain unresolved.
+
+**Judgment scope:** only `Choice` is active: attention advice, not purchase odds,
+qualification or contact authorization. `Noul` is deferred until a narrow evidence
+question is useful; missing evidence must not be presented as a negative finding.
+The ordered `Score`/sales-readiness proposal is deferred to avoid duplicating deal
+stage. The card labels percentages as option probabilities and does not manufacture
+a model reasoning narrative. Existing deterministic CRM rules are unchanged.
+
+**Result identity (slice 2):** a score belongs to one deal, linked company, Bangkok
+day and exact serialized input (including the question/options). Changing any of
+those resets the card and aborts its outstanding request. Late successes, failures
+and JSON bodies are ignored, even if the transport does not honor cancellation.
+Identical input refreshes keep the result; changing away and back does not resurrect
+an old request. Results are in-memory only, not shared or persisted to the CRM.
+
+**Re-score with Laya** remains available after success. A re-score clears the prior
+recommendation while loading; a failure leaves no old recommendation masquerading
+as current. Bangkok day changes are checked before sending/accepting a result,
+on window focus/visibility changes, and once per minute while the card is mounted.
+A click that detects a new day resets the card without inference; click again to
+score the updated input. Cancellation stops browser handling, not necessarily
+inference already executing in the worker.
+
+**Transport (slice 3):** one connection path only: the browser calls the worker on
+**the same Mac**, directly over IPv4 loopback. The unused Next.js `/api/laya/score`
+proxy is removed; Vercel cannot reach your Mac via its own `127.0.0.1`. A phone or
+another computer cannot use this worker through loopback. No tunnel, remote model,
+automatic scoring or cloud fallback is provided. The rest of the CRM does not
+require the local worker.
+
+In the card, **Check local connection** performs a manual `/health` GET with no
+CRM payload and does not run inference. It is a point-in-time connectivity check,
+not a guarantee that scoring will succeed or that the responding process is
+cryptographically authenticated. **Score with Laya** still sends its full selected
+input only when clicked. Health checks time out after 5 seconds; scoring after
+30 seconds, including response-body parsing. Canceled or timed-out responses cannot
+later populate the card. Browser cancellation does not stop already-running model
+inference. There are no automatic retries.
+
+`NEXT_PUBLIC_LAYA_SCORE_SERVICE_URL` is a build-time browser setting. Its default
+is `http://127.0.0.1:8765`; only a plain HTTP `127.0.0.1` origin (with an optional
+port) is permitted. Remote/LAN URLs, credentials, paths, query strings and fragments
+are rejected before sending any data. If changing the port, set `LAYA_SCORE_PORT`
+on the worker and rebuild the browser bundle with the matching origin. Do not set
+`LAYA_SCORE_SERVICE_URL` on Vercel; that old server-side setting is unused.
+
+For connection problems: start `npm run laya:serve` in this project on the browsing
+Mac and wait for its ready message. Use a supported browser and, if prompted, allow
+local-network access for your trusted LeadPulse origin. Browser permission, CORS,
+secure-context and local-network policies can block an otherwise healthy worker;
+a failed fetch cannot reliably distinguish these from a stopped worker. Do not
+turn off browser security or open the worker to the network as a workaround.
+A terminal `curl /health` success alone does **not** verify hosted-browser access.
+A slice-3 browser probe from the actual HTTPS production origin in an isolated
+Chrome 153 context was blocked with its default permissions. After granting
+`local-network-access` **in that disposable test context only**, the same browser
+returned HTTP 200 from `/health` and `/score` using synthetic builder input (93
+input tokens, zero output tokens). This checks the transport from the hosted origin,
+not a deployed slice-3 UI or the permissions of your existing Brave/Safari profile.
+The worker's Host/Origin checks and fixed schema are described in slice 5 below.
+
+**Transparency (slice 4):** after a successful score, expand **Scoring trace**
+to see the exact state and full Choice question/options that the local worker
+passed to Laya, the excluded fields, model repository/source revision and
+package SHA-256 from the installed model manifest, engine, and the worker's
+UTC completion timestamp. This is provenance, not a causal explanation or proof
+of model accuracy; manifest metadata is not a fresh checksum verification of
+model bytes. The client compares the worker-echoed input with the exact request
+and refuses to show a mismatched or untraceable result (including from an older
+running worker). Refusals contain no scored trace. Results and traces remain
+in-memory in the deal card; no trace is saved to Supabase or logged by the
+worker. Free text may contain personal details despite excluding dedicated
+identity fields. Restart a worker started before this slice to get the trace.
+
+**Worker boundaries (slice 5):** scoring accepts only requests to the exact
+`Host: 127.0.0.1:<configured port>` with one allowlisted `Origin` (the production
+LeadPulse origin or configured local development origins). It rejects missing,
+duplicate, or untrusted origins and DNS-rebinding Host names before reading the
+body. `/health` also requires the loopback Host, but permits no Origin for a local
+CLI health check. CORS/preflight is granted only to allowlisted origins on `/score`;
+private-network preflight is acknowledged when requested. Scoring requires
+`Content-Type: application/json`, one Content-Length, a bounded body, no
+ambiguous duplicate JSON keys, and exactly the single published attention Choice
+question with its fixed instructions and four criteria. An edited or extra
+question is refused, not inferred.
+
+This is **browser-origin isolation, not authentication of local processes**:
+software running on this Mac can spoof HTTP headers and submit its own state. No
+password or bearer token is embedded in the public browser bundle. Do not expose
+the worker on a LAN, through a tunnel, or to another user account. At most four
+HTTP connections are handled concurrently (10-second socket timeout) and one
+model preflight/inference runs at once; overload receives 503 and can be retried
+manually. When the socket cap is full, the browser may report a generic
+connection/CORS failure instead of exposing the 503 body. Unexpected model
+exceptions produce generic errors without echoing input or exception text.
+This does not establish authorization to contact a lead, model accuracy, or
+safety against malicious software already running locally.
+
+Run input-boundary tests with the Python environment containing `laya-coreml` and
+the downloaded model tokenizer/config files (no neural inference in this suite):
+
+```bash
+/Users/pat/laya-coreml/.venv/bin/python -B -m unittest discover -s scripts -p 'test_laya_score_server.py' -v
+npm test -- src/utils/lead-scoring.laya.test.ts src/components/LayaScoreCard.test.tsx
+```
+
+The default paths match Pat's install. Override either only if Laya lives elsewhere:
+
+```bash
+LAYA_COREML_PYTHON=/path/to/python \
+LAYA_COREML_MODEL_PATH=/path/to/models/ane \
+npm run laya:serve
 ```
 
 ## Project Structure

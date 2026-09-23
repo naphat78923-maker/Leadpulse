@@ -2,7 +2,72 @@
 // Weighted system for B2B butter sales deals
 // Score: 0-100 → Tier: S (Hot) / A (Warm) / B (Warming) / C (Cool) / D (Cold)
 
-import { DealStage, Deal } from '@/types/crm';
+import { Company, DealStage, Deal } from '@/types/crm';
+
+export type LayaAttentionLevel = 'priority' | 'nurture' | 'research' | 'deprioritize';
+
+export interface LayaAttentionInput {
+  state: string;
+  questions: {
+    attention: {
+      type: 'choice';
+      instructions: string;
+      criteria: Record<LayaAttentionLevel, string>;
+    };
+  };
+}
+
+const LAYA_ATTENTION_QUESTION: LayaAttentionInput['questions'] = {
+  attention: {
+    type: 'choice',
+    instructions: 'Best sales attention?',
+    criteria: {
+      priority: 'Reply soon. Clear fit and signal.',
+      nurture: 'Keep warm. No immediate signal.',
+      research: 'Need fit or buyer info.',
+      deprioritize: 'Weak or negative signal.',
+    },
+  },
+};
+
+
+function followupLabel(followupDate: string | null, today: string): string {
+  if (!followupDate) return 'unscheduled';
+  if (followupDate === today) return 'today';
+  if (followupDate < today) return 'overdue';
+  return 'scheduled';
+}
+
+/**
+ * Preserves the complete selected evidence; the local worker checks the actual
+ * encoded token budget and refuses oversized requests instead of cutting facts.
+ * Dedicated identity/contact/company-note fields are excluded, but free text is
+ * NOT anonymized. This never changes LeadPulse priority, stage, or workflow.
+ */
+export function buildLayaAttentionInput(input: {
+  deal: Pick<Deal, 'product' | 'stage' | 'value' | 'followup_date' | 'last_outcome'>;
+  company?: Pick<Company, 'industry' | 'size' | 'tags'>;
+  today: string;
+}): LayaAttentionInput {
+  const industry = input.company?.industry?.trim() || 'unknown';
+  const tags = input.company?.tags?.map(tag => tag.trim()).filter(Boolean).join(', ') || 'unknown';
+  const product = input.deal.product?.trim() || 'unknown';
+  const value = input.deal.value == null ? 'unknown' : `THB ${input.deal.value}`;
+  const outcome = input.deal.last_outcome?.trim() || 'unknown';
+
+  return {
+    state: [
+      `Industry: ${industry}.`,
+      `Tags: ${tags}.`,
+      `Product: ${product}.`,
+      `Stage: ${input.deal.stage}.`,
+      `Value: ${value}.`,
+      `Follow-up: ${followupLabel(input.deal.followup_date, input.today)}.`,
+      `Outcome: ${outcome}.`,
+    ].join(' '),
+    questions: LAYA_ATTENTION_QUESTION,
+  };
+}
 
 // ── Stage scoring (max 30) ──
 export const STAGE_WEIGHTS: Record<DealStage, number> = {

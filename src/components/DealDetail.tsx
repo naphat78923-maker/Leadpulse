@@ -36,6 +36,7 @@ import LogInteractionModal from '@/components/LogInteractionModal';
 import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
 import NudgeLadderRail from '@/components/NudgeLadderRail';
 import StakeholderMiniMap from '@/components/StakeholderMiniMap';
+import LayaScoreCard from '@/components/LayaScoreCard';
 import type { OutreachLanguage } from '@/types/crm';
 import { motion } from 'framer-motion';
 import { overlayVariants, panelVariants, tweenBase, tweenSlow } from '@/lib/motion';
@@ -547,6 +548,8 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
               {lastTouch.type === 'dm' ? ' (LINE/IG/WhatsApp)' : ''}
             </p>
           )}
+
+          <LayaScoreCard deal={deal} company={dealCompany} />
 
           {dealCompany && (
             <StakeholderMiniMap
