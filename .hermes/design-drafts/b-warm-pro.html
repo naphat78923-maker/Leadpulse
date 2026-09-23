@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Direction B — "Warm Pro" (hybrid)</title>
+<style>
+  :root {
+    --bg: #fbf8f2; --card: #ffffff; --border: #e9e2d5; --border-strong:#d9cfbc;
+    --fg: #241f18; --muted: #8a8070; --faint: #b8ae9c;
+    --accent: #c25e10;
+    --accent-soft: #faf0e4;
+    --success: #2f7d4f; --warning: #b57d0a; --danger: #b3372a;
+    --radius: 10px;
+    --shadow: 0 1px 2px rgba(36,31,24,.05);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--fg); font-family:'Inter',ui-sans-serif,system-ui,sans-serif; font-size:14px; -webkit-font-smoothing:antialiased; }
+  .shell { display:flex; min-height:100vh; }
+  .sidebar { width:224px; border-right:1px solid var(--border); padding:16px 12px; flex-shrink:0; background:var(--card); }
+  .brand { font-weight:700; font-size:15px; padding:4px 10px 16px; letter-spacing:-.01em; }
+  .brand em { font-style:normal; color:var(--accent); }
+  .nav-label { font-size:10.5px; text-transform:uppercase; letter-spacing:.09em; color:var(--faint); padding:14px 10px 5px; font-weight:600; }
+  .nav-item { display:flex; align-items:center; gap:9px; padding:7px 10px; border-radius:8px; color:var(--muted); text-decoration:none; font-size:13.5px; font-weight:500; }
+  .nav-item.active { background:var(--accent-soft); color:var(--accent); }
+  .nav-item:hover { background:#f6f1e7; color:var(--fg); }
+  .count { margin-left:auto; font-size:11px; background:#f1ebdf; padding:1px 7px; border-radius:99px; color:var(--muted); }
+  .nav-item.active .count { background:#fff; color:var(--accent); }
+  .main { flex:1; padding:24px 32px; max-width:980px; }
+  .topbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:22px; }
+  .date { font-size:13px; color:var(--muted); }
+  .date b { color:var(--fg); }
+  .btn { display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border-radius:8px; border:1px solid var(--border-strong); background:var(--card); color:var(--fg); font-size:13px; font-weight:600; cursor:pointer; box-shadow:var(--shadow); }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .hero { border:1px solid var(--border); border-radius:var(--radius); background:var(--card); padding:20px; margin-bottom:18px; box-shadow:var(--shadow); border-left:3px solid var(--danger); }
+  .hero-kicker { font-size:11px; text-transform:uppercase; letter-spacing:.09em; color:var(--danger); font-weight:700; margin-bottom:6px; }
+  .hero-title { font-size:20px; font-weight:700; letter-spacing:-.02em; margin-bottom:4px; }
+  .hero-sub { color:var(--muted); font-size:13px; margin-bottom:14px; }
+  .chip { display:inline-flex; align-items:center; padding:3px 9px; border-radius:99px; font-size:11.5px; font-weight:600; }
+  .chip.red { background:#fbeae8; color:var(--danger); }
+  .chip.amber { background:#faf3e0; color:var(--warning); }
+  .chip.blue { background:#e9f0fb; color:#2f5fb3; }
+  .chip.green { background:#e8f4ec; color:var(--success); }
+  .cards { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:18px; }
+  .card { border:1px solid var(--border); border-radius:var(--radius); background:var(--card); padding:14px 16px; box-shadow:var(--shadow); }
+  .card .k { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-weight:600; }
+  .card .v { font-size:24px; font-weight:700; letter-spacing:-.02em; margin-top:2px; font-variant-numeric:tabular-nums; }
+  .section-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:22px 0 10px; }
+  .row { display:flex; align-items:center; gap:14px; background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:13px 16px; margin-bottom:8px; box-shadow:var(--shadow); }
+  .row:hover { border-color:var(--border-strong); }
+  .row .name { font-weight:600; font-size:14px; }
+  .row .sub { color:var(--muted); font-size:12.5px; }
+  .row .val { margin-left:auto; font-weight:700; font-variant-numeric:tabular-nums; }
+  .bar { width:4px; align-self:stretch; border-radius:2px; }
+  .bar.high { background:var(--danger); } .bar.med { background:var(--warning); } .bar.low { background:var(--border-strong); }
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="sidebar">
+    <div class="brand">Lead<em>Pulse</em></div>
+    <div class="nav-label">Work</div>
+    <a class="nav-item active" href="#">Today <span class="count">6</span></a>
+    <a class="nav-item" href="#">Deals <span class="count">24</span></a>
+    <a class="nav-item" href="#">Nudges <span class="count">6</span></a>
+    <a class="nav-item" href="#">Signals</a>
+    <div class="nav-label">Book</div>
+    <a class="nav-item" href="#">Contacts</a>
+    <a class="nav-item" href="#">Companies</a>
+    <a class="nav-item" href="#">Retention</a>
+    <div class="nav-label">Insight</div>
+    <a class="nav-item" href="#">Analytics</a>
+    <a class="nav-item" href="#">Activity</a>
+  </nav>
+  <main class="main">
+    <div class="topbar">
+      <div class="date"><b>Thursday, Sep 18</b> · Bangkok</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn">Log touch</button>
+        <button class="btn primary">＋ New deal</button>
+      </div>
+    </div>
+    <div class="hero">
+      <div class="hero-kicker">Do this next · Overdue 3 days</div>
+      <div class="hero-title">Call Somchai @ Bakehouse Studio</div>
+      <div class="hero-sub">Waiting on sample feedback · ฿42,000 potential · last touch Sep 12</div>
+      <span class="chip red">Overdue 3d</span>
+      <span class="chip blue">Testing</span>
+      <span class="chip amber">High priority</span>
+    </div>
+    <div class="cards">
+      <div class="card"><div class="k">Due today</div><div class="v">4</div></div>
+      <div class="card"><div class="k">Overdue</div><div class="v" style="color:var(--danger)">2</div></div>
+      <div class="card"><div class="k">Pipeline</div><div class="v">฿318k</div></div>
+      <div class="card"><div class="k">Touches · 7d</div><div class="v">17</div></div>
+    </div>
+    <div class="section-title">Up next</div>
+    <div class="row"><div class="bar high"></div><div><div class="name">Bakehouse Studio</div><div class="sub">Somchai · Testing · Overdue 3d</div></div><span class="chip blue">Testing</span><div class="val">฿42,000</div></div>
+    <div class="row"><div class="bar high"></div><div><div class="name">Croissant & Co</div><div class="sub">Nida · Sample sent · Due today</div></div><span class="chip amber">Sample</span><div class="val">฿68,500</div></div>
+    <div class="row"><div class="bar med"></div><div><div class="name">Flour Mill Bangkok</div><div class="sub">Reply pending · Due tomorrow</div></div><span class="chip green">Reply</span><div class="val">฿31,200</div></div>
+    <div class="row"><div class="bar low"></div><div><div class="name">Café Amazon franchise</div><div class="sub">First outreach · Due Sep 22</div></div><span class="chip blue">Outreach</span><div class="val">฿120,000</div></div>
+  </main>
+</div>
+</body>
+</html>

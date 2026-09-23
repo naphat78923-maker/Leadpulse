@@ -58,54 +58,6 @@ function isScoreResult(value: unknown): value is ScoreResult {
   );
 }
 
-function LayaConnectionCheck() {
-  const [checking, setChecking] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
-  const active = useRef<AbortController | null>(null);
-  useEffect(() => () => {
-    active.current?.abort();
-    active.current = null;
-  }, []);
-
-  const check = async () => {
-    active.current?.abort();
-    const controller = new AbortController();
-    active.current = controller;
-    const isCurrent = () => active.current === controller && !controller.signal.aborted;
-    setChecking(true);
-    setMessage(null);
-    setFailed(false);
-    try {
-      const { ok, payload } = await requestLocalLaya('/health', { signal: controller.signal });
-      if (!isCurrent()) return;
-      if (!ok || !payload || typeof payload !== 'object' || !('status' in payload) || payload.status !== 'ready' || !('engine' in payload) || !isLocalEngine(payload.engine)) {
-        throw new Error('The local endpoint did not report a ready Laya worker. Check the worker and port, then retry.');
-      }
-      setMessage('Local worker responded to this check; not a score or a guarantee the next request will succeed.');
-    } catch (reason) {
-      if (!isCurrent()) return;
-      setFailed(true);
-      setMessage(reason instanceof Error ? reason.message : 'Could not check the local worker.');
-    } finally {
-      if (isCurrent()) {
-        active.current = null;
-        setChecking(false);
-      }
-    }
-  };
-
-  return (
-    <div className="mt-2 text-[11px] text-clay-muted">
-      <button type="button" disabled={checking} onClick={() => void check()} className="min-h-[36px] rounded-lg border border-clay-lavender/30 px-3 py-2 font-semibold disabled:opacity-60">
-        {checking ? 'Checking local connection…' : 'Check local connection'}
-      </button>
-      {message && <p role={failed ? 'alert' : 'status'} className="mt-1">{message}</p>}
-    </div>
-  );
-}
-
-
 export default function LayaScoreCard({ deal, company }: { deal: Deal; company?: Company }) {
   const [today, setToday] = useState(() => bangkokDateKey());
   useEffect(() => {
@@ -137,6 +89,7 @@ function LayaScoreRequest({ requestBody, ensureCurrentDay }: { requestBody: stri
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [hasScored, setHasScored] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const activeRequest = useRef<AbortController | null>(null);
 
   useEffect(() => () => {
@@ -169,10 +122,15 @@ function LayaScoreRequest({ requestBody, ensureCurrentDay }: { requestBody: stri
       }
       setResult(payload);
       setHasScored(true);
+      setShowHelp(false);
     } catch (reason) {
       if (!isCurrent()) return;
       setResult(null);
-      setError(reason instanceof Error ? reason.message : 'Could not score this deal.');
+      const message = reason instanceof Error ? reason.message : 'Could not score this deal.';
+      setError(message);
+      // Mac-local setup help only for connection-level failures; a reachable
+      // worker's refusal (opt-out, invalid reply) is not a setup problem.
+      setShowHelp(/local worker|Cannot reach local Laya/i.test(message));
     } finally {
       if (isCurrent()) {
         activeRequest.current = null;
@@ -190,19 +148,6 @@ function LayaScoreRequest({ requestBody, ensureCurrentDay }: { requestBody: stri
         </div>
         <BrainCircuit className="h-5 w-5 shrink-0 text-clay-lavender" aria-hidden="true" />
       </div>
-
-      <div className="mt-3 space-y-1 text-[11px] text-clay-muted">
-        <p>Mac-local only: Laya must run on the same Mac as this browser. Vercel does not run the model.</p>
-        <p>A phone or another computer cannot reach your Mac through this connection.</p>
-        <details>
-          <summary className="cursor-pointer font-semibold">Local setup &amp; connection help</summary>
-          <p className="mt-2">In the LeadPulse project on this Mac, run <code>npm run laya:serve</code> and wait for the ready message.</p>
-          <p>If prompted, allow local-network access for this trusted LeadPulse site in your browser. A connection failure can mean a stopped worker, blocked permission, or incompatible browser policy.</p>
-          <p>No cloud fallback or automatic scoring. CRM features work without Laya.</p>
-        </details>
-      </div>
-
-      <LayaConnectionCheck />
 
       {result && (
         <div className="mt-3 space-y-2">
@@ -247,6 +192,17 @@ function LayaScoreRequest({ requestBody, ensureCurrentDay }: { requestBody: stri
         </button>
 
       {error && <p role="alert" className="mt-2 text-xs text-clay-error">{error}</p>}
+
+      {showHelp && (
+        <div className="mt-3 space-y-1.5 rounded-lg border border-clay-hairline bg-white/60 p-2.5 text-[11px] text-clay-muted dark:bg-clay-card">
+          <p>Mac-local only: Laya must run on the same Mac as this browser. Vercel does not run the model, and a phone or another computer cannot reach your Mac through this connection.</p>
+          <p>
+            In the LeadPulse project on this Mac, run <code>npm run laya:serve</code> and wait for the ready message. If prompted, allow local-network access for
+            this trusted LeadPulse site. A connection failure can mean a stopped worker, blocked permission, or incompatible browser policy. CRM features work
+            without Laya.
+          </p>
+        </div>
+      )}
     </section>
   );
 }

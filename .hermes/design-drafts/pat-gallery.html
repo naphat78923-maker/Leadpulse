@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pat — LeadPulse blob · state gallery</title>
+<style>
+  :root { --bg:#fdf6e9; --fg:#2b211a; --muted:#8a8070; --border:#e9e2d5; --card:#fff; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#17120e; --fg:#f6f3ea; --muted:#9c9688; --border:#3a332b; --card:#262019; } }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--fg); font-family:ui-sans-serif,system-ui,sans-serif; padding:48px 32px; -webkit-font-smoothing:antialiased; }
+  h1 { font-size:24px; letter-spacing:-.02em; margin-bottom:6px; }
+  .sub { color:var(--muted); font-size:14px; margin-bottom:20px; }
+  .hint { display:inline-block; font-size:12px; color:var(--muted); border:1px solid var(--border); border-radius:99px; padding:5px 14px; margin-bottom:32px; background:var(--card); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:20px; max-width:1040px; }
+  .cell { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:28px 18px 20px; text-align:center; cursor:pointer; transition:border-color .15s, transform .15s; }
+  .cell:hover { border-color:var(--muted); transform:translateY(-2px); }
+  .cell .state { font-size:14px; font-weight:700; margin-top:16px; letter-spacing:-.01em; }
+  .cell .label { font-size:11px; color:var(--muted); margin-top:3px; }
+  .cell .try { font-size:10px; color:var(--muted); margin-top:10px; text-transform:uppercase; letter-spacing:.08em; opacity:.7; }
+</style>
+</head>
+<body>
+<h1>🧈 Pat — the LeadPulse blob</h1>
+<p class="sub">The actual engine from PR #6, running live in your browser. One SVG per mood, zero image files.</p>
+<div class="hint">👆 move your mouse — every blob watches it · click a card to enlarge</div>
+<div class="grid" id="grid"></div>
+<script>
+  // ── engine: same math as src/components/blob/ ──
+  const TAU = Math.PI * 2;
+  const clamp = (v, lo = 0, hi = 1) => (v < lo ? lo : v > hi ? hi : v);
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const easings = { easeOutCubic: t => 1 - (1 - t) ** 3, easeOutQuint: t => 1 - (1 - t) ** 5 };
+  const r2 = v => Math.round(v * 100) / 100;
+  function loopNoise(t, period, seed = 0) {
+    const p = (t / period) * TAU;
+    return 0.55 * Math.sin(p + seed) + 0.3 * Math.sin(2 * p + seed * 1.7 + 1.1) + 0.15 * Math.sin(3 * p + seed * 2.3 + 2.4);
+  }
+  function createRng(seed) {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const N = 64;
+  const ANGLES = Array.from({ length: N }, (_, i) => (i / N) * TAU);
+  const COS = ANGLES.map(Math.cos), SIN = ANGLES.map(Math.sin);
+  function superellipse(a = 1, b = 0.94, n = 4) {
+    return ANGLES.map(th => 1 / Math.pow((Math.abs(Math.cos(th)) / a) ** n + (Math.abs(Math.sin(th)) / b) ** n, 1 / n));
+  }
+  function blendSil(A, B, t, out) {
+    for (let i = 0; i < N; i++) out.radii[i] = lerp(A.radii[i] ?? 1, B.radii[i] ?? 1, t);
+    let d = B.rot - A.rot; while (d > Math.PI) d -= TAU; while (d < -Math.PI) d += TAU;
+    out.rot = A.rot + d * t;
+    out.cx = lerp(A.cx, B.cx, t); out.cy = lerp(A.cy, B.cy, t);
+    out.sx = lerp(A.sx, B.sx, t); out.sy = lerp(A.sy, B.sy, t);
+    return out;
+  }
+  function toPoints(s, scale, out) {
+    const cr = Math.cos(s.rot), sr = Math.sin(s.rot);
+    for (let i = 0; i < N; i++) {
+      const r = s.radii[i] ?? 1;
+      const x = r * COS[i], y = r * SIN[i];
+      const rx = x * cr - y * sr, ry = x * sr + y * cr;
+      const p = out[i] ?? (out[i] = { x: 0, y: 0 });
+      p.x = (rx * s.sx + s.cx) * scale; p.y = (ry * s.sy + s.cy) * scale;
+    }
+    return out;
+  }
+  function closedPath(pts) {
+    const n = pts.length, T = 1 / 6;
+    let d = 'M' + r2(pts[0].x) + ' ' + r2(pts[0].y);
+    for (let i = 0; i < n; i++) {
+      const p0 = pts[(i - 1 + n) % n], p1 = pts[i], p2 = pts[(i + 1) % n], p3 = pts[(i + 2) % n];
+      d += 'C' + r2(p1.x + (p2.x - p0.x) * T) + ' ' + r2(p1.y + (p2.y - p0.y) * T) + ' ' + r2(p2.x - (p3.x - p1.x) * T) + ' ' + r2(p2.y - (p3.y - p1.y) * T) + ' ' + r2(p2.x) + ' ' + r2(p2.y);
+    }
+    return d + 'Z';
+  }
+  function capsulePath(w, h) {
+    const hw = Math.max(w, .01) / 2, hh = Math.max(h, .01) / 2, r = Math.min(hw, hh);
+    return 'M' + r2(-hw) + ' ' + r2(-hh + r) + 'A' + r2(r) + ' ' + r2(r) + ' 0 0 1 ' + r2(-hw + r) + ' ' + r2(-hh) + 'L' + r2(hw - r) + ' ' + r2(-hh) + 'A' + r2(r) + ' ' + r2(r) + ' 0 0 1 ' + r2(hw) + ' ' + r2(-hh + r) + 'L' + r2(hw) + ' ' + r2(hh - r) + 'A' + r2(r) + ' ' + r2(r) + ' 0 0 1 ' + r2(hw - r) + ' ' + r2(hh) + 'L' + r2(-hw + r) + ' ' + r2(hh) + 'A' + r2(r) + ' ' + r2(r) + ' 0 0 1 ' + r2(-hw) + ' ' + r2(hh - r) + 'Z';
+  }
+  function radiusAtAngle(radii, th) {
+    let a = th % TAU; if (a < 0) a += TAU;
+    const f = (a / TAU) * N, i0 = Math.floor(f) % N, i1 = (i0 + 1) % N;
+    return lerp(radii[i0], radii[i1], f - Math.floor(f));
+  }
+  const EYE_SPLIT = 16, EYE_W = 0.17, EYE_H = 0.36;
+  const REST = { yaw: 10, pitch: 7, roll: -2 };
+  const deg = d => (d * Math.PI) / 180;
+  function spin(u, v, ang) {
+    const c = Math.cos(ang), s = Math.sin(ang);
+    return [
+      [u[0] * c + v[0] * s, u[1] * c + v[1] * s, u[2] * c + v[2] * s],
+      [v[0] * c - u[0] * s, v[1] * c - u[1] * s, v[2] * c - u[2] * s],
+    ];
+  }
+  function eyePoses(g, scale, split = EYE_SPLIT) {
+    let f = [0, 0, 1], right = [1, 0, 0], down = [0, 1, 0];
+    [f, right] = spin(f, right, deg(g.yaw));
+    [down, f] = spin(down, f, deg(g.pitch));
+    [right, down] = spin(right, down, deg(g.roll));
+    const build = side => {
+      const [ef, er] = spin(f, right, deg(split * side));
+      return { x: ef[0] * scale, y: ef[1] * scale, a: er[0], b: er[1], c: down[0], d: down[1], depth: ef[2] };
+    };
+    return [build(-1), build(1)];
+  }
+  // blink calendar + ambient life
+  const BLINK_RNG = createRng(0x5eed);
+  const BLINKS = (() => {
+    const out = []; let t = 1.4;
+    while (t < 900) {
+      out.push(t);
+      t += 1.9 + BLINK_RNG() * 2.7;
+      if (BLINK_RNG() < 0.18) { out.push(t); t += 0.24; }
+    }
+    return out;
+  })();
+  const BLINK_DUR = 0.18;
+  function blinkLid(t) {
+    for (const start of BLINKS) {
+      if (t < start) break;
+      const k = (t - start) / BLINK_DUR;
+      if (k >= 0 && k <= 1) return k < 0.45 ? 1 - k / 0.45 : (k - 0.45) / 0.55;
+    }
+    return 1;
+  }
+  function liveliness(t) {
+    return {
+      dYaw: (loopNoise(t, 11.3, 0.4) * 5.5 + loopNoise(t, 3.7, 2.1) * 1.6),
+      dPitch: (loopNoise(t, 9.1, 1.3) * 4.2 + loopNoise(t, 4.3, 0.7) * 1.3),
+      dRoll: loopNoise(t, 13.7, 3.2) * 2.2,
+      lid: blinkLid(t),
+      driftX: loopNoise(t, 7.9, 1.9) * 0.006,
+      driftY: loopNoise(t, 5.3, 0.3) * 0.007,
+      breath: 1 + Math.sin((t / 3.4) * TAU) * 0.005,
+    };
+  }
+  const blinkScale = lid => 0.06 + 0.94 * clamp(lid);
+
+  // states — same poses as src/components/blob/states.ts
+  const BODY = superellipse();
+  const sil = (over = {}) => ({ radii: BODY.slice(), rot: 0, cx: 0, cy: 0, sx: 1, sy: 1, ...over });
+  const pair = (w, h, tilt = 0, open = 1) => [{ w, h, tilt, open }, { w, h, tilt: -tilt, open }];
+  const STATES = {
+    idle: { morph: .4, blinkIn: true, pose: () => ({ sil: sil(), offX: 0, offY: 0, gaze: { ...REST }, split: EYE_SPLIT, eyes: pair(EYE_W, EYE_H), dots: [] }) },
+    thinking: { morph: .45, blinkIn: true, pose: t => ({ sil: sil(), offX: 0, offY: 0, gaze: { yaw: 14 + Math.sin(t * 1.1) * 4, pitch: 4, roll: -8 + Math.sin(t * .9) * 5 }, split: EYE_SPLIT, eyes: [{ w: EYE_W, h: EYE_H, tilt: -14, open: .5 }, { w: EYE_W * 1.06, h: EYE_H, tilt: 0, open: 1 }], dots: [] }) },
+    nudge: { morph: .35, blinkIn: true, pose: t => { const hop = Math.abs(Math.sin(t * 2.2)); return { sil: sil({ sy: 1 - hop * .04, sx: 1 + hop * .03 }), offX: 0, offY: -hop * .05, gaze: { yaw: 26, pitch: 8, roll: -4 }, split: EYE_SPLIT, eyes: pair(EYE_W * 1.08, EYE_H * 1.05), dots: [] }; } },
+    alert: { morph: .3, blinkIn: false, pose: t => { const pulse = 1 + Math.sin(t * 5.2) * .025; return { sil: sil({ sx: pulse, sy: pulse }), offX: 0, offY: -.02, gaze: { yaw: 2, pitch: 3, roll: 0 }, split: EYE_SPLIT + 1.5, eyes: pair(EYE_W * 1.45, EYE_H * 1.18), dots: [] }; } },
+    sleep: { morph: .6, blinkIn: false, pose: t => { const br = Math.sin(t * 1.4); const dots = []; for (let i = 0; i < 3; i++) { const ph = ((t * .45 + i / 3) % 1 + 1) % 1; dots.push({ x: .55 + ph * .28, y: -.55 - ph * .4, r: .05 + (1 - ph) * .035, opacity: ph < .15 ? ph / .15 : 1 - easings.easeOutCubic(clamp((ph - .55) / .45)) }); } return { sil: sil({ sy: .86 + br * .012, sx: 1.07, cy: .08 }), offX: 0, offY: 0, gaze: { yaw: 6, pitch: -10, roll: -3 }, split: EYE_SPLIT, eyes: pair(EYE_W * 1.1, EYE_H, 0, .06), dots }; } },
+    joy: { morph: .25, blinkIn: true, pose: t => { const cyc = (t % 1.1) / 1.1; const air = Math.sin(cyc * Math.PI); const squash = cyc < .18 ? 1 - Math.sin((cyc / .18) * Math.PI) * .1 : 1; const dots = []; for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU + .4; const ph = ((t * .8 + i * .13) % 1 + 1) % 1; dots.push({ x: Math.cos(a) * (.75 + ph * .45), y: Math.sin(a) * (.75 + ph * .45) - .1, r: .045 * (1 - ph * .6), opacity: 1 - easings.easeOutQuint(ph) }); } return { sil: sil({ sy: squash + air * .07, sx: 1 / (squash + air * .07) }), offX: 0, offY: -air * .09, gaze: { yaw: 6, pitch: 12, roll: Math.sin(t * 2.2) * 3 }, split: EYE_SPLIT, eyes: pair(.26, .15, 16), dots }; } },
+  };
+
+  // engine class — same guarantees as the TS version
+  class Engine {
+    constructor(R = 100) { this.R = R; this.state = 'idle'; this.start = 0; this.from = null; this.look = { yaw: 0, pitch: 0, mix: 0 }; this.blinkAt = -1; this.pts = []; }
+    snap(p) { return { sil: { ...p.sil, radii: [...p.sil.radii] }, offX: p.offX, offY: p.offY, gaze: { ...p.gaze }, split: p.split, eyes: [{ ...p.eyes[0] }, { ...p.eyes[1] }] }; }
+    setState(id, now) { if (id === this.state) return; this.from = this.snap(this.composite(now)); this.state = id; this.start = now; if (STATES[id].blinkIn) this.blinkAt = now; }
+    composite(now) {
+      const def = STATES[this.state];
+      const local = Math.max(0, now - this.start);
+      const pose = def.pose(local);
+      if (!this.from) return pose;
+      const k = clamp(local / def.morph);
+      if (k >= 1) return pose;
+      const t = easings.easeOutCubic(k), a = this.from, p = pose;
+      return {
+        sil: blendSil(a.sil, p.sil, t, { radii: new Array(N), rot: 0, cx: 0, cy: 0, sx: 1, sy: 1 }),
+        offX: lerp(a.offX, p.offX, t), offY: lerp(a.offY, p.offY, t),
+        gaze: { yaw: lerp(a.gaze.yaw, p.gaze.yaw, t), pitch: lerp(a.gaze.pitch, p.gaze.pitch, t), roll: lerp(a.gaze.roll, p.gaze.roll, t) },
+        split: lerp(a.split, p.split, t),
+        eyes: [{ w: lerp(a.eyes[0].w, p.eyes[0].w, t), h: lerp(a.eyes[0].h, p.eyes[0].h, t), tilt: lerp(a.eyes[0].tilt, p.eyes[0].tilt, t), open: lerp(a.eyes[0].open, p.eyes[0].open, t) }, { w: lerp(a.eyes[1].w, p.eyes[1].w, t), h: lerp(a.eyes[1].h, p.eyes[1].h, t), tilt: lerp(a.eyes[1].tilt, p.eyes[1].tilt, t), open: lerp(a.eyes[1].open, p.eyes[1].open, t) }],
+        dots: p.dots.map(d => ({ ...d, opacity: d.opacity * t })),
+      };
+    }
+    sample(now) {
+      const R = this.R, pose = this.composite(now), life = liveliness(now);
+      const gaze = {
+        yaw: lerp(pose.gaze.yaw, this.look.yaw, this.look.mix) + life.dYaw * (1 - this.look.mix),
+        pitch: lerp(pose.gaze.pitch, this.look.pitch, this.look.mix) + life.dPitch * (1 - this.look.mix),
+        roll: pose.gaze.roll + life.dRoll,
+      };
+      const forced = clamp((now - this.blinkAt) / .2);
+      const forcedLid = forced < 1 ? Math.abs(forced * 2 - 1) : 1;
+      const lid = Math.min(life.lid, forcedLid);
+      const offX = pose.offX + life.driftX, offY = pose.offY + life.driftY;
+      const s = { ...pose.sil, cx: pose.sil.cx + offX, cy: pose.sil.cy + offY, sy: pose.sil.sy * life.breath };
+      const bodyPath = closedPath(toPoints(s, R, this.pts));
+      const bodyRadius = (x, y) => radiusAtAngle(pose.sil.radii, Math.atan2(y, x) - pose.sil.rot);
+      const eyes = [];
+      const eps = eyePoses(gaze, R, pose.split);
+      for (let i = 0; i < 2; i++) {
+        const e = eps[i]; if (e.depth <= .02) continue;
+        const c = pose.eyes[i];
+        const fit = bodyRadius(e.x, e.y);
+        const phi = (c.tilt * Math.PI) / 180, cp = Math.cos(phi), sp = Math.sin(phi);
+        const ax = e.a * cp + e.c * sp, ay = e.b * cp + e.d * sp;
+        const cx2 = -e.a * sp + e.c * cp, cy2 = -e.b * sp + e.d * cp;
+        const k = blinkScale(Math.min(lid, c.open));
+        eyes.push({ d: capsulePath(c.w * R, c.h * R), m: 'matrix(' + r2(ax) + ',' + r2(ay * k) + ',' + r2(cx2) + ',' + r2(cy2 * k) + ',' + r2(e.x * fit + offX * R) + ',' + r2(e.y * fit + offY * R) + ')', alpha: clamp(e.depth / .12) });
+      }
+      const dots = pose.dots.filter(d => d.opacity > .01).map(d => ({ x: (d.x + offX) * R, y: (d.y + offY) * R, r: d.r * R, o: d.opacity }));
+      return { bodyPath, eyes, dots };
+    }
+  }
+
+  // ── gallery wiring ──
+  const defs = [
+    { id: 'idle', state: 'Idle', label: 'today · working the queue' },
+    { id: 'thinking', state: 'Thinking', label: 'needs review / missing details' },
+    { id: 'nudge', state: 'Nudge', label: 'due today · hopeful hop' },
+    { id: 'alert', state: 'Overdue', label: '3d late · do this next' },
+    { id: 'sleep', state: 'Parked', label: 'snoozed · rising z\u2019s' },
+    { id: 'joy', state: 'Won', label: 'closed won · celebration' },
+  ];
+  const grid = document.getElementById('grid');
+  grid.innerHTML = defs.map(d =>
+    '<div class="cell" data-id="' + d.id + '">' +
+      '<svg viewBox="-124 -124 248 248" width="120" height="120" style="overflow:visible;display:block;margin:0 auto">' +
+        '<defs><mask id="m-' + d.id + '">' +
+          '<rect x="-124" y="-124" width="248" height="248" fill="white"/>' +
+          '<path class="eyehole" fill="black"/><path class="eyehole" fill="black"/>' +
+        '</mask></defs>' +
+        '<path class="body" fill="#f0c75e" stroke="rgba(43,33,26,.14)" stroke-width="2" mask="url(#m-' + d.id + ')"/>' +
+        '<g class="dots"></g>' +
+      '</svg>' +
+      '<div class="state">' + d.state + '</div>' +
+      '<div class="label">' + d.label + '</div>' +
+      '<div class="try">click to enlarge</div>' +
+    '</div>'
+  ).join('');
+
+  const LOOK = { yaw: 0, pitch: 0, mix: 0 };
+  let lookTimer = null;
+  window.addEventListener('pointermove', e => {
+    LOOK.yaw = (e.clientX / window.innerWidth) * 36 - 18;
+    LOOK.pitch = 10 - (e.clientY / window.innerHeight) * 24;
+    LOOK.mix = 0.85;
+    clearTimeout(lookTimer);
+    lookTimer = setTimeout(() => { LOOK.mix = 0; }, 1800);
+  }, { passive: true });
+
+  const instances = [];
+  for (const d of defs) {
+    const cell = grid.querySelector('[data-id="' + d.id + '"]');
+    instances.push({
+      d, eng: new Engine(100), cell,
+      body: cell.querySelector('.body'),
+      holes: cell.querySelectorAll('.eyehole'),
+      dotsG: cell.querySelector('.dots'),
+    });
+  }
+
+  function paint(now) {
+    for (const inst of instances) {
+      inst.eng.setState(inst.d.id, now);
+      inst.eng.look = { ...LOOK, wander: 1 - LOOK.mix };
+      const f = inst.eng.sample(now);
+      inst.body.setAttribute('d', f.bodyPath);
+      inst.holes.forEach((h, i) => {
+        const eye = f.eyes[i];
+        if (!eye) { h.setAttribute('opacity', '0'); return; }
+        h.setAttribute('d', eye.d);
+        h.setAttribute('transform', eye.m);
+        h.setAttribute('opacity', eye.alpha);
+      });
+      while (inst.dotsG.children.length > f.dots.length) inst.dotsG.removeChild(inst.dotsG.lastChild);
+      while (inst.dotsG.children.length < f.dots.length) inst.dotsG.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'circle'));
+      f.dots.forEach((d, i) => {
+        const c = inst.dotsG.children[i];
+        c.setAttribute('cx', d.x); c.setAttribute('cy', d.y); c.setAttribute('r', d.r);
+        c.setAttribute('fill', 'currentColor'); c.setAttribute('opacity', d.o * 0.5);
+      });
+    }
+  }
+
+  grid.addEventListener('click', e => {
+    const cell = e.target.closest('.cell');
+    if (!cell) return;
+    const id = cell.dataset.id;
+    const modal = document.createElement('div');
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:9;cursor:zoom-out';
+    const sv = cell.querySelector('svg').cloneNode(true);
+    sv.setAttribute('width', 340); sv.setAttribute('height', 340);
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'background:var(--card);color:var(--fg);border-radius:24px;padding:40px 60px;text-align:center';
+    wrap.appendChild(sv);
+    const st = document.createElement('div');
+    st.style.cssText = 'margin-top:14px;font-weight:700;font-size:16px';
+    st.textContent = id;
+    wrap.appendChild(st);
+    modal.appendChild(wrap);
+    modal.addEventListener('click', () => modal.remove());
+    document.body.appendChild(modal);
+    // repaint enlarged clone each frame
+    const body = sv.querySelector('.body'), holes = sv.querySelectorAll('.eyehole'), dotsG = sv.querySelector('.dots');
+    const eng = new Engine(100); eng.setState(id, 0);
+    const iv = setInterval(() => {
+      if (!document.body.contains(modal)) { clearInterval(iv); return; }
+      eng.look = { ...LOOK, wander: 1 - LOOK.mix };
+      const f = eng.sample(performance.now() / 1000 % 1000);
+      body.setAttribute('d', f.bodyPath);
+      holes.forEach((h, i) => { const eye = f.eyes[i]; if (eye) { h.setAttribute('d', eye.d); h.setAttribute('transform', eye.m); h.setAttribute('opacity', eye.alpha); } });
+    }, 16);
+  });
+
+  const t0 = performance.now();
+  const tick = now => { paint((now - t0) / 1000); requestAnimationFrame(tick); };
+  requestAnimationFrame(tick);
+</script>
+</body>
+</html>

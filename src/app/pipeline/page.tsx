@@ -13,7 +13,6 @@ import {
 } from '@dnd-kit/core';
 import { Deal, STAGE_LABELS, STAGE_ORDER } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
-import { deals as dataDeals, contacts as dataContacts, companies as dataCompanies } from '@/data/crmData';
 import CreateModal from '@/components/CreateModal';
 import { Plus, AlertCircle, Clock, TrendingUp, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
@@ -27,9 +26,9 @@ export default function PipelinePage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const { deals: dbDeals, contacts: dbContacts, companies: dbCompanies, loading, error, createDeal } = useCrm();
-  const deals: Deal[] = dbDeals.length > 0 ? dbDeals : (dataDeals as any);
-  const contacts = dbContacts.length > 0 ? dbContacts : (dataContacts as any);
-  const companies = dbCompanies.length > 0 ? dbCompanies : (dataCompanies as any);
+  const deals: Deal[] = dbDeals;
+  const contacts = dbContacts;
+  const companies = dbCompanies;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })

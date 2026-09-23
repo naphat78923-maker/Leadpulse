@@ -3,7 +3,6 @@
 import { useState, useMemo } from 'react';
 import { Meeting, MEETING_TYPE_LABELS } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
-import { meetings as dataMeetings } from '@/data/crmData';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import { Search, Plus, Calendar, Mail, Phone, Users, FileText, Package, Bell, MessageCircle } from 'lucide-react';
 import clsx from 'clsx';
@@ -16,7 +15,7 @@ export default function MeetingsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const { meetings: dbMeetings, contacts, deals, loading, addMeeting } = useCrm();
-  const meetings: Meeting[] = dbMeetings.length > 0 ? dbMeetings : (dataMeetings as any);
+  const meetings: Meeting[] = dbMeetings;
 
   const filtered = useMemo(() => {
     let result = meetings;

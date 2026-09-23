@@ -46,33 +46,26 @@ function deferred<T>() {
 }
 
 describe('LayaScoreCard', () => {
-  it('explains same-device Mac setup without contacting the worker on render', () => {
+  it('does not contact the worker on render and keeps setup help hidden until a failure', () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     render(<LayaScoreCard deal={deal} />);
-    expect(screen.getByText(/same Mac as this browser/i)).toBeTruthy();
-    expect(screen.getByText(/phone or another computer/i)).toBeTruthy();
-    expect(screen.getByText('npm run laya:serve')).toBeTruthy();
+    expect(screen.queryByText(/same Mac as this browser/i)).toBeNull();
+    expect(screen.queryByText(/npm run laya:serve/)).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
-  it('checks readiness manually without sending deal data or scoring', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ status: 'ready', engine: 'cpu_ne' }) });
+
+  it('reveals Mac-local setup help after a failed score and hides it again after a success', async () => {
+    const fetchMock = vi.fn().mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValueOnce(success());
     vi.stubGlobal('fetch', fetchMock);
     render(<LayaScoreCard deal={deal} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Check local connection' }));
-    await screen.findByText(/Local worker responded.*not a score/i);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0][0]).toBe('http://127.0.0.1:8765/health');
-    expect(fetchMock.mock.calls[0][1].method).toBe('GET');
-    expect(fetchMock.mock.calls[0][1].body).toBeUndefined();
-    expect(screen.queryByText('Prioritise')).toBeNull();
-  });
-
-  it('accepts readiness from the longer local CPU/GPU model', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ status: 'ready', engine: 'cpu_gpu' }) }));
-    render(<LayaScoreCard deal={deal} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Check local connection' }));
-    await screen.findByText(/Local worker responded.*not a score/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Score with Laya' }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/local.network permissions/i);
+    expect(screen.getByText(/same Mac as this browser/i)).toBeTruthy();
+    expect(screen.getByText(/npm run laya:serve/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Score with Laya' }));
+    await screen.findByText('Prioritise');
+    expect(screen.queryByText(/npm run laya:serve/)).toBeNull();
   });
 
   it('shows a verified scoring trace from the longer local CPU/GPU model', async () => {
@@ -129,34 +122,6 @@ describe('LayaScoreCard', () => {
     expect((await screen.findByRole('alert')).textContent).toMatch(/local.network permissions/i);
     expect(screen.getByRole('alert').textContent).not.toMatch(/is not running|is stopped/i);
     expect(screen.queryByText('Prioritise')).toBeNull();
-  });
-
-  it.each([null, { status: 'ready' }, { status: 'loading', engine: 'cpu_ne' }])('does not report readiness for an incompatible health reply %j', async payload => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => payload }));
-    render(<LayaScoreCard deal={deal} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Check local connection' }));
-    expect((await screen.findByRole('alert')).textContent).toMatch(/did not report a ready Laya worker/i);
-    expect(screen.queryByRole('status')).toBeNull();
-  });
-
-  it('health checks time out and retry without scoring, and abort on unmount', async () => {
-    vi.useFakeTimers();
-    const late = deferred<unknown>();
-    const pending = deferred<unknown>();
-    const fetchMock = vi.fn().mockReturnValueOnce(late.promise).mockReturnValueOnce(pending.promise);
-    vi.stubGlobal('fetch', fetchMock);
-    const { unmount } = render(<LayaScoreCard deal={deal} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Check local connection' }));
-    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
-    expect(screen.getByRole('alert').textContent).toMatch(/timed out/i);
-    fireEvent.click(screen.getByRole('button', { name: 'Check local connection' }));
-    await act(async () => { late.resolve({ ok: true, json: async () => ({ status: 'ready', engine: 'cpu_ne' }) }); });
-    expect(screen.queryByRole('status')).toBeNull();
-    expect((screen.getByRole('button', { name: 'Checking local connection…' }) as HTMLButtonElement).disabled).toBe(true);
-    unmount();
-    expect(fetchMock.mock.calls[1][1].signal.aborted).toBe(true);
-    await act(async () => { pending.reject(new Error('Late failure')); });
-    expect(fetchMock.mock.calls.every(([url]) => url.endsWith('/health'))).toBe(true);
   });
 
   it('discards a response crossing Bangkok midnight even before a clock refresh', async () => {

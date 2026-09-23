@@ -3,7 +3,6 @@
 import { useState, useMemo } from 'react';
 import { Company, COMPANY_STATUS_LABELS, Contact, Deal, Meeting } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
-import { companies as dataCompanies, contacts as dataContacts, deals as dataDeals, meetings as dataMeetings } from '@/data/crmData';
 import CompanyDetail from '@/components/CompanyDetail';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import { accountHealthScore, tierLabel, HealthTier } from '@/utils/accountHealth';
@@ -50,10 +49,10 @@ function distinctOrderCountOf(
 export default function RetentionPage() {
   const { companies: dbCompanies, contacts: dbContacts, deals: dbDeals, meetings: dbMeetings, accountEvents, loading, refresh, addMeeting } = useCrm();
 
-  const companies: Company[] = dbCompanies.length > 0 ? dbCompanies : (dataCompanies as any);
-  const contacts: Contact[] = dbContacts.length > 0 ? dbContacts : (dataContacts as any);
-  const deals: Deal[] = dbDeals.length > 0 ? dbDeals : (dataDeals as any);
-  const meetings: Meeting[] = dbMeetings.length > 0 ? dbMeetings : (dataMeetings as any);
+  const companies: Company[] = dbCompanies;
+  const contacts: Contact[] = dbContacts;
+  const deals: Deal[] = dbDeals;
+  const meetings: Meeting[] = dbMeetings;
 
   const [filter, setFilter] = useState<FilterKey>('all');
   const [search, setSearch] = useState('');

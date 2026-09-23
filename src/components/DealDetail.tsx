@@ -59,6 +59,12 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
   const sendCount = useMemo(() => outboundSendCountForDeal(meetings, deal.id), [meetings, deal.id]);
   const derived = deriveNudge(deal, today, { sendCount });
   const dealCompany = useMemo(() => (deal.company_id ? companies.find(c => c.id === deal.company_id) : undefined), [deal.company_id, companies]);
+  // Facts that used to hide behind "Commercial details": visible at a glance under the title.
+  const headerFacts = [
+    deal.product,
+    deal.value != null ? `${Number(deal.value).toLocaleString('en-US')} THB` : null,
+    deal.priority ? deal.priority.charAt(0).toUpperCase() + deal.priority.slice(1) : null,
+  ].filter(Boolean).join(' · ');
 
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -207,6 +213,34 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
       addToast(workflowChanged ? 'Action lane updated' : 'Deal saved!');
       setTimeout(() => setSaved(false), 2000);
       void updated;
+    } catch (err: any) {
+      setError('Could not save: ' + (err.message || 'Unknown error'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /** One-tap follow-up reschedule from today: +1d / +3d / next week. */
+  const snoozeFollowup = async (days: number) => {
+    const target = new Date();
+    target.setDate(target.getDate() + days);
+    const followup_date = localDateKey(target);
+    setSaving(true);
+    setError(null);
+    const before = beforeSnapshot();
+    try {
+      await crm.updateDealIfUnchanged(deal.id, deal.updated_at, { followup_date });
+      setUndoSnapshot(before);
+      logActivity({
+        type: 'edit',
+        entity: 'deal',
+        entityId: deal.id,
+        label: 'Follow-up snoozed',
+        description: `${dealClientName(deal, companies, contacts)} follow-up moved to ${followup_date}`,
+        undoPayload: before,
+      });
+      onSaved();
+      addToast('Follow-up updated');
     } catch (err: any) {
       setError('Could not save: ' + (err.message || 'Unknown error'));
     } finally {
@@ -386,6 +420,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
           <div className="min-w-0">
             <p className="text-[10px] text-clay-muted font-medium tracking-wider">DEAL</p>
             <h2 className="text-lg font-semibold text-clay-ink truncate">{dealClientName(deal, companies, contacts)}</h2>
+            {headerFacts && <p className="mt-0.5 text-xs text-clay-muted truncate">{headerFacts}</p>}
           </div>
           <div className="flex items-center gap-1 shrink-0">
             {editing && (
@@ -490,6 +525,23 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
                 </div>
               </div>
             )}
+            {!isClosed && (
+              <button
+                type="button"
+                onClick={() => setLogOpen(true)}
+                className="clay-btn-primary mt-3 w-full flex items-center justify-center gap-2 h-auto py-3.5 text-[15px] shadow-sm"
+              >
+                <MessageCircle className="w-4 h-4" />
+                Log touch
+              </button>
+            )}
+            {lastTouch && (
+              <p className="mt-2 text-[11px] text-clay-muted">
+                Last touch: <span className="font-medium text-clay-body">{lastTouch.type.toUpperCase()}</span>
+                {` · ${lastTouch.date}`}
+                {lastTouch.type === 'dm' ? ' (LINE/IG/WhatsApp)' : ''}
+              </p>
+            )}
           </section>
 
           <section>
@@ -529,24 +581,20 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
               <p className={clsx('mt-1', isOverdue ? 'text-clay-error font-medium' : 'text-clay-ink')}>{deal.followup_date || '—'}</p>
             )}
           </label>
-
-          {!isClosed && (
-            <button
-              type="button"
-              onClick={() => setLogOpen(true)}
-              className="clay-btn-primary w-full flex items-center justify-center gap-2 h-auto py-3.5 text-[15px] shadow-sm"
-            >
-              <MessageCircle className="w-4 h-4" />
-              Log touch
-            </button>
-          )}
-
-          {lastTouch && (
-            <p className="text-[11px] text-clay-muted">
-              Last touch: <span className="font-medium text-clay-body">{lastTouch.type.toUpperCase()}</span>
-              {['dm', 'call', 'email'].includes(lastTouch.type) ? ` · ${lastTouch.date}` : ` · ${lastTouch.date}`}
-              {lastTouch.type === 'dm' ? ' (LINE/IG/WhatsApp)' : ''}
-            </p>
+          {!editing && !isClosed && (
+            <div className="mt-1.5 flex flex-wrap gap-2">
+              {[{ days: 1, label: '+1d' }, { days: 3, label: '+3d' }, { days: 7, label: 'Next week' }].map(chip => (
+                <button
+                  key={chip.days}
+                  type="button"
+                  onClick={() => void snoozeFollowup(chip.days)}
+                  disabled={saving}
+                  className="rounded-full border border-clay-hairline bg-white dark:bg-clay-card px-3 py-1.5 text-xs font-medium text-clay-muted hover:text-clay-ink hover:border-clay-muted active:scale-[0.97] disabled:opacity-50"
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
           )}
 
           <LayaScoreCard deal={deal} company={dealCompany} />
@@ -562,7 +610,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
 
           {!isClosed && currentWorkflow !== 'parked' && (
             <section className="rounded-xl border border-clay-hairline bg-white dark:bg-clay-card p-3">
-              <p className="text-[10px] font-semibold tracking-wider text-clay-muted mb-2">EXITS (not columns)</p>
+              <p className="text-[10px] font-semibold tracking-wider text-clay-muted mb-2">Close deal</p>
               <div className="grid grid-cols-3 gap-2">
                 <button type="button" onClick={() => setExitKind('won')} className="px-2 py-2.5 rounded-lg border border-clay-mint/40 bg-clay-mint/10 text-xs font-medium text-clay-teal">
                   🎉 Won
@@ -600,8 +648,8 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
               )}
 
               {outreachLanguage === 'autodetect' && (
-                <div className="rounded-lg border border-clay-coral/30 bg-clay-coral/10 p-2.5">
-                  <p className="text-[10px] font-semibold text-clay-coral mb-1.5">LANGUAGE UNKNOWN — choose draft language</p>
+                <div>
+                  <p className="text-[10px] font-semibold tracking-wider text-clay-muted mb-1.5">DRAFT LANGUAGE</p>
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
@@ -687,6 +735,8 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
             </div>
           </details>
 
+          {/* Hidden until there is an outcome (or the editor is open) — fresh deals stay lean. */}
+          {(editing || deal.last_outcome) && (
           <section>
             <p className="text-clay-body">Outcome history</p>
             {editing ? (
@@ -715,6 +765,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
               )}
             </div>
           </section>
+          )}
 
           {undoSnapshot && (
             <button onClick={handleUndo} disabled={saving} className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border border-clay-hairline bg-clay-surface text-sm font-medium text-clay-muted active:scale-[0.98] disabled:opacity-50">

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { Deal } from '@/types/crm';
+import { localDateKey } from '@/utils/deal-board';
 
 const crmMocks = vi.hoisted(() => ({
   updateDeal: vi.fn(),
@@ -117,7 +118,7 @@ describe('DealDetail journey modal', () => {
 
     expect(screen.getByText('Track sample delivery')).toBeTruthy();
     expect(screen.getByText(/Received by client/)).toBeTruthy();
-    expect(screen.getByText('EXITS (not columns)')).toBeTruthy();
+    expect(screen.getByText('Close deal')).toBeTruthy();
   });
 
   it('saves only the field the user edited, one write, no false success', async () => {
@@ -218,4 +219,80 @@ describe('DealDetail journey modal', () => {
     expect(await screen.findByText(/changed while the interaction was saving/i)).toBeTruthy();
     expect(addToast).not.toHaveBeenCalled();
   });
+
+describe('DealDetail cadence', () => {
+  beforeEach(() => {
+    crmMocks.updateDealIfUnchanged.mockReset().mockResolvedValue(deal);
+    addToast.mockReset();
+    logActivity.mockReset();
+  });
+
+  afterEach(cleanup);
+
+  it('shows product, value, and priority under the title', () => {
+    render(<DealDetail deal={{ ...deal, value: 100000, priority: 'high' }} onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    expect(screen.getByText('Butter · 100,000 THB · High')).toBeTruthy();
+  });
+
+  it('hides the outcome history until there is one', () => {
+    render(<DealDetail deal={deal} onClose={vi.fn()} onSaved={vi.fn()} />);
+    expect(screen.queryByText('Outcome history')).toBeNull();
+    cleanup();
+
+    render(
+      <DealDetail
+        deal={{ ...deal, last_outcome: '09/20 — Client liked the sample' }}
+        onClose={vi.fn()}
+        onSaved={vi.fn()}
+      />
+    );
+    expect(screen.getByText('Outcome history')).toBeTruthy();
+  });
+
+  it('snoozes the follow-up date with one tap and logs it for undo', async () => {
+    const onSaved = vi.fn();
+    render(
+      <DealDetail deal={{ ...deal, followup_date: '2020-01-01' }} onClose={vi.fn()} onSaved={onSaved} />
+    );
+
+    const expected = new Date();
+    expected.setDate(expected.getDate() + 3);
+    const expectedKey = localDateKey(expected);
+
+    fireEvent.click(screen.getByRole('button', { name: '+3d' }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    expect(crmMocks.updateDealIfUnchanged).toHaveBeenCalledTimes(1);
+    expect(crmMocks.updateDealIfUnchanged).toHaveBeenCalledWith(deal.id, deal.updated_at, {
+      followup_date: expectedKey,
+    });
+    expect(logActivity).toHaveBeenCalledTimes(1);
+    expect(logActivity.mock.calls[0][0].undoPayload.followup_date).toBe('2020-01-01');
+    expect(addToast).toHaveBeenCalledWith('Follow-up updated');
+  });
+
+  it('surfaces a failed snooze instead of a false success', async () => {
+    crmMocks.updateDealIfUnchanged.mockRejectedValueOnce(new Error('network down'));
+    const onSaved = vi.fn();
+    render(
+      <DealDetail deal={{ ...deal, followup_date: '2020-01-01' }} onClose={vi.fn()} onSaved={onSaved} />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '+1d' }));
+
+    expect(await screen.findByText(/Could not save: network down/)).toBeTruthy();
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(addToast).not.toHaveBeenCalled();
+  });
+
+  it('offers no snooze chips on a closed deal', () => {
+    render(<DealDetail deal={{ ...deal, stage: 'closed_won' }} onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: '+1d' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '+3d' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Next week' })).toBeNull();
+  });
+});
+
 });

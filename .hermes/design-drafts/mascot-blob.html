@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LeadPulse blob mascot — concept</title>
+<style>
+  :root { --bg:#fdf6e9; --fg:#2b211a; --muted:#8a8070; --border:#e9e2d5; --card:#fff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#17120e; --fg:#f6f3ea; --muted:#9c9688; --border:#3a332b; --card:#262019; }
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--fg); font-family:ui-sans-serif,system-ui,sans-serif; padding:40px 24px; }
+  h1 { font-size:22px; letter-spacing:-.02em; margin-bottom:4px; }
+  .sub { color:var(--muted); font-size:13px; margin-bottom:32px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:16px; max-width:900px; }
+  .cell { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:24px 16px 16px; text-align:center; }
+  .cell .label { font-size:11px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); margin-top:14px; font-weight:600; }
+  .cell .state { font-size:13px; font-weight:600; margin-top:2px; }
+
+  /* ── The blob ── */
+  .blob { width:96px; height:96px; margin:0 auto; }
+  .blob svg { display:block; width:100%; height:100%; overflow:visible; }
+
+  /* Butter body: squircle-ish pat with soft gradient */
+  .body { fill:url(#butter); transform-origin:50% 50%; }
+  .dark .body { fill:url(#butterDark); }
+
+  /* eyes are holes: we fake it with bg-colored capsules */
+  .eye { fill:var(--bg); transform-origin:center; transform-box:fill-box; }
+
+  /* ── states ── */
+  @keyframes bob { 0%,100%{transform:translateY(0) scale(1,1)} 50%{transform:translateY(-3px) scale(1.02,.98)} }
+  @keyframes blink { 0%,92%,100%{transform:scaleY(1)} 95%{transform:scaleY(.08)} }
+  @keyframes squint-l { to { transform:scaleY(.45) rotate(-8deg); } }
+  @keyframes breathe { 0%,100%{transform:scale(1)} 50%{transform:scale(1.03,.97)} }
+  @keyframes sway { 0%,100%{transform:rotate(-3deg)} 50%{transform:rotate(3deg)} }
+  @keyframes joy { 0%,100%{transform:translateY(0) scale(1,1)} 30%{transform:translateY(-10px) scale(.96,1.06)} 55%{transform:translateY(0) scale(1.05,.93)} 75%{transform:translateY(-4px) scale(.99,1.02)} }
+  @keyframes alert-pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.05)} }
+
+  .s-idle .body { animation:breathe 3.2s ease-in-out infinite; }
+  .s-idle .eye { animation:blink 4.2s ease-in-out infinite; }
+
+  .s-thinking .body { animation:sway 2.6s ease-in-out infinite; }
+  .s-thinking .eye-l { transform:scaleY(.5) rotate(-10deg); }
+  .s-thinking .eye-r { animation:blink 3s ease-in-out infinite; }
+
+  .s-overdue .body { animation:alert-pulse 1.1s ease-in-out infinite; }
+  .s-overdue .eye { transform:scale(1.18); }
+
+  .s-parked .body { transform:scale(1.04,.9) translateY(4px); }
+  .s-parked .eye { transform:scaleY(.1); }
+  .s-parked .zzz { font-size:14px; fill:var(--muted); font-weight:700; animation:bob 2.4s ease-in-out infinite; }
+
+  .s-won .body { animation:joy 1.6s cubic-bezier(.34,1.56,.64,1) infinite; }
+
+  .s-nudge .body { animation:bob 1.8s ease-in-out infinite; }
+  .s-nudge .eye-r { transform:translateX(3px) scaleY(.8); }
+  .s-nudge .eye-l { transform:translateX(-2px); }
+</style>
+</head>
+<body>
+<h1>🧈 "Pat" — the LeadPulse blob</h1>
+<p class="sub">One SVG component · no image assets · theme-aware · states map to deal states</p>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <linearGradient id="butter" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f6d67c"/>
+      <stop offset="100%" stop-color="#eec35a"/>
+    </linearGradient>
+    <linearGradient id="butterDark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f0cd6e"/>
+      <stop offset="100%" stop-color="#d9a93f"/>
+    </linearGradient>
+  </defs>
+</svg>
+
+<div class="grid" id="grid"></div>
+
+<script>
+  // One blob, many moods. Eyes are "holes" like bloub (they take page bg color).
+  const eyeL = '<ellipse class="eye eye-l" cx="38" cy="44" rx="7" ry="10" transform="rotate(-8 38 44)"/>';
+  const eyeR = '<ellipse class="eye eye-r" cx="62" cy="44" rx="7" ry="10" transform="rotate(8 62 44)"/>';
+  const happyL = '<path class="eye" d="M31 46 q7 -9 14 0" stroke="var(--bg)" stroke-width="5" fill="none" stroke-linecap="round"/>';
+  const happyR = '<path class="eye" d="M55 46 q7 -9 14 0" stroke="var(--bg)" stroke-width="5" fill="none" stroke-linecap="round"/>';
+  const body = '<rect class="body" x="14" y="14" width="72" height="72" rx="26"/>';
+
+  const states = [
+    { cls:'s-idle',     eyes:eyeL+eyeR,   state:'Idle',      label:'today · working the queue' },
+    { cls:'s-thinking', eyes:eyeL+eyeR,   state:'Thinking',  label:'draft / needs details' },
+    { cls:'s-nudge',    eyes:eyeL+eyeR,   state:'Nudge',     label:'going quiet · follow up' },
+    { cls:'s-overdue',  eyes:eyeL+eyeR,   state:'Overdue',   label:'3d late · do this next' },
+    { cls:'s-parked',   eyes:eyeL+eyeR,   state:'Parked',    label:'snoozed · revisit later', extra:'<text class="zzz" x="74" y="30">z z</text>' },
+    { cls:'s-won',      eyes:happyL+happyR, state:'Won',     label:'closed won 🎉' },
+  ];
+
+  document.getElementById('grid').innerHTML = states.map(s => `
+    <div class="cell">
+      <div class="blob ${s.cls}">
+        <svg viewBox="0 0 100 100">${body}${s.eyes}${s.extra||''}</svg>
+      </div>
+      <div class="state">${s.state}</div>
+      <div class="label">${s.label}</div>
+    </div>`).join('');
+</script>
+</body>
+</html>

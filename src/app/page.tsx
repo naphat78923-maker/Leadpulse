@@ -6,7 +6,6 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Deal, Contact, Meeting, STAGE_LABELS, DealStage } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
-import { deals as dataDeals, contacts as dataContacts, companies as dataCompanies, meetings as dataMeetings } from '@/data/crmData';
 import CreateModal from '@/components/CreateModal';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import { Blob } from '@/components/blob';
@@ -123,10 +122,10 @@ export default function TodayPage() {
 
   // Never paint mock CRM while loading — that caused hero flicker (April's Bakery → real deal).
   // After load, keep the offline mock fallback only when the DB truly returned empty.
-  const deals = dbDeals.length > 0 ? dbDeals : loading ? [] : (dataDeals as Deal[]);
-  const contacts = dbContacts.length > 0 ? dbContacts : loading ? [] : (dataContacts as Contact[]);
-  const companies = dbCompanies.length > 0 ? dbCompanies : loading ? [] : (dataCompanies as any);
-  const meetings = dbMeetings.length > 0 ? dbMeetings : loading ? [] : (dataMeetings as Meeting[]);
+  const deals = dbDeals;
+  const contacts = dbContacts;
+  const companies = dbCompanies;
+  const meetings = dbMeetings;
 
   const todayKey = bangkokDateKey();
   const headerDate = formatBangkokWeekdayDate();

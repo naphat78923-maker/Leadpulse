@@ -4,7 +4,6 @@ import { useState, useMemo } from 'react';
 import Image from 'next/image';
 import { Contact, CONTACT_STATUS_LABELS, Company } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
-import { contacts as dataContacts, companies as dataCompanies } from '@/data/crmData';
 import CreateModal from '@/components/CreateModal';
 import ContactDetail from '@/components/ContactDetail';
 import CompanyDetail from '@/components/CompanyDetail';
@@ -25,8 +24,8 @@ export default function ContactsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const { contacts: dbContacts, companies: dbCompanies, loading, refresh, createContact } = useCrm();
-  const contacts: Contact[] = dbContacts.length > 0 ? dbContacts : (dataContacts as any);
-  const companies = dbCompanies.length > 0 ? dbCompanies : (dataCompanies as any);
+  const contacts: Contact[] = dbContacts;
+  const companies = dbCompanies;
 
   const companyName = (id?: string | null) =>
     id ? (companies.find((c: Company) => c.id === id)?.name || 'Unknown') : null;

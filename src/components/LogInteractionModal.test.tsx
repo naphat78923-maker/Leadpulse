@@ -432,3 +432,81 @@ describe('LogInteractionModal save recovery', () => {
     });
   });
 });
+
+describe('LogInteractionModal next action continuation', () => {
+  beforeEach(() => {
+    crmMocks.updateDeal.mockReset();
+    crmMocks.updateDealIfUnchanged.mockReset().mockResolvedValue(deal);
+    refresh.mockReset().mockResolvedValue(undefined);
+    logActivity.mockReset();
+  });
+
+  afterEach(cleanup);
+
+  it('writes a typed next action in the same version-checked deal update', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+
+    render(
+      <LogInteractionModal
+        isOpen
+        onClose={onClose}
+        onSave={onSave}
+        deals={[deal]}
+        contacts={[]}
+        companies={[]}
+        selectedDealId={deal.id}
+      />
+    );
+
+    expect(screen.getByPlaceholderText('Keep: Send intro email')).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
+      target: { value: 'Called, chef asked for pricing' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'No Response' }));
+    fireEvent.change(screen.getByLabelText('Next action on this deal'), {
+      target: { value: 'Send pricing sheet' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(crmMocks.updateDealIfUnchanged).toHaveBeenCalledTimes(1);
+    const [dealId, expectedAt, updates] = crmMocks.updateDealIfUnchanged.mock.calls[0];
+    expect(dealId).toBe(deal.id);
+    expect(expectedAt).toBe(deal.updated_at);
+    expect(updates).toEqual({ next_action: 'Send pricing sheet' });
+  });
+
+  it('never writes the next action when the field is untouched or unchanged', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+
+    render(
+      <LogInteractionModal
+        isOpen
+        onClose={onClose}
+        onSave={onSave}
+        deals={[deal]}
+        contacts={[]}
+        companies={[]}
+        selectedDealId={deal.id}
+      />
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
+      target: { value: 'Called, no answer' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'No Response' }));
+    // Same text as the current next action, just padded — a no-op, not a write.
+    fireEvent.change(screen.getByLabelText('Next action on this deal'), {
+      target: { value: '  Send intro email  ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(crmMocks.updateDealIfUnchanged).not.toHaveBeenCalled();
+  });
+});
+

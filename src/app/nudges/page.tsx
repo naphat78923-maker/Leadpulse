@@ -4,7 +4,6 @@ import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Deal, Contact, Company } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
-import { deals as dataDeals } from '@/data/crmData';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
 import { Blob } from '@/components/blob';
@@ -52,7 +51,7 @@ export default function NudgesPage() {
   const [parkDeal, setParkDeal] = useState<Deal | null>(null);
   const { deals: dbDeals, meetings: dbMeetings, loading, addMeeting, refresh, logActivity } = useCrm();
 
-  const deals = dbDeals.length > 0 ? dbDeals : (dataDeals as Deal[]);
+  const deals = dbDeals;
   const meetings = dbMeetings || [];
   const today = localDateKey();
 

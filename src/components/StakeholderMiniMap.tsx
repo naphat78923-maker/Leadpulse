@@ -183,8 +183,7 @@ export default function StakeholderMiniMap({
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="min-w-0">
           <h3 className="text-base font-bold tracking-tight text-clay-ink">Who must say yes</h3>
-          <p className="text-[11px] font-medium text-clay-muted mt-0.5">Empty node = CTA — not a blank form field</p>
-          <p className="text-[10px] font-semibold tracking-wider text-clay-muted uppercase mt-1.5 truncate">{subtitle}</p>
+          <p className="text-[10px] font-semibold tracking-wider text-clay-muted uppercase mt-1 truncate">{subtitle}</p>
         </div>
       </div>
 
@@ -333,7 +332,7 @@ export default function StakeholderMiniMap({
         </span>
         <span className="inline-flex items-center gap-1.5 text-[#b45309]">
           <span className="inline-block w-2 h-2 rounded-full border-2 border-[#b45309] bg-transparent" aria-hidden />
-          Unknown = CTA
+          Unknown
         </span>
       </div>
 

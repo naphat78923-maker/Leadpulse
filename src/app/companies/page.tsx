@@ -3,7 +3,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Company, COMPANY_STATUS_LABELS, Contact } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
-import { companies as dataCompanies, contacts as dataContacts } from '@/data/crmData';
 import CreateModal from '@/components/CreateModal';
 import CompanyDetail from '@/components/CompanyDetail';
 import CompanyLogo from '@/components/CompanyLogo';
@@ -28,8 +27,8 @@ export default function CompaniesPage() {
   }, []);
 
   const { companies: dbCompanies, contacts: dbContacts, loading, refresh, createCompany } = useCrm();
-  const companies: Company[] = dbCompanies.length > 0 ? dbCompanies : (dataCompanies as any);
-  const contacts: Contact[] = dbContacts.length > 0 ? dbContacts : (dataContacts as any);
+  const companies: Company[] = dbCompanies;
+  const contacts: Contact[] = dbContacts;
 
   const filtered = useMemo(() => {
     if (!search) return companies;

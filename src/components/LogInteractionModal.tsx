@@ -77,6 +77,8 @@ export default function LogInteractionModal({
   const [summary, setSummary] = useState('');
   const [outcome, setOutcome] = useState<Meeting['outcome']>(null);
   const [followupDate, setFollowupDate] = useState('');
+  /** Typed = replace the deal's next action in the same write; empty = keep, never write. */
+  const [nextActionEdit, setNextActionEdit] = useState('');
   const [nextWorkflowAction, setNextWorkflowAction] = useState<DealWorkflowAction | ''>('');
   const [sampleStatus, setSampleStatus] = useState<SampleStatus | ''>('');
   /** Explicit event kind. `null` follows the channel's default until the user says otherwise. */
@@ -115,6 +117,7 @@ export default function LogInteractionModal({
       setSummary('');
       setOutcome(null);
       setFollowupDate('');
+      setNextActionEdit('');
       setSaving(false);
       setSaveError(null);
       setPendingDealUpdate(null);
@@ -155,6 +158,7 @@ export default function LogInteractionModal({
     setDescription('');
     setSummary('');
     setFollowupDate('');
+    setNextActionEdit('');
     setOutcome(null);
     setSelectedDeal('');
     setSelectedContactIds([]);
@@ -173,6 +177,7 @@ export default function LogInteractionModal({
     setNextWorkflowAction(nextDeal ? getWorkflowAction(nextDeal) : '');
     setSampleStatus('');
     setEventKind(null);
+    setNextActionEdit('');
     setConfirmSuccess(false);
     setSaveError(null);
   };
@@ -236,9 +241,14 @@ export default function LogInteractionModal({
 
       // Scheduling rides in the SAME update as the lane move, so one write carries both and
       // a partial save can never leave the deal's schedule and its lane disagreeing.
+      // A typed next action joins that write too; an empty field keeps the current one.
+      const typedNextAction = nextActionEdit.trim();
       const dealPatch: Partial<Deal> = {
         ...(workflowUpdates || {}),
         ...(laneRequiresDate ? {} : scheduleUpdates),
+        ...(deal && typedNextAction && typedNextAction !== (deal.next_action ?? '').trim()
+          ? { next_action: typedNextAction }
+          : {}),
       };
 
       const selectedContacts = contacts.filter(contact => selectedContactIds.includes(contact.id));
@@ -597,6 +607,21 @@ export default function LogInteractionModal({
                 className="mt-1 block w-full px-3 py-3 border border-clay-hairline rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-clay-ink bg-white dark:bg-clay-card text-clay-ink"
               />
             </label>
+
+            {deal && (
+              <label className="block text-sm font-medium text-clay-body">
+                Next action on this deal
+                <input
+                  aria-label="Next action on this deal"
+                  type="text"
+                  value={nextActionEdit}
+                  onChange={e => setNextActionEdit(e.target.value)}
+                  placeholder={deal.next_action ? `Keep: ${deal.next_action}` : 'Start with a verb: call, send, ask, confirm…'}
+                  className="mt-1 block w-full px-3 py-3 border border-clay-hairline rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-clay-ink bg-white dark:bg-clay-card text-clay-ink"
+                />
+                <span className="mt-1 block text-[11px] font-normal text-clay-muted">Empty keeps the current next action.</span>
+              </label>
+            )}
 
             {deal && !laneRequiresDate && (
               <div className="grid gap-2" role="radiogroup" aria-label="Deal schedule">

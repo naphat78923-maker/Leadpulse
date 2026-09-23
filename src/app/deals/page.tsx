@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Deal, DealWorkflowAction, PRODUCT_OPTIONS, STAGE_LABELS } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
-import { deals as dataDeals, contacts as dataContacts, companies as dataCompanies } from '@/data/crmData';
 import CreateModal from '@/components/CreateModal';
 import DealDetail from '@/components/DealDetail';
 import DealCardPrimaryAction from '@/components/DealCardPrimaryAction';
@@ -99,9 +98,9 @@ export default function DealsPage() {
   const { deals: dbDeals, contacts: dbContacts, companies: dbCompanies, meetings: dbMeetings, loading, refresh, createDeal, logActivity, addMeeting } = useCrm();
   const { addToast } = useToast();
   const reduceMotion = usePrefersReducedMotion();
-  const deals: Deal[] = dbDeals.length > 0 ? dbDeals : (dataDeals as Deal[]);
-  const contacts = dbContacts.length > 0 ? dbContacts : (dataContacts as any);
-  const companies = dbCompanies.length > 0 ? dbCompanies : (dataCompanies as any);
+  const deals: Deal[] = dbDeals;
+  const contacts = dbContacts;
+  const companies = dbCompanies;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })

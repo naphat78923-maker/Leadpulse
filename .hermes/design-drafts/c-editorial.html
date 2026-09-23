@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Direction C — "Editorial Mono"</title>
+<style>
+  :root {
+    --bg: #ffffff; --border: #111111; --hairline: #e4e4e4;
+    --fg: #111111; --muted: #6b6b6b;
+    --danger: #d92d20;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--fg); font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:14px; -webkit-font-smoothing:antialiased; }
+  .shell { display:flex; min-height:100vh; }
+  .sidebar { width:200px; border-right:1px solid var(--border); padding:20px 0; flex-shrink:0; }
+  .brand { font-weight:700; font-size:16px; letter-spacing:-.03em; padding:0 20px 20px; border-bottom:1px solid var(--hairline); }
+  .nav-label { font-size:9px; text-transform:uppercase; letter-spacing:.14em; color:var(--muted); padding:18px 20px 6px; }
+  .nav-item { display:block; padding:7px 20px; color:var(--fg); text-decoration:none; font-size:13px; }
+  .nav-item.active { background:var(--fg); color:#fff; }
+  .nav-item:hover:not(.active) { background:#f4f4f4; }
+  .main { flex:1; padding:28px 36px; max-width:940px; }
+  .topbar { display:flex; align-items:baseline; justify-content:space-between; border-bottom:2px solid var(--border); padding-bottom:14px; margin-bottom:24px; }
+  h1 { font-size:28px; font-weight:700; letter-spacing:-.04em; }
+  .topbar .date { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; }
+  .btn { display:inline-block; padding:8px 16px; border:1px solid var(--border); background:#fff; color:var(--fg); font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; cursor:pointer; }
+  .btn.primary { background:var(--fg); color:#fff; }
+  .btn:hover { opacity:.8; }
+  .hero { border:1px solid var(--border); padding:24px; margin-bottom:24px; position:relative; }
+  .hero:before { content:''; position:absolute; top:-1px; left:-1px; width:8px; height:calc(100% + 2px); background:var(--danger); }
+  .hero-kicker { font-size:10px; text-transform:uppercase; letter-spacing:.14em; color:var(--danger); font-weight:700; margin-bottom:8px; }
+  .hero-title { font-size:24px; font-weight:700; letter-spacing:-.03em; margin-bottom:6px; }
+  .hero-sub { color:var(--muted); font-size:13px; margin-bottom:16px; }
+  .chip { display:inline-block; padding:3px 10px; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; border:1px solid var(--border); }
+  .chip.red { border-color:var(--danger); color:var(--danger); }
+  .grid { display:grid; grid-template-columns:repeat(4,1fr); border:1px solid var(--border); margin-bottom:24px; }
+  .cell { padding:16px 18px; border-right:1px solid var(--hairline); }
+  .cell:last-child { border-right:none; }
+  .cell .k { font-size:9px; text-transform:uppercase; letter-spacing:.14em; color:var(--muted); }
+  .cell .v { font-size:26px; font-weight:700; letter-spacing:-.03em; font-variant-numeric:tabular-nums; }
+  .section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.14em; border-bottom:1px solid var(--border); padding-bottom:8px; margin:26px 0 0; }
+  table { width:100%; border-collapse:collapse; }
+  td, th { padding:12px 8px; border-bottom:1px solid var(--hairline); text-align:left; font-size:13px; }
+  th { font-size:9px; text-transform:uppercase; letter-spacing:.14em; color:var(--muted); font-weight:600; }
+  .num { text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
+  .muted { color:var(--muted); font-size:12px; }
+  .overdue { color:var(--danger); font-weight:600; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="sidebar">
+    <div class="brand">LEADPULSE.</div>
+    <div class="nav-label">Work</div>
+    <a class="nav-item active" href="#">Today — 6</a>
+    <a class="nav-item" href="#">Deals — 24</a>
+    <a class="nav-item" href="#">Nudges — 6</a>
+    <a class="nav-item" href="#">Signals</a>
+    <div class="nav-label">Book</div>
+    <a class="nav-item" href="#">Contacts</a>
+    <a class="nav-item" href="#">Companies</a>
+    <a class="nav-item" href="#">Retention</a>
+    <div class="nav-label">Insight</div>
+    <a class="nav-item" href="#">Analytics</a>
+    <a class="nav-item" href="#">Activity</a>
+  </nav>
+  <main class="main">
+    <div class="topbar">
+      <h1>Today</h1>
+      <span class="date">Thu 18 Sep · Bangkok</span>
+    </div>
+    <div class="hero">
+      <div class="hero-kicker">Do this next — overdue 3 days</div>
+      <div class="hero-title">Call Somchai @ Bakehouse Studio</div>
+      <div class="hero-sub">Waiting on sample feedback · ฿42,000 potential · last touch 12 Sep</div>
+      <span class="chip red">Overdue 3d</span>
+      <span class="chip">Testing</span>
+      <span class="chip">High priority</span>
+      <div style="margin-top:16px; display:flex; gap:8px">
+        <button class="btn primary">Log call</button>
+        <button class="btn">Snooze</button>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="cell"><div class="k">Due today</div><div class="v">4</div></div>
+      <div class="cell"><div class="k">Overdue</div><div class="v" style="color:var(--danger)">2</div></div>
+      <div class="cell"><div class="k">Pipeline</div><div class="v">฿318k</div></div>
+      <div class="cell"><div class="k">Touches 7d</div><div class="v">17</div></div>
+    </div>
+    <div class="section-title">Up next</div>
+    <table>
+      <thead><tr><th>Deal</th><th>Stage</th><th>Follow-up</th><th class="num">Value</th></tr></thead>
+      <tbody>
+        <tr><td>Bakehouse Studio <span class="muted">· Somchai</span></td><td>Testing</td><td class="overdue">Overdue 3d</td><td class="num">฿42,000</td></tr>
+        <tr><td>Croissant & Co <span class="muted">· Nida</span></td><td>Sample</td><td>Today</td><td class="num">฿68,500</td></tr>
+        <tr><td>Flour Mill Bangkok</td><td>Reply</td><td>Tomorrow</td><td class="num">฿31,200</td></tr>
+        <tr><td>Café Amazon franchise</td><td>Outreach</td><td>22 Sep</td><td class="num">฿120,000</td></tr>
+      </tbody>
+    </table>
+  </main>
+</div>
+</body>
+</html>
