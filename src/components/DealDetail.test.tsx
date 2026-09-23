@@ -84,6 +84,13 @@ describe('DealDetail journey modal', () => {
     expect(screen.queryByRole('button', { name: /● Open/ })).toBeNull();
   });
 
+  it('shows Laya scoring as a recommendation that cannot change the deal', () => {
+    render(<DealDetail deal={deal} onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: 'Score with Laya' })).toBeTruthy();
+    expect(screen.getByText(/does not change this deal/i)).toBeTruthy();
+  });
+
   it('does not expand drafting brief by default', () => {
     render(<DealDetail deal={deal} onClose={vi.fn()} onSaved={vi.fn()} />);
     const summary = screen.getByText('Ebimaru drafting brief');
