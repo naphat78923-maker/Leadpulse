@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-124 -124 248 248">
+  <!--
+    Pat, the LeadPulse butter blob, at rest.
+    Eye geometry mirrors the engine's rest pose (EYE_W .17 / EYE_H .36 of body
+    radius, split 16deg, REST_GAZE yaw 10 pitch 7): the inner eye reads slightly
+    narrower than the outer one because it sits further around the sphere.
+    Eyes are holes, as in the app — the tab's background shows through.
+  -->
+  <style>
+    .body { fill: #f0c75e; }
+    .rim { stroke: rgba(43, 33, 26, .14); stroke-width: 5; fill: none; }
+    @media (prefers-color-scheme: dark) {
+      /* a black-on-black disc would vanish in a dark tab bar; deepen instead */
+      .body { fill: #d9a93f; }
+      .rim { stroke: rgba(246, 243, 234, .12); }
+    }
+  </style>
+  <defs>
+    <mask id="holes">
+      <rect x="-124" y="-124" width="248" height="248" fill="white" />
+      <ellipse cx="-21" cy="-4" rx="11" ry="26" transform="rotate(-8 -21 -4)" fill="black" />
+      <ellipse cx="21" cy="-4" rx="9.5" ry="26" transform="rotate(8 21 -4)" fill="black" />
+    </mask>
+  </defs>
+  <rect class="body" x="-74" y="-70" width="148" height="140" rx="48" mask="url(#holes)" />
+  <rect class="rim" x="-74" y="-70" width="148" height="140" rx="48" />
+</svg>

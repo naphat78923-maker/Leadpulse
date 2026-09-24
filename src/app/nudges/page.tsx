@@ -26,19 +26,29 @@ import { localDateKey } from '@/utils/deal-board';
 import * as crm from '@/lib/crm';
 import { useToast } from '@/components/ToastProvider';
 
-function daysOverdue(dateStr: string): number {
-  const d = new Date(dateStr + 'T00:00:00');
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  return Math.max(0, Math.round((now.getTime() - d.getTime()) / 86400000));
+/**
+ * Day-diff helpers pinned to the BUSINESS calendar (Asia/Bangkok), not the
+ * device: a phone in another timezone must not disagree with the board about
+ * whether a follow-up is 2 or 3 days overdue. Date maths runs on UTC-parsed
+ * keys so DST never enters.
+ */
+function keyToUtc(dateKey: string): number {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  return Date.UTC(y, (m ?? 1) - 1, d ?? 1);
 }
 
-function daysUntil(dateStr: string): number {
-  const d = new Date(dateStr + 'T00:00:00');
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  return Math.round((d.getTime() - now.getTime()) / 86400000);
+function daysBetweenKeys(fromKey: string, toKey: string): number {
+  return Math.round((keyToUtc(toKey) - keyToUtc(fromKey)) / 86400000);
 }
+
+function daysOverdue(dateStr: string, todayKey: string = localDateKey()): number {
+  return Math.max(0, daysBetweenKeys(dateStr, todayKey));
+}
+
+function daysUntil(dateStr: string, todayKey: string = localDateKey()): number {
+  return daysBetweenKeys(todayKey, dateStr);
+}
+
 
 type Seg = 'overdue' | 'soon' | 'week';
 
