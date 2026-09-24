@@ -5,7 +5,7 @@ import { BrainCircuit, Loader2 } from 'lucide-react';
 import type { Company, Deal } from '@/types/crm';
 import { bangkokDateKey } from '@/utils/format';
 import { buildLayaAttentionInput } from '@/utils/lead-scoring';
-import { requestLocalLaya } from '@/utils/laya-transport';
+import { requestLocalLaya, type LayaConnection } from '@/utils/laya-transport';
 import clsx from 'clsx';
 
 const LABELS = {
@@ -60,6 +60,7 @@ function isScoreResult(value: unknown): value is ScoreResult {
 
 export default function LayaScoreCard({ deal, company }: { deal: Deal; company?: Company }) {
   const [today, setToday] = useState(() => bangkokDateKey());
+  const [connection, setConnection] = useState<LayaConnection>('local');
   useEffect(() => {
     const refreshDay = () => setToday(bangkokDateKey());
     const timer = window.setInterval(refreshDay, 60_000);
@@ -80,11 +81,21 @@ export default function LayaScoreCard({ deal, company }: { deal: Deal; company?:
   const requestBody = JSON.stringify(buildLayaAttentionInput({ deal, company, today }));
   // Exact serialized identity, not a lossy hash. Remount before displaying any
   // state belonging to a different deal, linked company or encoded request.
-  const identity = JSON.stringify([deal.id, deal.company_id, company?.id, today, requestBody]);
-  return <LayaScoreRequest key={identity} requestBody={requestBody} ensureCurrentDay={ensureCurrentDay} />;
+  const identity = JSON.stringify([deal.id, deal.company_id, company?.id, today, requestBody, connection]);
+  return <>
+    <label className="mb-2 block text-xs text-clay-muted">
+      Laya connection
+      <select className="ml-2 rounded border border-clay-lavender/40 bg-white p-1 dark:bg-clay-card" value={connection}
+        onChange={event => setConnection(event.target.value as LayaConnection)}>
+        <option value="local">This Mac</option>
+        <option value="tailnet">Private phone (Tailscale)</option>
+      </select>
+    </label>
+    <LayaScoreRequest key={identity} requestBody={requestBody} connection={connection} ensureCurrentDay={ensureCurrentDay} />
+  </>;
 }
 
-function LayaScoreRequest({ requestBody, ensureCurrentDay }: { requestBody: string; ensureCurrentDay: () => boolean }) {
+function LayaScoreRequest({ requestBody, connection, ensureCurrentDay }: { requestBody: string; connection: LayaConnection; ensureCurrentDay: () => boolean }) {
   const [result, setResult] = useState<ScoreResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -110,6 +121,7 @@ function LayaScoreRequest({ requestBody, ensureCurrentDay }: { requestBody: stri
       const { ok, payload } = await requestLocalLaya('/score', {
         body: requestBody,
         signal: controller.signal,
+        connection,
       });
       if (!isCurrent()) return;
       if (!ok) {
@@ -130,7 +142,7 @@ function LayaScoreRequest({ requestBody, ensureCurrentDay }: { requestBody: stri
       setError(message);
       // Mac-local setup help only for connection-level failures; a reachable
       // worker's refusal (opt-out, invalid reply) is not a setup problem.
-      setShowHelp(/local worker|Cannot reach local Laya/i.test(message));
+      setShowHelp(/local worker|Cannot reach Laya/i.test(message));
     } finally {
       if (isCurrent()) {
         activeRequest.current = null;
@@ -195,11 +207,10 @@ function LayaScoreRequest({ requestBody, ensureCurrentDay }: { requestBody: stri
 
       {showHelp && (
         <div className="mt-3 space-y-1.5 rounded-lg border border-clay-hairline bg-white/60 p-2.5 text-[11px] text-clay-muted dark:bg-clay-card">
-          <p>Mac-local only: Laya must run on the same Mac as this browser. Vercel does not run the model, and a phone or another computer cannot reach your Mac through this connection.</p>
+          <p>{connection === 'local' ? 'This Mac mode uses 127.0.0.1 on the browsing device. On a phone, switch to Private phone (Tailscale).' : 'Private phone mode needs Tailscale connected on this phone and the Mac. It uses a private HTTPS connection to the Mac, not a public tunnel.'}</p>
           <p>
-            In the LeadPulse project on this Mac, run <code>npm run laya:serve</code> and wait for the ready message. If prompted, allow local-network access for
-            this trusted LeadPulse site. A connection failure can mean a stopped worker, blocked permission, or incompatible browser policy. CRM features work
-            without Laya.
+            On the Mac, run <code>npm run laya:serve</code> and keep the worker and Tailscale Serve running. If prompted, allow network access for this trusted LeadPulse site.
+            A connection failure can mean a stopped worker, disconnected Tailscale, blocked browser permission, or incompatible browser policy. CRM features work without Laya.
           </p>
         </div>
       )}
