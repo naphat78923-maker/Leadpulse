@@ -4,6 +4,8 @@ import { useState, useMemo } from 'react';
 import { Meeting, MEETING_TYPE_LABELS } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
 import LogInteractionModal from '@/components/LogInteractionModal';
+import LayaLeadTierBadge from '@/components/LayaLeadTierBadge';
+import { bestLeadSignal, type LeadSignal } from '@/utils/lead-scoring';
 import { Search, Plus, Calendar, Mail, Phone, Users, FileText, Package, Bell, MessageCircle } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -16,6 +18,27 @@ export default function MeetingsPage() {
 
   const { meetings: dbMeetings, contacts, deals, loading, addMeeting } = useCrm();
   const meetings: Meeting[] = dbMeetings;
+
+  // Deterministic Laya lead-tier context per interaction: the linked deal's
+  // signal when one is linked, else the account's hottest open deal. Pure
+  // client-side computation — no model call, safe on any device.
+  const signalByMeetingId = useMemo(() => {
+    const dealById = new Map(deals.map(d => [d.id, d]));
+    const map = new Map<string, LeadSignal>();
+    for (const m of meetings) {
+      if (m.deal_id) {
+        const deal = dealById.get(m.deal_id);
+        const signal = deal ? bestLeadSignal([deal]) : null;
+        if (signal) map.set(m.id, signal);
+        continue;
+      }
+      if (m.company_id) {
+        const signal = bestLeadSignal(deals.filter(d => d.company_id === m.company_id));
+        if (signal) map.set(m.id, signal);
+      }
+    }
+    return map;
+  }, [meetings, deals]);
 
   const filtered = useMemo(() => {
     let result = meetings;
@@ -145,6 +168,7 @@ export default function MeetingsPage() {
                         <span className="text-[10px] font-medium text-clay-muted bg-clay-card px-1.5 py-0.5 rounded">
                           {MEETING_TYPE_LABELS[meeting.type]}
                         </span>
+                        <LayaLeadTierBadge signal={signalByMeetingId.get(meeting.id) ?? null} />
                         <span className="text-[10px] text-clay-muted-soft">{meeting.date}</span>
                         {meeting.outcome && (
                           <span className={clsx('text-[10px] font-medium px-1.5 py-0.5 rounded',

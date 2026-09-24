@@ -44,6 +44,10 @@ import {
 } from '@/utils/prospectReview';
 import ProspectReviewPanel from '@/components/ProspectReviewPanel';
 import { loadProspectReviews, type ProspectReviewRow, type ReviewsLoad } from '@/lib/prospectReviews';
+import type { Company, Deal } from '@/types/crm';
+import LayaLeadTierBadge from '@/components/LayaLeadTierBadge';
+import LayaBuyerSignalsSection from '@/components/LayaBuyerSignalsSection';
+import { bestLeadSignal, type LeadSignal } from '@/utils/lead-scoring';
 import {
   decisionSpec,
   isOverdue,
@@ -136,6 +140,8 @@ function CandidateDetail({
   classification,
   review,
   companyDeals,
+  layaDeals,
+  company,
   onReviewChanged,
 }: {
   fit: ProspectFit;
@@ -144,6 +150,8 @@ function CandidateDetail({
   classification: ReturnType<typeof classificationFor>;
   review: ProspectReviewRow | null;
   companyDeals: FollowupDeal[];
+  layaDeals: Deal[];
+  company: Company | undefined;
   onReviewChanged: () => Promise<void> | void;
 }) {
   return (
@@ -286,6 +294,10 @@ function CandidateDetail({
         </div>
       </div>
 
+      {/* Laya buyer signals — verbatim buyer replies on this account's open deals,
+          scored on demand only (this section never triggers a model call). */}
+      <LayaBuyerSignalsSection deals={layaDeals} companyFor={() => company} />
+
       {/* The saved review. Keyed by company so one account's draft can never be saved
           onto another when the user expands a different candidate. */}
       <ProspectReviewPanel
@@ -427,6 +439,19 @@ export default function ProspectsPage() {
       return { rows: [], report: null, error: (e as Error).message };
     }
   }, [input]);
+
+  // Deterministic Laya lead-tier rollup per candidate account (hottest open
+  // deal). Distinct from the heuristic match score: this is the deal signal,
+  // computed client-side with no model call.
+  const signalByCompanyId = useMemo(() => {
+    const map = new Map<string, LeadSignal>();
+    for (const fit of report?.fits ?? []) {
+      const signal = bestLeadSignal(deals.filter(d => d.company_id === fit.company_id));
+      if (signal) map.set(fit.company_id, signal);
+    }
+    return map;
+  }, [report, deals]);
+
 
   const availability = useMemo(() => contactAvailability(contacts as ReviewContact[]), [contacts]);
   const segments = useMemo(() => segmentOptions(report?.fits ?? []), [report]);
@@ -683,6 +708,7 @@ export default function ProspectsPage() {
                               <span>{segmentForRole(f.role)}</span>
                               <span aria-hidden="true">·</span>
                               <span>{reachLabel(f.reachability)}</span>
+                              <LayaLeadTierBadge signal={signalByCompanyId.get(f.company_id) ?? null} />
                               {review && (
                                 <Chip tone="decision">{decisionSpec(review.decision).short}</Chip>
                               )}
@@ -706,6 +732,8 @@ export default function ProspectsPage() {
                             companyDeals={(deals as unknown as FollowupDeal[]).filter(
                               (d) => d.company_id === f.company_id
                             )}
+                            layaDeals={deals.filter((d) => d.company_id === f.company_id)}
+                            company={companies.find((c) => c.id === f.company_id)}
                             onReviewChanged={handleReviewChanged}
                           />
                         )}
