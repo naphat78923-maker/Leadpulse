@@ -60,12 +60,26 @@ describe('LayaScoreCard', () => {
     vi.stubGlobal('fetch', fetchMock);
     render(<LayaScoreCard deal={deal} />);
     fireEvent.click(screen.getByRole('button', { name: 'Score with Laya' }));
-    expect((await screen.findByRole('alert')).textContent).toMatch(/local.network permissions/i);
-    expect(screen.getByText(/same Mac as this browser/i)).toBeTruthy();
+    expect((await screen.findByRole('alert')).textContent).toMatch(/browser network permissions/i);
+    expect(screen.getByText(/uses 127\.0\.0\.1 on the browsing device/i)).toBeTruthy();
     expect(screen.getByText(/npm run laya:serve/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Score with Laya' }));
     await screen.findByText('Prioritise');
     expect(screen.queryByText(/npm run laya:serve/)).toBeNull();
+  });
+
+  it('uses the private route only after selection and clears an old result on switch', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(success());
+    vi.stubGlobal('fetch', fetchMock);
+    render(<LayaScoreCard deal={deal} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Score with Laya' }));
+    await screen.findByText('Prioritise');
+    expect(fetchMock.mock.calls[0][0]).toBe('http://127.0.0.1:8765/score');
+    fireEvent.change(screen.getByLabelText('Laya connection'), { target: { value: 'tailnet' } });
+    expect(screen.queryByText('Prioritise')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Score with Laya' }));
+    await screen.findByText('Prioritise');
+    expect(fetchMock.mock.calls[1][0]).toBe('https://phats-macbook-air.tailc9beb9.ts.net/score');
   });
 
   it('shows a verified scoring trace from the longer local CPU/GPU model', async () => {
@@ -119,7 +133,7 @@ describe('LayaScoreCard', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
     render(<LayaScoreCard deal={deal} />);
     fireEvent.click(screen.getByRole('button', { name: 'Score with Laya' }));
-    expect((await screen.findByRole('alert')).textContent).toMatch(/local.network permissions/i);
+    expect((await screen.findByRole('alert')).textContent).toMatch(/browser network permissions/i);
     expect(screen.getByRole('alert').textContent).not.toMatch(/is not running|is stopped/i);
     expect(screen.queryByText('Prioritise')).toBeNull();
   });

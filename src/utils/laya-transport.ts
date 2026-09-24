@@ -1,4 +1,9 @@
-export function layaEndpoint(): string {
+export type LayaConnection = 'local' | 'tailnet';
+const PRIVATE_TAILNET_ORIGIN = 'https://phats-macbook-air.tailc9beb9.ts.net';
+
+export function layaEndpoint(connection: LayaConnection = 'local'): string {
+  if (connection === 'tailnet') return PRIVATE_TAILNET_ORIGIN;
+  if (connection !== 'local') throw new Error('Unsupported Laya connection.');
   const endpoint = process.env.NEXT_PUBLIC_LAYA_SCORE_SERVICE_URL ?? 'http://127.0.0.1:8765';
   // Check the literal spelling before URL parsing can normalize unsafe aliases.
   const match = /^http:\/\/127\.0\.0\.1(?::([1-9]\d{0,4}))?\/?$/.exec(endpoint);
@@ -10,10 +15,10 @@ export function layaEndpoint(): string {
 
 export async function requestLocalLaya(
   path: '/health' | '/score',
-  options: { signal: AbortSignal; body?: string },
+  options: { signal: AbortSignal; body?: string; connection?: LayaConnection },
 ): Promise<{ ok: boolean; status: number; payload: unknown }> {
   if (options.signal.aborted) throw new DOMException('Local Laya request cancelled.', 'AbortError');
-  const endpoint = layaEndpoint();
+  const endpoint = layaEndpoint(options.connection);
   const controller = new AbortController();
   const deadline = path === '/health' ? 5000 : 30000;
 
@@ -65,7 +70,7 @@ export async function requestLocalLaya(
         cleanup();
         resolve({ ok: response.ok, status: response.status, payload });
       } catch {
-        fail(new Error('Cannot reach local Laya on this device. Check the local worker and browser local-network permissions, then try again.'));
+        fail(new Error('Cannot reach Laya. Check that the Mac worker is running and, for private phone access, that Tailscale is connected on both devices. Browser network permissions can also block this request.'));
       }
     })();
   });

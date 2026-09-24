@@ -140,27 +140,51 @@ A click that detects a new day resets the card without inference; click again to
 score the updated input. Cancellation stops browser handling, not necessarily
 inference already executing in the worker.
 
-**Transport (slice 3):** one connection path only: the browser calls the worker on
-**the same Mac**, directly over IPv4 loopback. The unused Next.js `/api/laya/score`
-proxy is removed; Vercel cannot reach your Mac via its own `127.0.0.1`. A phone or
-another computer cannot use this worker through loopback. No tunnel, remote model,
-automatic scoring or cloud fallback is provided. The rest of the CRM does not
-require the local worker.
+**Transport (slice 3):** the browser calls the worker either on the same Mac
+over IPv4 loopback or, when explicitly selected, via private Tailscale HTTPS.
+The unused Next.js `/api/laya/score`
+proxy is removed; Vercel cannot reach your Mac via its own `127.0.0.1`. The default
+**This Mac** connection remains loopback-only. For Pat's phone, the explicitly
+selected **Private phone (Tailscale)** connection calls the Mac over tailnet-only
+HTTPS at `https://phats-macbook-air.tailc9beb9.ts.net`. The worker still binds
+only to `127.0.0.1`; Tailscale Serve proxies port 443 to it. Never use Funnel or
+publish port 8765. Both devices must be connected to Pat's tailnet, and the Mac
+worker and Serve must stay running. The tailnet host is embedded in the public
+browser bundle and is not a secret; membership in the tailnet is the access
+boundary. A shared Mac node or overly broad tailnet access can broaden who can
+reach the worker. No automatic scoring or cloud-model fallback is provided.
+The rest of the CRM does not require the worker.
 
-In the card, **Check local connection** performs a manual `/health` GET with no
-CRM payload and does not run inference. It is a point-in-time connectivity check,
-not a guarantee that scoring will succeed or that the responding process is
-cryptographically authenticated. **Score with Laya** still sends its full selected
-input only when clicked. Health checks time out after 5 seconds; scoring after
+On this Mac, enable Tailscale Serve/HTTPS certificates for the tailnet, then:
+
+```sh
+LAYA_SCORE_TAILNET_HOST=phats-macbook-air.tailc9beb9.ts.net npm run laya:serve
+tailscale serve --bg --https 443 http://127.0.0.1:8765
+tailscale serve status --json
+```
+
+The first command uses a separate worker process; the `LAYA_SCORE_TAILNET_HOST`
+setting is intentionally opt-in and must be present whenever the worker restarts.
+The Serve command is persistent on this Mac until explicitly disabled with
+`tailscale serve --https=443 off`. A browser on the phone must choose the private
+connection in the Laya card; it never silently sends CRM input to that host.
+
+The card sends scoring input only when **Score with Laya** is clicked. The
+transport supports a `/health` GET with no CRM payload, but this card has no
+separate health-check control. A health response is a point-in-time connectivity
+check, not a guarantee that scoring will succeed. Health checks time out after
+5 seconds; scoring after
 30 seconds, including response-body parsing. Canceled or timed-out responses cannot
 later populate the card. Browser cancellation does not stop already-running model
 inference. There are no automatic retries.
 
-`NEXT_PUBLIC_LAYA_SCORE_SERVICE_URL` is a build-time browser setting. Its default
-is `http://127.0.0.1:8765`; only a plain HTTP `127.0.0.1` origin (with an optional
-port) is permitted. Remote/LAN URLs, credentials, paths, query strings and fragments
-are rejected before sending any data. If changing the port, set `LAYA_SCORE_PORT`
-on the worker and rebuild the browser bundle with the matching origin. Do not set
+`NEXT_PUBLIC_LAYA_SCORE_SERVICE_URL` is a build-time browser setting for the
+default Mac connection. Its default is `http://127.0.0.1:8765`; only a plain HTTP
+`127.0.0.1` origin (with an optional port) is permitted for that mode. The private
+mode accepts only the pinned HTTPS Tailscale host, not an arbitrary remote or LAN
+URL. Credentials, paths, query strings and fragments are rejected before sending
+any data. If changing the local port, set `LAYA_SCORE_PORT` on the worker and
+rebuild the browser bundle with the matching origin. Do not set
 `LAYA_SCORE_SERVICE_URL` on Vercel; that old server-side setting is unused.
 
 For connection problems: start `npm run laya:serve` in this project on the browsing
@@ -168,7 +192,7 @@ Mac and wait for its ready message. Use a supported browser and, if prompted, al
 local-network access for your trusted LeadPulse origin. Browser permission, CORS,
 secure-context and local-network policies can block an otherwise healthy worker;
 a failed fetch cannot reliably distinguish these from a stopped worker. Do not
-turn off browser security or open the worker to the network as a workaround.
+turn off browser security or open the worker directly to the network as a workaround.
 A terminal `curl /health` success alone does **not** verify hosted-browser access.
 A slice-3 browser probe from the actual HTTPS production origin in an isolated
 Chrome 153 context was blocked with its default permissions. After granting
@@ -192,10 +216,11 @@ worker. Free text may contain personal details despite excluding dedicated
 identity fields. Restart a worker started before this slice to get the trace.
 
 **Worker boundaries (slice 5):** scoring accepts only requests to the exact
-`Host: 127.0.0.1:<configured port>` with one allowlisted `Origin` (the production
+`Host: 127.0.0.1:<configured port>` or an explicitly configured tailnet Host,
+with one allowlisted `Origin` (the production
 LeadPulse origin or configured local development origins). It rejects missing,
 duplicate, or untrusted origins and DNS-rebinding Host names before reading the
-body. `/health` also requires the loopback Host, but permits no Origin for a local
+body. `/health` also requires an approved Host, but permits no Origin for a local
 CLI health check. CORS/preflight is granted only to allowlisted origins on `/score`;
 private-network preflight is acknowledged when requested. Scoring requires
 `Content-Type: application/json`, one Content-Length, a bounded body, no
@@ -206,7 +231,8 @@ question is refused, not inferred.
 This is **browser-origin isolation, not authentication of local processes**:
 software running on this Mac can spoof HTTP headers and submit its own state. No
 password or bearer token is embedded in the public browser bundle. Do not expose
-the worker on a LAN, through a tunnel, or to another user account. At most four
+the worker directly on a LAN or via Funnel; private Serve is reachable by tailnet
+members with access to this Mac. At most four
 HTTP connections are handled concurrently (10-second socket timeout) and one
 model preflight/inference runs at once; overload receives 503 and can be retried
 manually. When the socket cap is full, the browser may report a generic

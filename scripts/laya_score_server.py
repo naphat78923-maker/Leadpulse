@@ -17,6 +17,7 @@ from laya_input import InputRejected, check_input_budget, has_explicit_contact_o
 
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("LAYA_SCORE_PORT", "8765"))
+TAILNET_HOST = os.environ.get("LAYA_SCORE_TAILNET_HOST", "")
 MODEL_PATH = Path(os.environ["LAYA_COREML_MODEL_PATH"]).expanduser().resolve()
 MAX_BODY_BYTES = 16_384
 manifest = json.loads((MODEL_PATH / "coreml_config.json").read_text(encoding="utf-8"))
@@ -73,7 +74,7 @@ def origin_is_allowed(handler: BaseHTTPRequestHandler) -> bool:
 
 def host_is_allowed(handler: BaseHTTPRequestHandler) -> bool:
     hosts = handler.headers.get_all("Host", [])
-    return len(hosts) == 1 and hosts[0] == f"{HOST}:{PORT}"
+    return len(hosts) == 1 and hosts[0] in ({f"{HOST}:{PORT}", TAILNET_HOST} if TAILNET_HOST else {f"{HOST}:{PORT}"})
 
 def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}

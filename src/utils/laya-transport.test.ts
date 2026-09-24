@@ -41,6 +41,10 @@ describe('layaEndpoint', () => {
     vi.stubEnv('NEXT_PUBLIC_LAYA_SCORE_SERVICE_URL', undefined);
     expect(layaEndpoint()).toBe('http://127.0.0.1:8765');
   });
+  it('pins private phone access to the one HTTPS Tailscale host', () => {
+    expect(layaEndpoint('tailnet')).toBe('https://phats-macbook-air.tailc9beb9.ts.net');
+    expect(() => layaEndpoint('https://evil.example' as never)).toThrow(/Unsupported Laya connection/);
+  });
 });
 
 function deferred<T>() {
@@ -84,7 +88,7 @@ describe('requestLocalLaya', () => {
     const add = vi.spyOn(parent.signal, 'addEventListener');
     const remove = vi.spyOn(parent.signal, 'removeEventListener');
     const result = requestLocalLaya('/health', { signal: parent.signal });
-    await expect(result).rejects.toThrow(/cannot reach local Laya on this device.*check.*worker.*browser local.network permissions/i);
+    await expect(result).rejects.toThrow(/cannot reach Laya.*Mac worker.*Tailscale.*browser network permissions/i);
     await expect(result).rejects.not.toThrow(/stopped|not running/i);
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(remove).toHaveBeenCalledWith('abort', add.mock.calls[0][1]);
@@ -190,6 +194,13 @@ describe('requestLocalLaya', () => {
       ...(path === '/score' ? { headers: { 'Content-Type': 'application/json' }, body: '{"state":"test"}' } : {}),
       signal: expect.any(AbortSignal), credentials: 'omit', cache: 'no-store', redirect: 'error',
     });
+  });
+
+  it('sends private phone requests only to the pinned HTTPS host without credentials or redirects', async () => {
+    const fetcher = mockFetch({ status: 'ready' });
+    await requestLocalLaya('/health', { signal: new AbortController().signal, connection: 'tailnet' });
+    expect(fetcher).toHaveBeenCalledWith('https://phats-macbook-air.tailc9beb9.ts.net/health',
+      expect.objectContaining({ method: 'GET', credentials: 'omit', cache: 'no-store', redirect: 'error' }));
   });
 
   it('rejects a remote environment value before fetching', async () => {

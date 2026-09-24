@@ -43,7 +43,7 @@ class InputBoundaryTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('laya_score_server_under_test', ROOT / 'scripts/laya_score_server.py')
         assert spec is not None and spec.loader is not None
         cls.server = importlib.util.module_from_spec(spec)
-        with patch.dict(os.environ, {'LAYA_COREML_MODEL_PATH': str(MODEL)}), patch('laya_coreml.load', return_value=cls.agent):
+        with patch.dict(os.environ, {'LAYA_COREML_MODEL_PATH': str(MODEL), 'LAYA_SCORE_TAILNET_HOST': 'phats-macbook-air.tailc9beb9.ts.net'}), patch('laya_coreml.load', return_value=cls.agent):
             spec.loader.exec_module(cls.server)
         # Exercise the real TypeScript builder, so regressions cannot hide behind
         # separately maintained Python prompt fixtures.
@@ -104,6 +104,8 @@ console.log(JSON.stringify({
     def test_score_rejects_missing_or_untrusted_origin_and_non_loopback_host(self):
         for headers in ({'Origin': None}, {'Origin': 'https://evil.example'},
                         {'Host': 'attacker.example:8765'}, {'Host': 'localhost:8765'},
+                        {'Host': 'phats-macbook-air.tailc9beb9.ts.net.evil.test'},
+                        {'Host': 'phats-macbook-air.tailc9beb9.ts.net:444'},
                         {'Host': '127.0.0.1:9999'}, {'Host': None}):
             with self.subTest(headers=headers):
                 status, data = self.post(self.inputs['baseline'], headers)
@@ -115,6 +117,20 @@ console.log(JSON.stringify({
         status, data = self.post(self.inputs['baseline'], {'Origin': 'https://leadpulse-one-ashen.vercel.app'})
         self.assertEqual(status, 200)
         self.assertIn('trace', data)
+
+    def test_tailnet_host_requires_explicit_configuration_and_trusted_origin(self):
+        host = 'phats-macbook-air.tailc9beb9.ts.net'
+        with patch.object(self.server, 'TAILNET_HOST', ''):
+            status, _ = self.post(self.inputs['baseline'], {'Host': host, 'Origin': 'https://leadpulse-one-ashen.vercel.app'})
+            self.assertEqual(status, 403)
+            self.agent.predict.assert_not_called()
+        status, data = self.post(self.inputs['baseline'], {'Host': host, 'Origin': 'https://leadpulse-one-ashen.vercel.app'})
+        self.assertEqual(status, 200)
+        self.assertIn('trace', data)
+        self.agent.predict.reset_mock()
+        status, _ = self.post(self.inputs['baseline'], {'Host': host, 'Origin': 'https://evil.example'})
+        self.assertEqual(status, 403)
+        self.agent.predict.assert_not_called()
 
     def test_longer_model_uses_cpu_gpu_and_reports_its_actual_engine(self):
         with patch.object(self.server.laya, 'load', return_value=self.agent) as load:
