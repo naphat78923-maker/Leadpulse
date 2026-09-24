@@ -29,6 +29,7 @@ import { Plus, TrendingUp, AlertCircle, Loader2, CalendarDays, ArrowRight, Searc
 import clsx from 'clsx';
 import { PRIORITY_CLASSES, PRIORITY_LABELS } from '@/utils/lead-scoring';
 import { formatBaht, sumLaneValues } from '@/utils/format';
+import { calculateWeightedForecast, calculateSourcePerformance } from '@/utils/analytics-metrics';
 import { WORKFLOW_LANES, WORKFLOW_BY_ID, getWorkflowAction, isOnJourneyBoard, isJourneyLane, deriveNudge, formatDerivedNudgeBadge, outboundSendCountForDeal, nudgeLabel } from '@/utils/deal-workflow';
 import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
 import LogInteractionModal from '@/components/LogInteractionModal';
@@ -183,6 +184,12 @@ export default function DealsPage() {
     () => WORKFLOW_LANES.reduce((acc, lane) => acc + laneValues[lane.id], 0),
     [laneValues]
   );
+
+  // Salvaged from the deprecated /analytics page — the two honest numbers it
+  // had: probability-weighted open forecast, and win rate per lead source
+  // (resolved outcomes only).
+  const weightedForecast = useMemo(() => calculateWeightedForecast(deals), [deals]);
+  const sourceRows = useMemo(() => calculateSourcePerformance(deals, companies), [deals, companies]);
 
   const parkedDeals = useMemo(
     () => deals.filter(deal => getWorkflowAction(deal) === 'parked' && deal.stage !== 'closed_won' && deal.stage !== 'closed_lost'),
@@ -543,12 +550,26 @@ export default function DealsPage() {
             </div>
           </section>
 
-          <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-clay-ochre/30 bg-clay-ochre/5 px-4 py-3">
-            <div className="flex items-center gap-2 min-w-0">
-              <TrendingUp className="w-4 h-4 text-clay-ochre shrink-0" />
-              <span className="text-sm font-medium text-clay-ink truncate">Open pipeline</span>
+          <div className="mb-3 rounded-xl border border-clay-ochre/30 bg-clay-ochre/5 px-4 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <TrendingUp className="w-4 h-4 text-clay-ochre shrink-0" />
+                <span className="text-sm font-medium text-clay-ink truncate">Open pipeline</span>
+              </div>
+              <div className="flex items-baseline gap-3 shrink-0">
+                <span className="text-[11px] text-clay-muted">weighted <span className="zams-mono font-semibold text-clay-body">{formatBaht(weightedForecast)}</span></span>
+                <span className="zams-mono text-base font-bold text-clay-ochre">{formatBaht(openPipelineValue)}</span>
+              </div>
             </div>
-            <span className="zams-mono text-base font-bold text-clay-ochre shrink-0">{formatBaht(openPipelineValue)}</span>
+            {sourceRows.length > 0 && (
+              <div className="mt-2 pt-2 border-t border-clay-ochre/20 flex flex-wrap gap-x-4 gap-y-1">
+                {sourceRows.map(s => (
+                  <span key={s.source} className="text-[11px] text-clay-muted">
+                    <span className="font-medium text-clay-body">{s.source}</span> {s.won}/{s.total} won · {s.rate.toFixed(0)}%
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           {attentionFilter === 'needs-review' && (

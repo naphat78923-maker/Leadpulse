@@ -169,6 +169,14 @@ console.log(JSON.stringify({
             {**valid, 'state': {**valid['state'], 'evidence': [{**valid['state']['evidence'][0], 'provenance': 'unverified_source'}]}},
             {**valid, 'state': {**valid['state'], 'evidence': [{**valid['state']['evidence'][0], 'text': '  '}]}},
             {**valid, 'state': {**valid['state'], 'evidence': [{**valid['state']['evidence'][0], 'extra': 'not allowed'}]}},
+            {**valid, 'state': {**valid['state'], 'draft': 'x' * 4_001}},
+            {**valid, 'state': {**valid['state'], 'primary_ask': 'x' * 1_001}},
+            {**valid, 'state': {**valid['state'], 'evidence': [{**valid['state']['evidence'][0], 'text': 'x' * 1_201}]}},
+            {**valid, 'state': {**valid['state'], 'evidence': [
+                {'id': f'e-{i}', 'provenance': 'crm_summary', 'text': 'x'} for i in range(7)
+            ]}},
+            {**valid, 'state': {**valid['state'], 'draft': 'x' * 4_000, 'primary_ask': 'y' * 1_000,
+                'evidence': [{'id': f'e-{i}', 'provenance': 'crm_summary', 'text': 'z' * 1_200} for i in range(5)]}},
         ]
         for payload in cases:
             with self.subTest(payload=payload):
@@ -195,7 +203,7 @@ console.log(JSON.stringify({
 
     def test_review_refuses_real_tokenizer_overflow_without_inference(self):
         payload = self.review_payload()
-        payload['state']['draft'] = 'claim ' * 600
+        payload['state']['draft'] = 'ขอ ' * 500
         status, data = self.post(payload, path='/review')
         self.assertEqual(status, 422)
         self.assertEqual(data['code'], 'input_too_long')
@@ -303,6 +311,9 @@ console.log(JSON.stringify({
         with patch.object(self.server, 'json_response') as respond:
             handler.do_GET()
         self.assertEqual(respond.call_args.args[2]['engine'], 'cpu_gpu')
+        self.assertEqual(respond.call_args.args[2]['model'], self.server.MODEL_IDENTITY)
+        self.assertEqual(respond.call_args.args[2]['effective_input_limit'], self.server.EFFECTIVE_INPUT_LIMIT)
+        self.assertEqual(respond.call_args.args[2]['supported_review_schemas'], ['followup_review_v1'])
 
     def test_retained_ane_bundle_uses_cpu_ne_on_rollback(self):
         ane_manifest = json.loads((Path.home() / 'laya-coreml/models/ane/coreml_config.json').read_text())
