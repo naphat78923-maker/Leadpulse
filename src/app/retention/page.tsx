@@ -7,9 +7,9 @@ import CompanyDetail from '@/components/CompanyDetail';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import { accountHealthScore, tierLabel, HealthTier } from '@/utils/accountHealth';
 import { ACTIVE_REORDER_POLICY, accountTypeForPolicy } from '@/utils/reorderPolicy';
-import { nextTouchDue, inRetentionSystem, rewardTrigger, pickReward, RewardOption } from '@/utils/retentionCadence';
+import { nextTouchDue, inRetentionSystem, drawRetentionReward, RewardOption } from '@/utils/retentionCadence';
 import * as crm from '@/lib/crm';
-import { Search, HeartPulse, ShieldAlert, Activity, CalendarClock, TrendingDown, Loader2, AlertTriangle, Gift, BellRing } from 'lucide-react';
+import { Search, HeartPulse, ShieldAlert, CalendarClock, Loader2, AlertTriangle, Gift, BellRing } from 'lucide-react';
 import clsx from 'clsx';
 import { Blob } from '@/components/blob';
 import NudgeLadderRail from '@/components/NudgeLadderRail';
@@ -62,16 +62,50 @@ export default function RetentionPage() {
   const [isLogOpen, setIsLogOpen] = useState(false);
   const [reward, setReward] = useState<{ companyName: string; option: RewardOption | null } | null>(null);
 
-  // ── Compute health per company ──
-  const scored = useMemo(() => {
+  // Group CRM rows by account ONCE into O(1) lookup maps — previously the
+  // scoring loop re-filtered the full meetings/deals/events arrays for every
+  // company (O(companies × rows)).
+  const grouped = useMemo(() => {
+    const meetingsByCo = new Map<string, Meeting[]>();
+    for (const m of meetings) {
+      if (!m.company_id) continue;
+      const arr = meetingsByCo.get(m.company_id);
+      if (arr) arr.push(m); else meetingsByCo.set(m.company_id, [m]);
+    }
+    const dealsByCo = new Map<string, Deal[]>();
+    for (const d of deals) {
+      if (!d.company_id) continue;
+      const arr = dealsByCo.get(d.company_id);
+      if (arr) arr.push(d); else dealsByCo.set(d.company_id, [d]);
+    }
+    const eventsByCo = new Map<string, crm.AccountEvent[]>();
+    for (const e of accountEvents) {
+      const arr = eventsByCo.get(e.company_id);
+      if (arr) arr.push(e); else eventsByCo.set(e.company_id, [e]);
+    }
+    return { meetingsByCo, dealsByCo, eventsByCo };
+  }, [meetings, deals, accountEvents]);
+
+  // ── Compute health per monitored account ──
+  // Filter BEFORE scoring: only won customers with signal are monitored, so
+  // accounts outside the retention system never pay for accountHealthScore.
+  const monitored = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
-    return companies.map((c) => {
-      const coMeetings = meetings.filter((m) => m.company_id === c.id);
-      const coDeals = deals.filter((d) => d.company_id === c.id);
-      const wonDeals = coDeals.filter((d) => d.stage === 'closed_won');
+    return companies.flatMap((c) => {
+      const coMeetings = grouped.meetingsByCo.get(c.id) ?? [];
+      const coDeals = grouped.dealsByCo.get(c.id) ?? [];
       // Real sales history for this company (account_events; empty until the
       // table is provisioned + backfilled — then it drives R/F/M honestly).
-      const evts = accountEvents.filter((e) => e.company_id === c.id);
+      const evts = grouped.eventsByCo.get(c.id) ?? [];
+      const wonDeals = coDeals.filter((d) => d.stage === 'closed_won');
+
+      const hasSignal =
+        coMeetings.length > 0 ||
+        wonDeals.length > 0 ||
+        c.status === 'active_customer' ||
+        c.status === 'inactive';
+      // RETENTION SYSTEM = WON CUSTOMERS ONLY (Pat scope rule).
+      if (!hasSignal || !inRetentionSystem(c.status)) return [];
 
       const lastOrderDate = evts.length ? evts.map((e) => e.event_date).sort().slice(-1)[0] : null;
 
@@ -86,15 +120,6 @@ export default function RetentionPage() {
         accountType: accountTypeForPolicy(c, ACTIVE_REORDER_POLICY),
         today,
       });
-
-      const hasSignal =
-        coMeetings.length > 0 ||
-        wonDeals.length > 0 ||
-        c.status === 'active_customer' ||
-        c.status === 'inactive';
-
-      // RETENTION SYSTEM = WON CUSTOMERS ONLY (Pat scope rule).
-      const inRetention = inRetentionSystem(c.status);
 
       const lastTouch = [
         ...(coMeetings.length ? [coMeetings.map((m) => m.date).sort().slice(-1)[0]] : []),
@@ -125,16 +150,14 @@ export default function RetentionPage() {
 
       const lifetimeNet = evts.reduce((s, e) => s + (e.amount || 0), 0);
 
-      return {
-        company: c, res, hasSignal, inRetention, lastTouch, daysSilent, reasons, wonDeals,
+      return [{
+        company: c, res, lastTouch, daysSilent, reasons, wonDeals,
         orderCount: distinctOrderCountOf(evts, wonDeals),
         lifetimeNet,
         touch,
-      };
+      }];
     });
-  }, [companies, deals, meetings, accountEvents]);
-
-  const monitored = scored.filter((s) => s.hasSignal && s.inRetention);
+  }, [companies, grouped]);
 
   const counts = useMemo(() => {
     const by: Record<HealthTier, number> = { healthy: 0, watch: 0, at_risk: 0, dormant: 0 };
@@ -184,10 +207,9 @@ export default function RetentionPage() {
     // (or a milestone) and only for active_customer (retention scope).
     const sc = monitored.find((s) => s.company.id === logCompanyId);
     if (!sc || !inRetentionSystem(sc.company.status)) return;
-    const isWinBack = sc.res.tier === 'watch' || sc.res.tier === 'at_risk' || sc.res.tier === 'dormant';
-    const trigger = rewardTrigger({ tier: sc.res.tier, isWinBackTouch: isWinBack, orderCount: sc.orderCount });
-    if (!trigger) return;
-    const option = pickReward();
+    const draw = drawRetentionReward({ tier: sc.res.tier, orderCount: sc.orderCount });
+    if (!draw) return;
+    const { trigger, option } = draw;
     setReward({ companyName: sc.company.name, option });
 
     // Persist touch cadence: last_human_touch = today, recompute next due.
@@ -215,7 +237,7 @@ export default function RetentionPage() {
           company_id: sc.company.id,
           contact_ids: [],
           deal_id: logDealId || null,
-          product: 'Butter',
+          product: null, // a reward touch implies no product — previously hardcoded 'Butter'
           summary: option.note,
           outcome: 'positive',
           followup_date: null,
@@ -248,35 +270,21 @@ export default function RetentionPage() {
         </div>
       </div>
 
-      {/* KPI strip */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+      {/* KPI strip — two honest numbers: what needs me, and what's fine */}
+      <div className="grid grid-cols-2 gap-3 mb-5">
         <Kpi
           icon={<ShieldAlert className="w-4 h-4" />}
           label="Needs Action"
           value={String(needsAction)}
-          sub={`${counts.at_risk} at-risk · ${counts.dormant} dormant`}
+          sub={`${counts.at_risk} at-risk · ${counts.dormant} dormant · ${counts.watch} watch`}
           tone="coral"
-        />
-        <Kpi
-          icon={<TrendingDown className="w-4 h-4" />}
-          label="Watch"
-          value={String(counts.watch)}
-          sub="monitor closely"
-          tone="ochre"
         />
         <Kpi
           icon={<HeartPulse className="w-4 h-4" />}
           label="Healthy"
           value={String(counts.healthy)}
-          sub="reordering well"
+          sub={`${monitored.length} monitored of ${companies.length} accounts`}
           tone="mint"
-        />
-        <Kpi
-          icon={<Activity className="w-4 h-4" />}
-          label="Monitored"
-          value={String(monitored.length)}
-          sub={`of ${companies.length} accounts`}
-          tone="lavender"
         />
       </div>
 

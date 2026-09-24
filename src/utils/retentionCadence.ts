@@ -169,3 +169,26 @@ export function rewardTrigger(params: {
   }
   return null;
 }
+
+/**
+ * One-call reward decision for a logged touch: eligibility (trigger) + weighted
+ * draw bundled together. Returns null when no draw should happen at all;
+ * `option: null` is a valid drawn outcome (the miss IS the hook).
+ * Pass a deterministic `rng` in tests.
+ */
+export function drawRetentionReward(params: {
+  tier: HealthTier;
+  orderCount?: number;
+  rng?: () => number;
+}): { trigger: RewardTrigger; option: RewardOption | null } | null {
+  const isWinBackTouch =
+    params.tier === 'watch' || params.tier === 'at_risk' || params.tier === 'dormant';
+  const trigger = rewardTrigger({
+    tier: params.tier,
+    isWinBackTouch,
+    orderCount: params.orderCount,
+  });
+  if (!trigger) return null;
+  return { trigger, option: pickReward(params.rng) };
+}
+

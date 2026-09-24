@@ -79,7 +79,7 @@ console.log(JSON.stringify({
             output = subprocess.check_output(['sh', 'scripts/start-laya-score-server.sh'], cwd=ROOT, env=env, text=True)
         self.assertEqual(output.strip(), str(Path.home() / 'laya-coreml/models/multilingual-1024'))
 
-    def post(self, payload, headers=None, raw_body=None):
+    def post(self, payload, headers=None, raw_body=None, path='/score'):
         handler = self.server.LayaScoreHandler.__new__(self.server.LayaScoreHandler)
         body = raw_body if raw_body is not None else json.dumps(payload, ensure_ascii=False).encode()
         handler.headers = Message()
@@ -91,13 +91,174 @@ console.log(JSON.stringify({
             del handler.headers[key]
             if value is not None:
                 handler.headers[key] = value
-        handler.path = '/score'
+        handler.path = path
         handler.rfile = io.BytesIO(body)
         with patch.object(self.server, 'json_response') as respond:
             handler.do_POST()
         self.assertEqual(respond.call_count, 1)
         _, status, data = respond.call_args.args
         return status, data
+
+    def review_payload(self):
+        return {
+            'schema': 'followup_review_v1',
+            'state': {
+                'draft': 'Would you like me to prepare a paid trial quote?',
+                'primary_ask': 'Ask whether they want a paid trial quote.',
+                'language': 'en',
+                'evidence': [
+                    {'id': 'reply-1', 'provenance': 'buyer_message', 'text': 'Please send pricing for a trial.'},
+                ],
+            },
+        }
+
+    def review_result(self):
+        return {
+            'answers': {
+                'primary_ask_alignment': {
+                    'type': 'choice', 'choice': 'aligned',
+                    'probabilities': {'aligned': 0.9, 'different_ask': 0.04, 'multiple_asks': 0.03, 'unclear': 0.03},
+                    'confidence': 0.7, 'action': {'act_probability': 0.8},
+                },
+                'ask_clarity': {
+                    'type': 'score', 'score': 2.68,
+                    'legend': {'0': 'No actionable ask: no question or request the buyer can act on.', '1': 'Vague ask: a request exists, but the buyer cannot tell what action or answer is wanted.', '2': 'Mostly clear ask: the requested action is identifiable but an important detail is missing.', '3': 'Specific, answerable ask: one direct action or question the buyer can readily answer.'},
+                    'probabilities': {'0': 0.02, '1': 0.03, '2': 0.2, '3': 0.75},
+                    'confidence': 0.5, 'action': {'act_probability': 0.8},
+                },
+                'unsupported_claim': {
+                    'type': 'noul', 'noul': 0.1, 'confidence': 0.9,
+                    'action': {'act_probability': 0.8},
+                },
+            },
+            'usage': {'input_tokens': 250, 'output_tokens': 0},
+        }
+
+    def test_review_accepts_fixed_mixed_primitive_contract_and_traces_exact_input(self):
+        payload = self.review_payload()
+        original = self.agent.predict.return_value
+        try:
+            self.agent.predict.return_value = self.review_result()
+            status, data = self.post(payload, path='/review')
+            self.assertEqual(status, 200)
+            self.assertEqual(data['schema'], 'followup_review_v1')
+            self.assertEqual(set(data['answers']), {'primary_ask_alignment', 'ask_clarity', 'unsupported_claim'})
+            self.assertEqual(data['answers']['primary_ask_alignment']['type'], 'choice')
+            self.assertEqual(data['answers']['ask_clarity']['type'], 'score')
+            self.assertEqual(data['answers']['unsupported_claim']['type'], 'noul')
+            self.assertEqual(data['trace']['scored_input']['state'], payload['state'])
+            self.assertEqual(data['trace']['scored_input']['questions'], self.server.FOLLOWUP_REVIEW_QUESTIONS)
+            self.assertEqual(data['trace']['rubric_version'], 'followup_review_v1')
+            self.assertEqual(data['trace']['input_limit'], min(self.agent.shape['max_length'], self.agent.cfg['max_len']))
+            self.agent.predict.assert_called_once_with(payload['state'], self.server.FOLLOWUP_REVIEW_QUESTIONS)
+        finally:
+            self.agent.predict.return_value = original
+
+    def test_review_rejects_untrusted_schema_and_invalid_evidence_before_inference(self):
+        valid = self.review_payload()
+        duplicate_ids = self.review_payload()
+        duplicate_ids['state']['evidence'].append({**duplicate_ids['state']['evidence'][0]})
+        cases = [
+            {**valid, 'schema': 'followup_review_v2'},
+            {**valid, 'questions': self.server.FOLLOWUP_REVIEW_QUESTIONS},
+            {**valid, 'unexpected': True},
+            {**valid, 'state': {**valid['state'], 'unexpected': True}},
+            {**valid, 'state': {**valid['state'], 'draft': '   '}},
+            {**valid, 'state': {**valid['state'], 'language': 'fr'}},
+            duplicate_ids,
+            {**valid, 'state': {**valid['state'], 'evidence': [{**valid['state']['evidence'][0], 'provenance': 'unverified_source'}]}},
+            {**valid, 'state': {**valid['state'], 'evidence': [{**valid['state']['evidence'][0], 'text': '  '}]}},
+            {**valid, 'state': {**valid['state'], 'evidence': [{**valid['state']['evidence'][0], 'extra': 'not allowed'}]}},
+        ]
+        for payload in cases:
+            with self.subTest(payload=payload):
+                status, data = self.post(payload, path='/review')
+                self.assertEqual(status, 400)
+                self.assertEqual(data, {'error': 'Invalid follow-up review request'})
+                self.agent.predict.assert_not_called()
+
+    def test_review_handles_thai_and_empty_evidence_without_changing_scored_state(self):
+        payload = self.review_payload()
+        payload['state']['draft'] = 'สนใจให้ส่งใบเสนอราคาสำหรับทดลองใช้ไหม'
+        payload['state']['primary_ask'] = 'ถามว่าต้องการใบเสนอราคาทดลองใช้หรือไม่'
+        payload['state']['language'] = 'th'
+        payload['state']['evidence'] = []
+        original = self.agent.predict.return_value
+        try:
+            self.agent.predict.return_value = self.review_result()
+            status, data = self.post(payload, path='/review')
+            self.assertEqual(status, 200)
+            self.assertEqual(data['trace']['scored_input']['state'], payload['state'])
+            self.agent.predict.assert_called_once_with(payload['state'], self.server.FOLLOWUP_REVIEW_QUESTIONS)
+        finally:
+            self.agent.predict.return_value = original
+
+    def test_review_refuses_real_tokenizer_overflow_without_inference(self):
+        payload = self.review_payload()
+        payload['state']['draft'] = 'claim ' * 600
+        status, data = self.post(payload, path='/review')
+        self.assertEqual(status, 422)
+        self.assertEqual(data['code'], 'input_too_long')
+        self.assertEqual(data['token_limit'], self.server.EFFECTIVE_INPUT_LIMIT)
+        self.assertGreater(data['input_tokens'], data['token_limit'])
+        self.agent.predict.assert_not_called()
+
+    def test_review_rejects_partial_or_malformed_native_outputs(self):
+        original = self.agent.predict.return_value
+        valid = self.review_result()
+        variants = []
+        missing = json.loads(json.dumps(valid))
+        del missing['answers']['unsupported_claim']
+        variants.append(missing)
+        wrong_type = json.loads(json.dumps(valid))
+        wrong_type['answers']['ask_clarity']['type'] = 'choice'
+        variants.append(wrong_type)
+        wrong_choice = json.loads(json.dumps(valid))
+        wrong_choice['answers']['primary_ask_alignment']['choice'] = 'approved'
+        variants.append(wrong_choice)
+        bad_total = json.loads(json.dumps(valid))
+        bad_total['answers']['primary_ask_alignment']['probabilities']['aligned'] = 0.2
+        variants.append(bad_total)
+        bad_legend = json.loads(json.dumps(valid))
+        bad_legend['answers']['ask_clarity']['legend']['3'] = 'approved'
+        variants.append(bad_legend)
+        bad_score = json.loads(json.dumps(valid))
+        bad_score['answers']['ask_clarity']['score'] = 1
+        variants.append(bad_score)
+        bad_noul = json.loads(json.dumps(valid))
+        bad_noul['answers']['unsupported_claim']['noul'] = float('nan')
+        variants.append(bad_noul)
+        bad_usage = json.loads(json.dumps(valid))
+        bad_usage['usage']['input_tokens'] = True
+        variants.append(bad_usage)
+        try:
+            for result in variants:
+                with self.subTest(result=result):
+                    self.agent.predict.return_value = result
+                    status, data = self.post(self.review_payload(), path='/review')
+                    self.assertEqual(status, 422)
+                    self.assertEqual(data, {'error': 'Laya returned an invalid draft review'})
+                    self.assertNotIn('answers', data)
+        finally:
+            self.agent.predict.return_value = original
+
+    def test_review_model_failure_and_busy_worker_are_sanitized(self):
+        original_side_effect = self.agent.predict.side_effect
+        try:
+            self.server.INFERENCE_SLOTS.acquire(blocking=False)
+            try:
+                status, data = self.post(self.review_payload(), path='/review')
+                self.assertEqual(status, 503)
+                self.assertEqual(data, {'error': 'Local Laya is busy. Retry shortly.'})
+                self.agent.predict.assert_not_called()
+            finally:
+                self.server.INFERENCE_SLOTS.release()
+            self.agent.predict.side_effect = RuntimeError('sensitive draft text')
+            status, data = self.post(self.review_payload(), path='/review')
+            self.assertEqual(status, 503)
+            self.assertNotIn('sensitive draft text', str(data))
+        finally:
+            self.agent.predict.side_effect = original_side_effect
 
     def test_score_rejects_missing_or_untrusted_origin_and_non_loopback_host(self):
         for headers in ({'Origin': None}, {'Origin': 'https://evil.example'},

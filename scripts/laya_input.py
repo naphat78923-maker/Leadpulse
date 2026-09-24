@@ -4,8 +4,9 @@ Do not shorten evidence to fit. Count the full encoded question, including every
 option, marker and separator, before Laya's own prompt builder can truncate it.
 """
 import re
+from typing import Any
 
-from laya_coreml.common import render_options
+from laya_coreml.common import render_options, serialize_state
 
 # A conservative, explicit-language gate, not a complete consent classifier.
 # Check the full selected state, including the end of the outcome, before inference.
@@ -31,10 +32,10 @@ class InputRejected(ValueError):
         }
 
 
-def check_input_budget(agent, state: str, questions: dict) -> None:
+def check_input_budget(agent, state: Any, questions: dict) -> None:
     tok = agent.tok
     limit = min(agent.shape['max_length'], agent.cfg.get('max_len', 512))
-    state_ids = tok(state, add_special_tokens=False)['input_ids']
+    state_ids = tok(serialize_state(state), add_special_tokens=False)['input_ids']
     complete = []
     for definition in questions.values():
         question = agent._to_internal(definition)
