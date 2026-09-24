@@ -49,3 +49,7 @@ supabase/.temp
 
 # local agent worktrees
 /.worktrees/
+
+# python harness bytecode (scripts/*.py run against the .venv sibling repo)
+__pycache__/
+*.pyc
