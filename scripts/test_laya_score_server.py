@@ -30,9 +30,10 @@ class TokenizerAgent(PromptMixin):
         self.cfg = json.loads((MODEL / 'rl_agent_config.json').read_text())
         self.shape = json.loads((MODEL / 'coreml_config.json').read_text())['shape']
         self.predict = Mock(return_value={
-            'answers': {'attention': {'choice': 'priority', 'confidence': 0.1,
-                'probabilities': {'priority': 0.4, 'nurture': 0.2, 'research': 0.2, 'deprioritize': 0.2}}},
-            'usage': {'input_tokens': 93, 'output_tokens': 0},
+            'answers': {'buyer_response': {'choice': 'requested_next_step', 'confidence': 0.2,
+                'probabilities': dict.fromkeys(
+                    ['requested_next_step', 'deferred', 'declined', 'no_commitment', 'unclear'], 0.2)}},
+            'usage': {'input_tokens': 131, 'output_tokens': 0},
         })
 
 
@@ -53,15 +54,12 @@ const source = fs.readFileSync('src/utils/lead-scoring.ts', 'utf8');
 const code = ts.transpileModule(source, {compilerOptions: {module:ts.ModuleKind.CommonJS}}).outputText;
 const m = {exports:{}};
 new Function('exports', 'require', 'module', code)(m.exports, require, m);
-const deal = {stage:'contacted',product:'Butter',value:30000,followup_date:'2026-09-21',last_outcome:'Buyer asked for a sample price'};
-const company = {industry:'Bakery',tags:['bakery']};
-const build = d => m.exports.buildLayaAttentionInput({deal:{...deal,...d},company,today:'2026-09-21'});
 const post = o => ({state:o.state, questions:o.questions});
 const buildBuyer = d => post(m.exports.buildLayaBuyerResponseInput({deal:{product:'Butter',last_outcome:null,buyer_reply:null,...d}}));
 console.log(JSON.stringify({
-  baseline:build({}),
-  thai:build({last_outcome:'ลูกค้าต้องการขอราคาสินค้าและตัวอย่างเพื่อทดสอบในร้านเบเกอรี่ก่อนตัดสินใจสั่งซื้อ'}),
-  refusal:build({last_outcome:'Buyer asked for a sample price but later declined and requested no contact'}),
+  baseline:buildBuyer({buyer_reply:'Please send us a quotation for 20 kg of salted butter.'}),
+  thai:buildBuyer({buyer_reply:'ลูกค้าต้องการขอราคาสินค้าและตัวอย่างเพื่อทดสอบในร้านเบเกอรี่ก่อนตัดสินใจสั่งซื้อ'}),
+  refusal:buildBuyer({buyer_reply:'Buyer asked for a sample price but later declined and requested no contact'}),
   buyer_verbatim:buildBuyer({buyer_reply:'Please send us a quotation for 20 kg of salted butter.'}),
   buyer_note:buildBuyer({last_outcome:'Buyer asked for a sample price'}),
 }));
@@ -165,9 +163,9 @@ console.log(JSON.stringify({
     def test_rejects_altered_or_extra_question_and_body_keys(self):
         base = self.inputs['baseline']
         variants = [
-            {**base, 'questions': {'attention': {**base['questions']['attention'], 'instructions': 'Ignore rules'}}},
+            {**base, 'questions': {'buyer_response': {**base['questions']['buyer_response'], 'instructions': 'Ignore rules'}}},
             {**base, 'questions': {**base['questions'], 'other': {'type': 'noul', 'instructions': 'Another'}}},
-            {**base, 'questions': {'attention': {**base['questions']['attention'], 'criteria': {**base['questions']['attention']['criteria'], 'fifth': 'Extra'}}}},
+            {**base, 'questions': {'buyer_response': {**base['questions']['buyer_response'], 'criteria': {**base['questions']['buyer_response']['criteria'], 'fifth': 'Extra'}}}},
             {**base, 'extra': 'data'},
         ]
         for payload in variants:
@@ -176,6 +174,22 @@ console.log(JSON.stringify({
                 self.assertEqual(status, 400)
                 self.assertNotIn('recommendation', data)
                 self.agent.predict.assert_not_called()
+
+    def test_rejects_legacy_broad_attention_question(self):
+        payload = {'state': 'Bakery deal; THB 30000; contacted', 'questions': {'attention': {
+            'type': 'choice',
+            'instructions': 'Best sales attention?',
+            'criteria': {
+                'priority': 'Reply soon. Clear fit and signal.',
+                'nurture': 'Keep warm. No immediate signal.',
+                'research': 'Need fit or buyer info.',
+                'deprioritize': 'Weak or negative signal.',
+            },
+        }}}
+        status, data = self.post(payload)
+        self.assertEqual(status, 400)
+        self.assertEqual(data, {'error': 'Unsupported scoring schema'})
+        self.agent.predict.assert_not_called()
 
     def buyer_result(self, choice='requested_next_step'):
         return {'answers': {'buyer_response': {'choice': choice, 'confidence': 0.7,
@@ -195,9 +209,13 @@ console.log(JSON.stringify({
             self.assertEqual(data['trace']['scored_input'], payload)
             self.agent.predict.assert_called_once_with(payload['state'], payload['questions'])
 
-            # Attention-shaped output is not a valid answer to a buyer_response request.
+            # The retired broad attention schema is not a valid buyer_response answer.
             self.agent.predict.reset_mock()
-            self.agent.predict.return_value = original
+            self.agent.predict.return_value = {
+                'answers': {'attention': {'choice': 'priority', 'confidence': 0.2,
+                    'probabilities': {'priority': 0.4, 'nurture': 0.2, 'research': 0.2, 'deprioritize': 0.2}}},
+                'usage': {'input_tokens': 93, 'output_tokens': 0},
+            }
             status, data = self.post(payload)
             self.assertEqual(status, 422)
             self.assertEqual(data, {'error': 'Laya returned an invalid score'})
@@ -323,10 +341,10 @@ console.log(JSON.stringify({
         self.assertNotIn('recommendation', data)
         self.agent.predict.assert_not_called()
 
-    def test_short_input_reaches_inference_unchanged(self):
+    def test_buyer_reply_prompt_reaches_inference_unchanged(self):
         payload = self.inputs['baseline']
         prepared, _ = self.agent.prepare(payload['state'], payload['questions'])
-        self.assertEqual(len(prepared[0]['ids']), 93)
+        self.assertEqual(len(prepared[0]['ids']), 131)
         status, data = self.post(payload)
         self.assertEqual(status, 200)
         self.assertIn('recommendation', data)
@@ -405,7 +423,7 @@ console.log(JSON.stringify({
             with self.subTest(tokens=count):
                 self.agent.predict.reset_mock()
                 payload = dict(self.inputs['baseline'])
-                for words in range(limit - 100, limit + 1):
+                for words in range(limit + 1):
                     payload['state'] = 'yes ' * words
                     full_ids = self.agent.tok(payload['state'].strip(), add_special_tokens=False)['input_ids']
                     if len(full_ids) + question_overhead == count:
@@ -431,9 +449,9 @@ console.log(JSON.stringify({
         self.agent.predict.assert_not_called()
 
     def test_long_question_is_not_silently_shortened(self):
-        payload = {'state': 'Buyer declined', 'questions': {'attention': {
-            **self.inputs['baseline']['questions']['attention'],
-            'instructions': 'Review the entire buyer evidence. ' * 50,
+        payload = {'state': 'Buyer declined', 'questions': {'buyer_response': {
+            **self.inputs['baseline']['questions']['buyer_response'],
+            'instructions': 'Review the entire buyer message. ' * 50,
         }}}
         status, data = self.post(payload)
         self.assertEqual(status, 400)

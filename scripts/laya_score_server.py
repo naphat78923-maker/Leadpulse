@@ -32,16 +32,6 @@ def model_engine(model_manifest: dict[str, Any]) -> str:
 
 MODEL_ENGINE = model_engine(manifest)
 INFERENCE_SLOTS = threading.BoundedSemaphore(1)
-ATTENTION_QUESTION = {"attention": {
-    "type": "choice", "instructions": "Best sales attention?",
-    "criteria": {
-        "priority": "Reply soon. Clear fit and signal.",
-        "nurture": "Keep warm. No immediate signal.",
-        "research": "Need fit or buyer info.",
-        "deprioritize": "Weak or negative signal.",
-    },
-}}
-ATTENTION_OPTIONS = set(ATTENTION_QUESTION["attention"]["criteria"])
 # Must match LAYA_BUYER_RESPONSE_QUESTION in src/utils/lead-scoring.ts exactly —
 # the boundary test builds the request through the real TypeScript builder.
 BUYER_RESPONSE_QUESTION = {"buyer_response": {
@@ -55,7 +45,7 @@ BUYER_RESPONSE_QUESTION = {"buyer_response": {
         "requested_next_step": "requests a sample, quotation, order, contract, or pricing to proceed with a purchase",
     },
 }}
-ALLOWED_QUESTIONS = (ATTENTION_QUESTION, BUYER_RESPONSE_QUESTION)
+ALLOWED_QUESTIONS = (BUYER_RESPONSE_QUESTION,)
 DEFAULT_ALLOWED_ORIGINS = {
     "https://leadpulse-one-ashen.vercel.app",
     "http://localhost:3000",

@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { Company, COMPANY_STATUS_LABELS, Contact } from '@/types/crm';
+import { Company, COMPANY_STATUS_LABELS, Contact, Deal } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
 import CreateModal from '@/components/CreateModal';
 import CompanyDetail from '@/components/CompanyDetail';
 import CompanyLogo from '@/components/CompanyLogo';
+import LayaLeadTierBadge from '@/components/LayaLeadTierBadge';
+import { bestLeadSignal, type LeadSignal } from '@/utils/lead-scoring';
 import { Search, Plus, Tag, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
 import { PageTransition } from '@/components/motion';
@@ -26,9 +28,28 @@ export default function CompaniesPage() {
     if (id) setSelectedCompany(id);
   }, []);
 
-  const { companies: dbCompanies, contacts: dbContacts, loading, refresh, createCompany } = useCrm();
+  const { companies: dbCompanies, contacts: dbContacts, deals: dbDeals, loading, refresh, createCompany } = useCrm();
   const companies: Company[] = dbCompanies;
   const contacts: Contact[] = dbContacts;
+  const deals: Deal[] = dbDeals;
+
+  // Deterministic Laya lead-tier rollup per company (hottest open deal).
+  // No model call — safe to compute for every row on any device.
+  const signalByCompanyId = useMemo(() => {
+    const dealsByCompany = new Map<string, Deal[]>();
+    for (const deal of deals) {
+      if (!deal.company_id) continue;
+      const list = dealsByCompany.get(deal.company_id) ?? [];
+      list.push(deal);
+      dealsByCompany.set(deal.company_id, list);
+    }
+    const map = new Map<string, LeadSignal>();
+    for (const [companyId, companyDeals] of dealsByCompany) {
+      const signal = bestLeadSignal(companyDeals);
+      if (signal) map.set(companyId, signal);
+    }
+    return map;
+  }, [deals]);
 
   const filtered = useMemo(() => {
     if (!search) return companies;
@@ -120,8 +141,11 @@ export default function CompaniesPage() {
                       <p className="text-xs text-clay-muted mt-0.5">
                         {company.tags.join(', ') || '—'}
                       </p>
-                      <span className="inline-block mt-1 text-[10px] font-medium text-clay-muted bg-clay-card px-1.5 py-0.5 rounded">
-                        {COMPANY_STATUS_LABELS[company.status]}
+                      <span className="inline-flex items-center gap-1.5 mt-1">
+                        <span className="inline-block text-[10px] font-medium text-clay-muted bg-clay-card px-1.5 py-0.5 rounded">
+                          {COMPANY_STATUS_LABELS[company.status]}
+                        </span>
+                        <LayaLeadTierBadge signal={signalByCompanyId.get(company.id) ?? null} />
                       </span>
                     </div>
                   </div>
@@ -144,7 +168,8 @@ export default function CompaniesPage() {
                 <p className="text-xs text-clay-muted mt-0.5">
                   {company.tags.join(', ') || '—'}
                 </p>
-                <div className="flex items-center gap-2 mt-1">
+                <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                  <LayaLeadTierBadge signal={signalByCompanyId.get(company.id) ?? null} />
                   <span className="inline-block text-[10px] font-medium text-clay-muted bg-clay-card px-1.5 py-0.5 rounded">
                     {contacts.filter((c: Contact) => c.company_id === company.id).length} contacts
                   </span>

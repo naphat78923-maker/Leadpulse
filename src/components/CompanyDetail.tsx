@@ -10,6 +10,7 @@ import * as crm from '@/lib/crm';
 import { resizeImageToSquare, validateLogoFile } from '@/lib/image';
 import CompanyLogo from '@/components/CompanyLogo';
 import StakeholderMiniMap from '@/components/StakeholderMiniMap';
+import LayaBuyerSignalsSection from '@/components/LayaBuyerSignalsSection';
 import { motion } from 'framer-motion';
 import { overlayVariants, panelVariants, tweenBase, tweenSlow } from '@/lib/motion';
 
@@ -25,7 +26,7 @@ interface CompanyDetailProps {
 
 export default function CompanyDetail({ company, onClose, onSaved, contacts, companyContacts }: CompanyDetailProps) {
   const { addToast } = useToast();
-  const { createContact, refresh, deleteEntity, meetings } = useCrm();
+  const { createContact, refresh, deleteEntity, meetings, deals = [] } = useCrm();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -391,6 +392,12 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
               </div>
             )}
           </div>
+
+          {/* Laya buyer signals — on-demand scorer per open deal carrying a verbatim buyer reply */}
+          <LayaBuyerSignalsSection
+            deals={deals.filter(d => d.company_id === company.id)}
+            companyFor={() => company}
+          />
 
           {/* Rewards history (retention, read-only) */}
           <div className="mt-4 pt-4 border-t border-clay-hairline">

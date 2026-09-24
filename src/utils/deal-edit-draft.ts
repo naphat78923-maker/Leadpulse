@@ -22,6 +22,7 @@ export interface DealEditDraft {
   next_action: string;
   draft_primary_ask: string;
   followup_date: string;
+  buyer_reply: string;
   last_outcome_new: string;
 }
 
@@ -37,6 +38,7 @@ export const EDITABLE_DEAL_FIELDS: DealEditField[] = [
   'next_action',
   'draft_primary_ask',
   'followup_date',
+  'buyer_reply',
   'last_outcome_new',
 ];
 
@@ -50,6 +52,7 @@ export function dealToEditDraft(deal: Deal): DealEditDraft {
     next_action: deal.next_action || '',
     draft_primary_ask: deal.draft_primary_ask || '',
     followup_date: deal.followup_date || '',
+    buyer_reply: deal.buyer_reply || '',
     last_outcome_new: '',
   };
 }
@@ -139,6 +142,7 @@ export function buildDealEditPayload({
   if (touched('next_action')) payload.next_action = draft.next_action.trim() ? draft.next_action : null;
   if (touched('draft_primary_ask')) payload.draft_primary_ask = draft.draft_primary_ask.trim() || null;
   if (touched('followup_date')) payload.followup_date = draft.followup_date || null;
+  if (touched('buyer_reply')) payload.buyer_reply = draft.buyer_reply.trim() ? draft.buyer_reply : null;
 
   const newNote = draft.last_outcome_new.trim();
   if (newNote || laneChanged) {
@@ -165,6 +169,7 @@ export const DEAL_EDIT_FIELD_LABELS: Record<DealEditField, string> = {
   next_action: 'Next action',
   draft_primary_ask: 'Primary client ask',
   followup_date: 'Follow-up date',
+  buyer_reply: 'Latest buyer reply (verbatim)',
   last_outcome_new: 'New note',
 };
 

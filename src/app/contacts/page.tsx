@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import Image from 'next/image';
-import { Contact, CONTACT_STATUS_LABELS, Company } from '@/types/crm';
+import { Contact, CONTACT_STATUS_LABELS, Company, Deal } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
 import CreateModal from '@/components/CreateModal';
 import ContactDetail from '@/components/ContactDetail';
@@ -12,6 +12,8 @@ import { Mail, Phone, ChevronRight, Loader2, Building2, AlertCircle } from 'luci
 import clsx from 'clsx';
 import { PageTransition } from '@/components/motion';
 import EntityAvatar from '@/components/EntityAvatar';
+import LayaLeadTierBadge from '@/components/LayaLeadTierBadge';
+import { bestLeadSignal, type LeadSignal } from '@/utils/lead-scoring';
 
 type ViewMode = 'all' | 'by_status' | 'by_company';
 
@@ -23,9 +25,21 @@ export default function ContactsPage() {
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const { contacts: dbContacts, companies: dbCompanies, loading, refresh, createContact } = useCrm();
+  const { contacts: dbContacts, companies: dbCompanies, deals: dbDeals, loading, refresh, createContact } = useCrm();
   const contacts: Contact[] = dbContacts;
   const companies = dbCompanies;
+  const deals: Deal[] = dbDeals;
+
+  // Deterministic Laya lead-tier rollup per contact (hottest open deal the
+  // contact is linked to). No model call — safe on any device.
+  const signalByContactId = useMemo(() => {
+    const map = new Map<string, LeadSignal>();
+    for (const contact of contacts) {
+      const signal = bestLeadSignal(deals.filter(d => d.contact_ids.includes(contact.id)));
+      if (signal) map.set(contact.id, signal);
+    }
+    return map;
+  }, [contacts, deals]);
 
   const companyName = (id?: string | null) =>
     id ? (companies.find((c: Company) => c.id === id)?.name || 'Unknown') : null;
@@ -132,6 +146,7 @@ export default function ContactsPage() {
         <p className="text-xs text-clay-muted truncate">{contact.job_title || contact.email || '—'}</p>
         <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
           <CompanyChip companyId={contact.company_id} />
+          <LayaLeadTierBadge signal={signalByContactId.get(contact.id) ?? null} />
           {contact.email && (
             <span className="inline-flex items-center gap-1 text-xs text-clay-muted-soft">
               <Mail className="w-3 h-3" />

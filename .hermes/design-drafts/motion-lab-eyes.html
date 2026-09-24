@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LeadPulse — motion lab (wide-eye variant)</title>
+<style>
+/* ── motion lab shell ── */
+:root {
+  --bg: #fdf6e9; --fg: #2b211a; --muted: #8a8070; --border: #e9e2d5; --card: #fff;
+  --lav: #b8a4ed; --ochre: #c49010; --err: #b5342a; --mint: #7fc9a8;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #17120e; --fg: #f6f3ea; --muted: #9c9688; --border: #3a332b; --card: #262019; }
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: ui-sans-serif, system-ui, sans-serif; padding: 44px 32px 80px; -webkit-font-smoothing: antialiased; }
+h1 { font-size: 24px; letter-spacing: -.02em; margin-bottom: 6px; }
+.subtitle { color: var(--muted); font-size: 14px; max-width: 720px; line-height: 1.5; margin-bottom: 10px; }
+.legend { display: inline-block; font-size: 12px; color: var(--muted); border: 1px solid var(--border); background: var(--card); border-radius: 99px; padding: 5px 14px; margin-bottom: 34px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 22px; max-width: 1180px; }
+.slot .caption { margin-top: 10px; font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.slot .caption b { color: var(--fg); font-weight: 650; display: block; margin-bottom: 2px; font-size: 13px; }
+.slot .num { font-family: ui-monospace, monospace; font-size: 10px; color: var(--lav); letter-spacing: .08em; }
+
+/* ── card shell ── */
+.demo-card {
+  position: relative; background: var(--card); border: 1px solid var(--border);
+  border-radius: 16px; padding: 16px 18px; overflow: hidden;
+  transition: border-color .18s, transform .22s cubic-bezier(.34,1.4,.64,1), box-shadow .22s;
+}
+.demo-card .row { display: flex; align-items: center; gap: 12px; }
+.blobslot { flex-shrink: 0; width: 52px; display: flex; justify-content: center; }
+.grow { flex: 1; min-width: 0; }
+.demo-card .title { font-weight: 650; font-size: 14px; letter-spacing: -.01em; }
+.demo-card .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.demo-card .amount { font-weight: 700; font-variant-numeric: tabular-nums; font-size: 14px; }
+.demo-card .eyebrow { font-family: ui-monospace, monospace; font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); margin-bottom: 10px; }
+.mini {
+  font: inherit; font-size: 12px; font-weight: 600; padding: 6px 11px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--card); color: var(--fg); cursor: pointer;
+}
+.mini.ghost { color: var(--muted); border-color: transparent; }
+.actions { display: flex; gap: 6px; margin-top: 12px; }
+.replay, .reload { position: absolute; top: 10px; right: 10px; opacity: 0; transition: opacity .18s; }
+.demo-card:hover .replay, .demo-card:hover .reload { opacity: .75; }
+
+/* 1 deal card */
+.deal-card { border-left: 3px solid transparent; }
+.deal-card.hot { border-color: var(--border); border-left-color: var(--lav); cursor: pointer; }
+.deal-card .edge { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--lav); transform-origin: top; transform: scaleY(.25); }
+
+/* 2 overdue */
+.overdue-card { border-left: 3px solid var(--err); }
+.overdue-card .pulse-edge { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--err); transform-origin: center; }
+.overdue-card .days { text-align: right; }
+.overdue-card .days .n { display: block; font-size: 20px; font-weight: 750; color: var(--err); line-height: 1; font-variant-numeric: tabular-nums; }
+.overdue-card .days .u { font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--err); opacity: .8; }
+
+/* 3 kpi */
+.kpi-card .bignum { font-size: 34px; font-weight: 750; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.kpi-card .spark { width: 100%; height: 34px; margin-top: 8px; overflow: visible; }
+.kpi-card .sparkline { fill: none; stroke: var(--ochre); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.kpi-card .sparkdot { fill: var(--ochre); }
+.kpi-card .delta { font-size: 11.5px; color: var(--mint); font-weight: 650; margin-top: 8px; }
+
+/* 4 ladder */
+.ladder { position: relative; padding-left: 52px; min-height: 128px; }
+.ladder .rungs { display: flex; flex-direction: column; gap: 8px; }
+.ladder .rung {
+  height: 26px; border-radius: 8px; border: 1px dashed var(--border);
+  display: flex; align-items: center; padding: 0 10px; font-size: 12px; color: var(--muted);
+  transition: background .35s, border-color .35s, color .35s, transform .35s;
+}
+.ladder .rung.lit { border-style: solid; border-color: var(--lav); background: rgba(184, 164, 237, .16); color: var(--fg); }
+.ladder .rung.current { transform: translateX(4px); }
+.ladder .rung[data-i="2"].lit { border-color: var(--err); background: rgba(181, 52, 42, .1); }
+.ladder .marker { position: absolute; left: -4px; top: 0; width: 48px; transition: transform .5s cubic-bezier(.34,1.3,.64,1); }
+
+/* 5 won */
+.won-card { border-color: rgba(127, 201, 168, .5); }
+.won-card .amount.won { color: #2f7d4f; }
+.confetti-holder { position: absolute; left: 46px; top: 42px; width: 0; height: 0; pointer-events: none; }
+.confetti { position: absolute; width: 7px; height: 7px; border-radius: 2px; }
+
+/* 6 skeleton */
+.skeleton-card .loaded { opacity: 0; transform: translateY(6px); transition: opacity .4s, transform .4s; position: relative; }
+.skeleton-card .skel { position: absolute; inset: 16px 18px; transition: opacity .35s; }
+.skeleton-card.is-loaded .skel { opacity: 0; pointer-events: none; }
+.skeleton-card.is-loaded .loaded { opacity: 1; transform: none; }
+.bone { background: rgba(43, 33, 26, .08); border-radius: 6px; height: 12px; }
+.dark .bone, body.dark .bone { background: rgba(246, 243, 234, .08); }
+.bone.b1 { width: 45%; height: 14px; }
+.bone.b2 { width: 30%; height: 14px; margin-left: auto; }
+.bone.b3 { width: 80%; margin-top: 14px; }
+.bone.b4 { width: 62%; margin-top: 8px; }
+.bone.b5 { width: 40%; margin-top: 8px; }
+.skel-row { display: flex; align-items: center; gap: 12px; }
+.shimmer {
+  position: absolute; inset: -20px;
+  background: linear-gradient(100deg, transparent 30%, rgba(43, 33, 26, .07) 50%, transparent 70%);
+  animation: sweep 1.5s linear infinite;
+}
+@keyframes sweep { from { transform: translateX(-60%); } to { transform: translateX(60%); } }
+
+/* 7 ring */
+.ringsvg { width: 64px; height: 64px; flex-shrink: 0; transform: rotate(-90deg); }
+.ring-bg { fill: none; stroke: var(--border); stroke-width: 5; }
+.ring-fg { fill: none; stroke: var(--lav); stroke-width: 5; stroke-linecap: round; }
+.ring-card .dots { display: flex; gap: 5px; margin-top: 9px; }
+.ring-card .day {
+  width: 20px; height: 20px; border-radius: 6px; display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 650; color: var(--muted); background: rgba(43, 33, 26, .06);
+}
+.ring-card .day.on { background: rgba(184, 164, 237, .3); color: var(--fg); }
+
+/* 8 drop zone */
+.drop-card { padding: 0; }
+.drop-card .zone { position: relative; height: 118px; display: flex; align-items: center; justify-content: center; border-radius: 15px; }
+.drop-card .ants { position: absolute; inset: 6px; border-radius: 12px; border: 2px dashed rgba(184, 164, 237, .6); }
+.drop-card .zone-label { font-size: 13px; font-weight: 600; color: var(--lav); }
+.drop-card .peek { position: absolute; right: 12px; top: 34px; transition: transform .5s cubic-bezier(.34,1.3,.64,1), opacity .4s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer { animation: none; }
+  .demo-card { transition: none; }
+}
+
+</style>
+</head>
+<body>
+<h1>🎬 Motion lab — wide-eye variant</h1>
+<p class="subtitle">Eight card-animation concepts built on the real blob engine. Everything is live:
+hover, click, and watch. Nothing here ships until you pick the ones that earn their keep.</p>
+<div class="legend">👆 hover the cards · click Replay / Replay loading on the last two</div>
+<div class="grid" id="grid"></div>
+<script>
+
+  // ── engine: same math as src/components/blob/ ──
+  const TAU = Math.PI * 2;
+  const clamp = (v, lo = 0, hi = 1) => (v < lo ? lo : v > hi ? hi : v);
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const easings = { easeOutCubic: t => 1 - (1 - t) ** 3, easeOutQuint: t => 1 - (1 - t) ** 5 };
+  const r2 = v => Math.round(v * 100) / 100;
+  function loopNoise(t, period, seed = 0) {
+    const p = (t / period) * TAU;
+    return 0.55 * Math.sin(p + seed) + 0.3 * Math.sin(2 * p + seed * 1.7 + 1.1) + 0.15 * Math.sin(3 * p + seed * 2.3 + 2.4);
+  }
+  function createRng(seed) {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const N = 64;
+  const ANGLES = Array.from({ length: N }, (_, i) => (i / N) * TAU);
+  const COS = ANGLES.map(Math.cos), SIN = ANGLES.map(Math.sin);
+  function superellipse(a = 1, b = 0.94, n = 4) {
+    return ANGLES.map(th => 1 / Math.pow((Math.abs(Math.cos(th)) / a) ** n + (Math.abs(Math.sin(th)) / b) ** n, 1 / n));
+  }
+  function blendSil(A, B, t, out) {
+    for (let i = 0; i < N; i++) out.radii[i] = lerp(A.radii[i] ?? 1, B.radii[i] ?? 1, t);
+    let d = B.rot - A.rot; while (d > Math.PI) d -= TAU; while (d < -Math.PI) d += TAU;
+    out.rot = A.rot + d * t;
+    out.cx = lerp(A.cx, B.cx, t); out.cy = lerp(A.cy, B.cy, t);
+    out.sx = lerp(A.sx, B.sx, t); out.sy = lerp(A.sy, B.sy, t);
+    return out;
+  }
+  function toPoints(s, scale, out) {
+    const cr = Math.cos(s.rot), sr = Math.sin(s.rot);
+    for (let i = 0; i < N; i++) {
+      const r = s.radii[i] ?? 1;
+      const x = r * COS[i], y = r * SIN[i];
+      const rx = x * cr - y * sr, ry = x * sr + y * cr;
+      const p = out[i] ?? (out[i] = { x: 0, y: 0 });
+      p.x = (rx * s.sx + s.cx) * scale; p.y = (ry * s.sy + s.cy) * scale;
+    }
+    return out;
+  }
+  function closedPath(pts) {
+    const n = pts.length, T = 1 / 6;
+    let d = 'M' + r2(pts[0].x) + ' ' + r2(pts[0].y);
+    for (let i = 0; i < n; i++) {
+      const p0 = pts[(i - 1 + n) % n], p1 = pts[i], p2 = pts[(i + 1) % n], p3 = pts[(i + 2) % n];
+      d += 'C' + r2(p1.x + (p2.x - p0.x) * T) + ' ' + r2(p1.y + (p2.y - p0.y) * T) + ' ' + r2(p2.x - (p3.x - p1.x) * T) + ' ' + r2(p2.y - (p3.y - p1.y) * T) + ' ' + r2(p2.x) + ' ' + r2(p2.y);
+    }
+    return d + 'Z';
+  }
+  function capsulePath(w, h) {
+    const hw = Math.max(w, .01) / 2, hh = Math.max(h, .01) / 2, r = Math.min(hw, hh);
+    return 'M' + r2(-hw) + ' ' + r2(-hh + r) + 'A' + r2(r) + ' ' + r2(r) + ' 0 0 1 ' + r2(-hw + r) + ' ' + r2(-hh) + 'L' + r2(hw - r) + ' ' + r2(-hh) + 'A' + r2(r) + ' ' + r2(r) + ' 0 0 1 ' + r2(hw) + ' ' + r2(-hh + r) + 'L' + r2(hw) + ' ' + r2(hh - r) + 'A' + r2(r) + ' ' + r2(r) + ' 0 0 1 ' + r2(hw - r) + ' ' + r2(hh) + 'L' + r2(-hw + r) + ' ' + r2(hh) + 'A' + r2(r) + ' ' + r2(r) + ' 0 0 1 ' + r2(-hw) + ' ' + r2(hh - r) + 'Z';
+  }
+  function radiusAtAngle(radii, th) {
+    let a = th % TAU; if (a < 0) a += TAU;
+    const f = (a / TAU) * N, i0 = Math.floor(f) % N, i1 = (i0 + 1) % N;
+    return lerp(radii[i0], radii[i1], f - Math.floor(f));
+  }
+  const EYE_SPLIT = 16, EYE_W = 0.215, EYE_H = 0.38;
+  const REST = { yaw: 10, pitch: 7, roll: -2 };
+  const deg = d => (d * Math.PI) / 180;
+  function spin(u, v, ang) {
+    const c = Math.cos(ang), s = Math.sin(ang);
+    return [
+      [u[0] * c + v[0] * s, u[1] * c + v[1] * s, u[2] * c + v[2] * s],
+      [v[0] * c - u[0] * s, v[1] * c - u[1] * s, v[2] * c - u[2] * s],
+    ];
+  }
+  function eyePoses(g, scale, split = EYE_SPLIT) {
+    let f = [0, 0, 1], right = [1, 0, 0], down = [0, 1, 0];
+    [f, right] = spin(f, right, deg(g.yaw));
+    [down, f] = spin(down, f, deg(g.pitch));
+    [right, down] = spin(right, down, deg(g.roll));
+    const build = side => {
+      const [ef, er] = spin(f, right, deg(split * side));
+      return { x: ef[0] * scale, y: ef[1] * scale, a: er[0], b: er[1], c: down[0], d: down[1], depth: ef[2] };
+    };
+    return [build(-1), build(1)];
+  }
+  // blink calendar + ambient life
+  const BLINK_RNG = createRng(0x5eed);
+  const BLINKS = (() => {
+    const out = []; let t = 1.4;
+    while (t < 900) {
+      out.push(t);
+      t += 1.9 + BLINK_RNG() * 2.7;
+      if (BLINK_RNG() < 0.18) { out.push(t); t += 0.24; }
+    }
+    return out;
+  })();
+  const BLINK_DUR = 0.18;
+  function blinkLid(t) {
+    for (const start of BLINKS) {
+      if (t < start) break;
+      const k = (t - start) / BLINK_DUR;
+      if (k >= 0 && k <= 1) return k < 0.45 ? 1 - k / 0.45 : (k - 0.45) / 0.55;
+    }
+    return 1;
+  }
+  function liveliness(t) {
+    return {
+      dYaw: (loopNoise(t, 11.3, 0.4) * 5.5 + loopNoise(t, 3.7, 2.1) * 1.6),
+      dPitch: (loopNoise(t, 9.1, 1.3) * 4.2 + loopNoise(t, 4.3, 0.7) * 1.3),
+      dRoll: loopNoise(t, 13.7, 3.2) * 2.2,
+      lid: blinkLid(t),
+      driftX: loopNoise(t, 7.9, 1.9) * 0.006,
+      driftY: loopNoise(t, 5.3, 0.3) * 0.007,
+      breath: 1 + Math.sin((t / 3.4) * TAU) * 0.005,
+    };
+  }
+  const blinkScale = lid => 0.06 + 0.94 * clamp(lid);
+
+  // states — same poses as src/components/blob/states.ts
+  const BODY = superellipse();
+  const sil = (over = {}) => ({ radii: BODY.slice(), rot: 0, cx: 0, cy: 0, sx: 1, sy: 1, ...over });
+  const pair = (w, h, tilt = 0, open = 1) => [{ w, h, tilt, open }, { w, h, tilt: -tilt, open }];
+  const STATES = {
+    idle: { morph: .4, blinkIn: true, pose: () => ({ sil: sil(), offX: 0, offY: 0, gaze: { ...REST }, split: EYE_SPLIT, eyes: pair(EYE_W, EYE_H), dots: [] }) },
+    thinking: { morph: .45, blinkIn: true, pose: t => ({ sil: sil(), offX: 0, offY: 0, gaze: { yaw: 14 + Math.sin(t * 1.1) * 4, pitch: 4, roll: -8 + Math.sin(t * .9) * 5 }, split: EYE_SPLIT, eyes: [{ w: EYE_W, h: EYE_H, tilt: -14, open: .5 }, { w: EYE_W * 1.06, h: EYE_H, tilt: 0, open: 1 }], dots: [] }) },
+    nudge: { morph: .35, blinkIn: true, pose: t => { const hop = Math.abs(Math.sin(t * 2.2)); return { sil: sil({ sy: 1 - hop * .04, sx: 1 + hop * .03 }), offX: 0, offY: -hop * .05, gaze: { yaw: 26, pitch: 8, roll: -4 }, split: EYE_SPLIT, eyes: pair(EYE_W * 1.08, EYE_H * 1.05), dots: [] }; } },
+    alert: { morph: .3, blinkIn: false, pose: t => { const pulse = 1 + Math.sin(t * 5.2) * .025; return { sil: sil({ sx: pulse, sy: pulse }), offX: 0, offY: -.02, gaze: { yaw: 2, pitch: 3, roll: 0 }, split: EYE_SPLIT + 1.5, eyes: pair(EYE_W * 1.45, EYE_H * 1.18), dots: [] }; } },
+    sleep: { morph: .6, blinkIn: false, pose: t => { const br = Math.sin(t * 1.4); const dots = []; for (let i = 0; i < 3; i++) { const ph = ((t * .45 + i / 3) % 1 + 1) % 1; dots.push({ x: .55 + ph * .28, y: -.55 - ph * .4, r: .05 + (1 - ph) * .035, opacity: ph < .15 ? ph / .15 : 1 - easings.easeOutCubic(clamp((ph - .55) / .45)) }); } return { sil: sil({ sy: .86 + br * .012, sx: 1.07, cy: .08 }), offX: 0, offY: 0, gaze: { yaw: 6, pitch: -10, roll: -3 }, split: EYE_SPLIT, eyes: pair(EYE_W * 1.1, EYE_H, 0, .06), dots }; } },
+    joy: { morph: .25, blinkIn: true, pose: t => { const cyc = (t % 1.1) / 1.1; const air = Math.sin(cyc * Math.PI); const squash = cyc < .18 ? 1 - Math.sin((cyc / .18) * Math.PI) * .1 : 1; const dots = []; for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU + .4; const ph = ((t * .8 + i * .13) % 1 + 1) % 1; dots.push({ x: Math.cos(a) * (.75 + ph * .45), y: Math.sin(a) * (.75 + ph * .45) - .1, r: .045 * (1 - ph * .6), opacity: 1 - easings.easeOutQuint(ph) }); } return { sil: sil({ sy: squash + air * .07, sx: 1 / (squash + air * .07) }), offX: 0, offY: -air * .09, gaze: { yaw: 6, pitch: 12, roll: Math.sin(t * 2.2) * 3 }, split: EYE_SPLIT, eyes: pair(.26, .15, 16), dots }; } },
+  };
+
+  // engine class — same guarantees as the TS version
+  class Engine {
+    constructor(R = 100) { this.R = R; this.state = 'idle'; this.start = 0; this.from = null; this.look = { yaw: 0, pitch: 0, mix: 0 }; this.blinkAt = -1; this.pts = []; }
+    snap(p) { return { sil: { ...p.sil, radii: [...p.sil.radii] }, offX: p.offX, offY: p.offY, gaze: { ...p.gaze }, split: p.split, eyes: [{ ...p.eyes[0] }, { ...p.eyes[1] }] }; }
+    setState(id, now) { if (id === this.state) return; this.from = this.snap(this.composite(now)); this.state = id; this.start = now; if (STATES[id].blinkIn) this.blinkAt = now; }
+    composite(now) {
+      const def = STATES[this.state];
+      const local = Math.max(0, now - this.start);
+      const pose = def.pose(local);
+      if (!this.from) return pose;
+      const k = clamp(local / def.morph);
+      if (k >= 1) return pose;
+      const t = easings.easeOutCubic(k), a = this.from, p = pose;
+      return {
+        sil: blendSil(a.sil, p.sil, t, { radii: new Array(N), rot: 0, cx: 0, cy: 0, sx: 1, sy: 1 }),
+        offX: lerp(a.offX, p.offX, t), offY: lerp(a.offY, p.offY, t),
+        gaze: { yaw: lerp(a.gaze.yaw, p.gaze.yaw, t), pitch: lerp(a.gaze.pitch, p.gaze.pitch, t), roll: lerp(a.gaze.roll, p.gaze.roll, t) },
+        split: lerp(a.split, p.split, t),
+        eyes: [{ w: lerp(a.eyes[0].w, p.eyes[0].w, t), h: lerp(a.eyes[0].h, p.eyes[0].h, t), tilt: lerp(a.eyes[0].tilt, p.eyes[0].tilt, t), open: lerp(a.eyes[0].open, p.eyes[0].open, t) }, { w: lerp(a.eyes[1].w, p.eyes[1].w, t), h: lerp(a.eyes[1].h, p.eyes[1].h, t), tilt: lerp(a.eyes[1].tilt, p.eyes[1].tilt, t), open: lerp(a.eyes[1].open, p.eyes[1].open, t) }],
+        dots: p.dots.map(d => ({ ...d, opacity: d.opacity * t })),
+      };
+    }
+    sample(now) {
+      const R = this.R, pose = this.composite(now), life = liveliness(now);
+      const gaze = {
+        yaw: lerp(pose.gaze.yaw, this.look.yaw, this.look.mix) + life.dYaw * (1 - this.look.mix),
+        pitch: lerp(pose.gaze.pitch, this.look.pitch, this.look.mix) + life.dPitch * (1 - this.look.mix),
+        roll: pose.gaze.roll + life.dRoll,
+      };
+      const forced = clamp((now - this.blinkAt) / .2);
+      const forcedLid = forced < 1 ? Math.abs(forced * 2 - 1) : 1;
+      const lid = Math.min(life.lid, forcedLid);
+      const offX = pose.offX + life.driftX, offY = pose.offY + life.driftY;
+      const s = { ...pose.sil, cx: pose.sil.cx + offX, cy: pose.sil.cy + offY, sy: pose.sil.sy * life.breath };
+      const bodyPath = closedPath(toPoints(s, R, this.pts));
+      const bodyRadius = (x, y) => radiusAtAngle(pose.sil.radii, Math.atan2(y, x) - pose.sil.rot);
+      const eyes = [];
+      const eps = eyePoses(gaze, R, pose.split);
+      for (let i = 0; i < 2; i++) {
+        const e = eps[i]; if (e.depth <= .02) continue;
+        const c = pose.eyes[i];
+        const fit = bodyRadius(e.x, e.y);
+        const phi = (c.tilt * Math.PI) / 180, cp = Math.cos(phi), sp = Math.sin(phi);
+        const ax = e.a * cp + e.c * sp, ay = e.b * cp + e.d * sp;
+        const cx2 = -e.a * sp + e.c * cp, cy2 = -e.b * sp + e.d * cp;
+        const k = blinkScale(Math.min(lid, c.open));
+        eyes.push({ d: capsulePath(c.w * R, c.h * R), m: 'matrix(' + r2(ax) + ',' + r2(ay * k) + ',' + r2(cx2) + ',' + r2(cy2 * k) + ',' + r2(e.x * fit + offX * R) + ',' + r2(e.y * fit + offY * R) + ')', alpha: clamp(e.depth / .12) });
+      }
+      const dots = pose.dots.filter(d => d.opacity > .01).map(d => ({ x: (d.x + offX) * R, y: (d.y + offY) * R, r: d.r * R, o: d.opacity }));
+      return { bodyPath, eyes, dots };
+    }
+  }
+
+  
+// `clock` is shared by every card; cards read it as engine time (seconds).
+let clock = 0;
+// ── LeadPulse motion lab: animated card concepts ──
+// Uses the engine above (same math as src/components/blob/) plus plain CSS/SVG
+// motion for the cards. Everything here is a concept to react to, not shippable UI.
+
+// One shared blob factory: canvas + engine + painter, reused by every card.
+function makeBlob(size, state) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '-124 -124 248 248');
+  svg.setAttribute('width', size);
+  svg.setAttribute('height', size);
+  svg.style.cssText = 'overflow:visible;display:block';
+  const id = 'bm' + Math.random().toString(36).slice(2, 8);
+  svg.innerHTML =
+    '<defs><mask id="' + id + '">' +
+    '<rect x="-124" y="-124" width="248" height="248" fill="white"/>' +
+    '<path class="eh" fill="black"/><path class="eh" fill="black"/>' +
+    '</mask></defs>' +
+    '<path class="bd" fill="#f0c75e" stroke="rgba(43,33,26,.14)" stroke-width="2" mask="url(#' + id + ')"/>' +
+    '<g class="dg"></g>';
+  const eng = new Engine(100);
+  eng.setState(state, 0);
+  return {
+    svg,
+    eng,
+    state,
+    body: svg.querySelector('.bd'),
+    holes: svg.querySelectorAll('.eh'),
+    dots: svg.querySelector('.dg'),
+    look: { yaw: 0, pitch: 0, mix: 0 },
+    setState(s, now) { this.state = s; eng.setState(s, now); },
+  };
+}
+
+function paintBlob(b, now) {
+  b.eng.look = { ...b.look, wander: 1 - b.look.mix };
+  const f = b.eng.sample(now);
+  b.body.setAttribute('d', f.bodyPath);
+  b.holes.forEach((h, i) => {
+    const eye = f.eyes[i];
+    if (!eye) { h.setAttribute('opacity', '0'); return; }
+    h.setAttribute('d', eye.d);
+    h.setAttribute('transform', eye.m);
+    h.setAttribute('opacity', eye.alpha);
+  });
+  while (b.dots.children.length > f.dots.length) b.dots.removeChild(b.dots.lastChild);
+  while (b.dots.children.length < f.dots.length) b.dots.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'circle'));
+  f.dots.forEach((d, i) => {
+    const c = b.dots.children[i];
+    c.setAttribute('cx', d.x); c.setAttribute('cy', d.y); c.setAttribute('r', d.r);
+    c.setAttribute('fill', '#d9a93f'); c.setAttribute('opacity', d.o);
+  });
+}
+
+// ── card registry ──
+const cards = [];   // { el, blobs: [b], paint(now, el) }
+function registerCard(el, blobs, extras) {
+  cards.push({ el, blobs: blobs || [], extras: extras || null });
+}
+
+// ── animations for the non-blob card parts ──
+
+const easeOutCubic = t => 1 - (1 - t) ** 3;
+
+/** Count-up: 0 -> target over `dur` seconds, started on the card's own clock. */
+function countUp(el, target, dur, t, fmt) {
+  const k = clamp(t / dur);
+  el.textContent = (fmt || (v => String(Math.round(v))))(target * easeOutCubic(k));
+}
+
+/** Sparkline: 7 points stroked on in sequence with dots popping behind it. */
+function sparkline(pathEl, dotEls, pts, t) {
+  const total = pts.length - 1;
+  const k = clamp(t / 1.1) * total;
+  let d = '';
+  for (let i = 0; i <= total; i++) {
+    const [x, y] = pts[i];
+    if (i > k) break;
+    d += (i === 0 ? 'M' : 'L') + x + ' ' + y;
+  }
+  const frac = k - Math.floor(k);
+  if (k < total) {
+    const a = pts[Math.floor(k)], b = pts[Math.floor(k) + 1];
+    d += 'L' + (a[0] + (b[0] - a[0]) * frac) + ' ' + (a[1] + (b[1] - a[1]) * frac);
+  }
+  pathEl.setAttribute('d', d);
+  dotEls.forEach((dot, i) => {
+    const pop = clamp((k - i) * 3);
+    dot.setAttribute('r', 3 * easeOutCubic(pop));
+  });
+}
+
+/** Ring progress: stroke-dashoffset draws the arc. */
+function ring(circleEl, len, pct, t) {
+  const k = clamp(t / 1.2);
+  circleEl.setAttribute('stroke-dashoffset', String(len * (1 - (pct / 100) * easeOutCubic(k))));
+}
+
+/** Ladder: rungs light up in sequence; the marker blob rides the lit rung. */
+function ladder(rungEls, markerEl, t, hold) {
+  const step = t / hold;
+  rungEls.forEach((r, i) => {
+    const lit = step > i;
+    r.classList.toggle('lit', lit);
+    r.classList.toggle('current', Math.floor(step) === i);
+  });
+  const idx = Math.min(rungEls.length - 1, Math.floor(step));
+  markerEl.style.transform = 'translateY(' + (idx * 34) + 'px)';
+}
+
+/** Confetti burst: particles fly out once, then settle. */
+function confetti(el, t) {
+  const N = 18;
+  if (el.children.length < N) {
+    for (let i = 0; i < N; i++) {
+      const s = document.createElement('span');
+      s.className = 'confetti';
+      s.style.background = ['#f0c75e', '#b8a4ed', '#7fc9a8', '#e0766a', '#c49010'][i % 5];
+      el.appendChild(s);
+    }
+  }
+  [...el.children].forEach((s, i) => {
+    const a = (i / N) * Math.PI * 2 + 0.3;
+    const dist = 40 + (i % 5) * 22;
+    const life = clamp((t - 0.15 - (i % 6) * 0.05) / 1.1);
+    const x = Math.cos(a) * dist * easeOutCubic(life);
+    const y = Math.sin(a) * dist * 0.7 * easeOutCubic(life) + life * life * 60;
+    s.style.transform = 'translate(' + x + 'px,' + y + 'px) rotate(' + (life * 320 * (i % 2 ? 1 : -1)) + 'deg)';
+    s.style.opacity = String(1 - life);
+  });
+}
+
+// ── build the cards ──
+function el(tag, cls, html) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html != null) e.innerHTML = html;
+  return e;
+}
+
+// ── 1. Deal card: hover lift, blob reacts, priority edge fills ──
+function cardDealHover(root) {
+  const wrap = el('div', 'demo-card deal-card');
+  wrap.innerHTML =
+    '<span class="edge"></span>' +
+    '<div class="row"><div class="blobslot"></div>' +
+    '<div class="grow"><div class="title">Bakehouse Studio</div>' +
+    '<div class="sub">Somchai · testing · overdue 3d</div></div>' +
+    '<div class="amount">฿42,000</div></div>' +
+    '<div class="actions"><button class="mini">Log touch</button><button class="mini ghost">Snooze</button></div>';
+  root.appendChild(wrap);
+  const b = makeBlob(58, 'nudge');
+  wrap.querySelector('.blobslot').appendChild(b.svg);
+
+  let t = 0, hovering = false;
+  wrap.addEventListener('pointerenter', () => { hovering = true; b.setState('thinking', clock); wrap.classList.add('hot'); });
+  wrap.addEventListener('pointerleave', () => { hovering = false; b.setState('nudge', clock); wrap.classList.remove('hot'); });
+
+  registerCard(wrap, [b], () => {
+    // edge fills on hover (0→1), retracts on leave — a quiet priority signal
+    t = hovering ? Math.min(1, t + 0.06) : Math.max(0, t - 0.06);
+    wrap.querySelector('.edge').style.transform = 'scaleY(' + (0.25 + t * 0.75) + ')';
+    wrap.style.transform = 'translateY(' + (-4 * t) + 'px)';
+    wrap.style.boxShadow = '0 ' + (10 * t) + 'px ' + (28 * t) + 'px rgba(43,33,26,' + (0.16 * t) + ')';
+  });
+}
+
+// ── 2. Overdue pulse: breathing edge + ticking day count ──
+function cardOverdue(root) {
+  const wrap = el('div', 'demo-card overdue-card');
+  wrap.innerHTML =
+    '<span class="pulse-edge"></span>' +
+    '<div class="row"><div class="blobslot"></div>' +
+    '<div class="grow"><div class="title">Croissant &amp; Co</div>' +
+    '<div class="sub">sample sent · no reply</div></div>' +
+    '<div class="days"><span class="n">3</span><span class="u">days late</span></div></div>';
+  root.appendChild(wrap);
+  const b = makeBlob(58, 'alert');
+  wrap.querySelector('.blobslot').appendChild(b.svg);
+
+  registerCard(wrap, [b], (now, elapsed) => {
+    const breath = 0.5 + 0.5 * Math.sin(elapsed * 2.4);
+    const edge = wrap.querySelector('.pulse-edge');
+    edge.style.opacity = String(0.35 + breath * 0.65);
+    edge.style.transform = 'scaleX(' + (0.6 + breath * 0.4) + ')';
+    wrap.style.borderColor = 'rgba(181,52,42,' + (0.22 + breath * 0.3) + ')';
+  });
+}
+
+// ── 3. KPI: number rolls up, sparkline draws ──
+function cardKpi(root) {
+  const pts = [[0, 26], [18, 20], [36, 22], [54, 12], [72, 15], [90, 6], [108, 3]];
+  const path = 'M' + pts.map(p => p.join(' ')).join(' L');
+  const wrap = el('div', 'demo-card kpi-card');
+  wrap.innerHTML =
+    '<div class="eyebrow">Touches · last 7d</div>' +
+    '<div class="bignum">0</div>' +
+    '<svg class="spark" viewBox="0 0 108 30" preserveAspectRatio="none">' +
+    '<path class="sparkline" vector-effect="non-scaling-stroke" d="' + path + '"/>' +
+    pts.map(p => '<circle class="sparkdot" cx="' + p[0] + '" cy="' + p[1] + '" r="0"/>').join('') +
+    '</svg>' +
+    '<div class="delta">▲ 17% vs last week</div>';
+  root.appendChild(wrap);
+  const pathEl = wrap.querySelector('.sparkline');
+
+  registerCard(wrap, [], (now, elapsed) => {
+    countUp(wrap.querySelector('.bignum'), 17, 1.2, elapsed);
+    pathEl.style.opacity = '1';
+    sparkline(pathEl, [...wrap.querySelectorAll('.sparkdot')], pts, elapsed);
+  });
+}
+
+
+// ── 4. Nudge ladder: rungs light in sequence, marker blob rides them ──
+function cardLadder(root) {
+  const wrap = el('div', 'demo-card ladder-card');
+  const rungs = ['Warm', 'Remind', 'Firm', 'Parking'];
+  wrap.innerHTML =
+    '<div class="eyebrow">Nudge ladder · Bakehouse Studio</div>' +
+    '<div class="ladder">' +
+    '<div class="rungs">' + rungs.map((r, i) => '<div class="rung" data-i="' + i + '"><span>' + r + '</span></div>').join('') + '</div>' +
+    '<div class="marker"></div>' +
+    '</div>' +
+    '<div class="sub">send #3 of 4 · a reply resets this</div>';
+  root.appendChild(wrap);
+  const b = makeBlob(44, 'nudge');
+  wrap.querySelector('.marker').appendChild(b.svg);
+
+  registerCard(wrap, [b], (now, elapsed) => {
+    const cyc = elapsed % 6;
+    ladder([...wrap.querySelectorAll('.rung')], wrap.querySelector('.marker'), cyc, 1.2);
+    const idx = Math.min(3, Math.floor(cyc / 1.2));
+    const next = ['nudge', 'nudge', 'alert', 'sleep'][idx];
+    if (b.state !== next) b.setState(next, now);
+  });
+}
+
+// ── 5. Won: confetti + count-up + joy blob ──
+function cardWon(root) {
+  const wrap = el('div', 'demo-card won-card');
+  wrap.innerHTML =
+    '<div class="confetti-holder"></div>' +
+    '<div class="row"><div class="blobslot"></div>' +
+    '<div class="grow"><div class="title">Flour Mill Bangkok</div><div class="sub">closed won 🎉</div></div>' +
+    '<div class="amount won">฿<span class="n">0</span></div></div>' +
+    '<button class="mini replay">Replay</button>';
+  root.appendChild(wrap);
+  const b = makeBlob(58, 'joy');
+  wrap.querySelector('.blobslot').appendChild(b.svg);
+
+  let start = 0;
+  const conf = wrap.querySelector('.confetti-holder');
+  wrap.querySelector('.replay').addEventListener('click', () => {
+    start = clock; conf.innerHTML = ''; b.setState('idle', clock);
+    setTimeout(() => b.setState('joy', clock), 60);
+  });
+
+  registerCard(wrap, [b], (now, elapsed) => {
+    confetti(conf, elapsed);
+    countUp(wrap.querySelector('.amount .n'), 68500, 1.4, elapsed, v => Math.round(v).toLocaleString('en-US'));
+  });
+}
+
+// ── 6. Skeleton -> loaded: shimmer, then content with a waking blob ──
+function cardSkeleton(root) {
+  const wrap = el('div', 'demo-card skeleton-card');
+  wrap.innerHTML =
+    '<div class="skel">' +
+    '<div class="skel-row"><div class="bone b1"></div><div class="bone b2"></div></div>' +
+    '<div class="bone b3"></div><div class="bone b4"></div>' +
+    '<div class="bone b5"></div>' +
+    '<div class="shimmer"></div>' +
+    '</div>' +
+    '<div class="loaded">' +
+    '<div class="row"><div class="blobslot"></div>' +
+    '<div class="grow"><div class="title">Café Amazon franchise</div><div class="sub">first outreach · due Sep 22</div></div>' +
+    '<div class="amount">฿120,000</div></div>' +
+    '</div>' +
+    '<button class="mini reload">Replay loading</button>';
+  root.appendChild(wrap);
+  const b = makeBlob(48, 'sleep');
+  wrap.querySelector('.loaded .blobslot').appendChild(b.svg);
+
+  let reloadAt = null;
+  wrap.querySelector('.reload').addEventListener('click', () => {
+    wrap.classList.remove('is-loaded');
+    b.setState('sleep', clock);
+    reloadAt = clock;
+  });
+  registerCard(wrap, [b], (now, elapsed) => {
+    // clock is engine seconds; the first frame we see marks this card's own start,
+    // so a slow/throttled rAF cannot make the skeleton load early or late
+    if (reloadAt === null) reloadAt = clock;
+    if (clock - reloadAt > 1.6 && !wrap.classList.contains('is-loaded')) {
+      wrap.classList.add('is-loaded');
+      b.setState('idle', now);
+    }
+  });
+}
+
+// ── 7. Touch cadence ring + day dots ──
+function cardRing(root) {
+  const R = 26, C = 2 * Math.PI * R;
+  const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  const wrap = el('div', 'demo-card ring-card');
+  wrap.innerHTML =
+    '<div class="row"><svg class="ringsvg" viewBox="0 0 64 64">' +
+    '<circle class="ring-bg" cx="32" cy="32" r="' + R + '"/>' +
+    '<circle class="ring-fg" cx="32" cy="32" r="' + R + '" stroke-dasharray="' + C + '" stroke-dashoffset="' + C + '"/>' +
+    '</svg>' +
+    '<div class="grow"><div class="title">This week</div><div class="sub">4 of 7 days touched</div>' +
+    '<div class="dots">' + days.map((d, i) => '<span class="day' + (i < 4 ? ' on' : '') + '" data-i="' + i + '">' + d + '</span>').join('') + '</div>' +
+    '</div></div>';
+  root.appendChild(wrap);
+  const fg = wrap.querySelector('.ring-fg');
+  registerCard(wrap, [], (now, elapsed) => {
+    ring(fg, C, 57, elapsed % 5);
+    [...wrap.querySelectorAll('.day')].forEach((d, i) => {
+      const pop = clamp(elapsed * 1.6 - i * 0.12);
+      d.style.transform = 'translateY(' + (-3 * Math.sin(pop * Math.PI)) + 'px) scale(' + (0.9 + 0.15 * pop) + ')';
+    });
+  });
+}
+
+// ── 8. Drop zone with a peeking blob ──
+function cardDropZone(root) {
+  const wrap = el('div', 'demo-card drop-card');
+  wrap.innerHTML =
+    '<div class="zone"><span class="ants"></span><span class="zone-label">Drop to move to Testing</span></div>' +
+    '<div class="peek"></div>';
+  root.appendChild(wrap);
+  const b = makeBlob(52, 'thinking');
+  wrap.querySelector('.peek').appendChild(b.svg);
+  registerCard(wrap, [b], (now, elapsed) => {
+    // peeks in and out on its own rhythm: the lane looks like it is waiting for you
+    const cyc = (elapsed % 4) / 4;
+    const inK = cyc < 0.2 ? cyc / 0.2 : cyc > 0.8 ? (1 - cyc) / 0.2 : 1;
+    const peek = wrap.querySelector('.peek');
+    peek.style.transform = 'translateX(' + (34 * (1 - inK)) + 'px)';
+    peek.style.opacity = String(0.35 + inK * 0.65);
+  });
+}
+
+// ── assemble + run ──
+const mount = document.getElementById('grid');
+const slots = [
+  ['01', 'Deal card · hover', 'Lifts, shadow blooms, priority edge fills, and the blob changes mood as your cursor arrives. Click-through stays a plain button.', cardDealHover],
+  ['02', 'Overdue card', 'The left edge breathes with the blob\'s pulse — both driven by the same alert state. Urgency you feel before you read.', cardOverdue],
+  ['03', 'KPI · roll-up + sparkline', 'Number counts up while the 7-day line draws itself and each day-dot pops in behind it. Runs on mount, replays on reload.', cardKpi],
+  ['04', 'Nudge ladder', 'Rungs light in send order; the marker blob walks the ladder and changes mood — warm → firm → parking.', cardLadder],
+  ['05', 'Won card', 'Confetti burst, value counts up, joy blob bounces. Hover the top-right to replay.', cardWon],
+  ['06', 'Skeleton → loaded', 'Shimmer sweep over bones, then the sleeping blob wakes as real content lands. A loading state that has a personality.', cardSkeleton],
+  ['07', 'Touch cadence ring', 'Ring draws to the week\'s percentage; day chips pop in one after another until today.', cardRing],
+  ['08', 'Drop zone', 'A blob peeks out of the lane and retreats, so an empty board still feels like it is waiting for you.', cardDropZone],
+];
+
+for (const [num, title, caption, build] of slots) {
+  const slot = document.createElement('div');
+  slot.className = 'slot';
+  const holder = document.createElement('div');
+  slot.appendChild(holder);
+  const cap = document.createElement('div');
+  cap.className = 'caption';
+  cap.innerHTML = '<span class="num">' + num + '</span> <b>' + title + '</b>' + caption;
+  slot.appendChild(cap);
+  mount.appendChild(slot);
+  build(holder);
+}
+
+// one rAF for the whole page
+clock = 0;
+let last = performance.now();
+function frame(now) {
+  clock += Math.min(0.05, (now - last) / 1000);   // wall-clock seconds since load
+  last = now;
+  for (const c of cards) {
+    const elapsed = clock - (c.startAt || 0);
+    for (const b of c.blobs) paintBlob(b, clock);
+    if (c.extras) c.extras(now, elapsed);
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+</script>
+</body>
+</html>

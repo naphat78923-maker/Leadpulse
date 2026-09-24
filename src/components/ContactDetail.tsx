@@ -9,6 +9,7 @@ import * as crm from '@/lib/crm';
 import { useCrm } from '@/components/CrmProvider';
 import { CONTACT_IDENTITY_OPTIONS, contactIdentityLabel, contactNameFieldCopy, OUTREACH_LANGUAGE_OPTIONS, outreachLanguageBadgeColor, outreachLanguageBasisLabel, outreachLanguageLabel } from '@/utils/contact-identity';
 import InteractionThread from '@/components/InteractionThread';
+import LayaBuyerSignalsSection from '@/components/LayaBuyerSignalsSection';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import { Plus } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -350,6 +351,12 @@ export default function ContactDetail({ contact, onClose, onSaved, companies }: 
             )}
 
             </div>
+
+            {/* Laya buyer signals — on-demand scorer per open deal carrying a verbatim buyer reply */}
+            <LayaBuyerSignalsSection
+              deals={deals.filter(d => d.contact_ids.includes(contact.id))}
+              companyFor={deal => companies.find(c => c.id === deal.company_id)}
+            />
 
             <div className="mt-4">
               <div className="flex items-center justify-between mb-2">

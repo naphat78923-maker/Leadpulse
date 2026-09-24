@@ -85,11 +85,12 @@ describe('DealDetail journey modal', () => {
     expect(screen.queryByRole('button', { name: /● Open/ })).toBeNull();
   });
 
-  it('shows Laya scoring as a recommendation that cannot change the deal', () => {
+  it('requires a verbatim buyer reply before offering a Laya review', () => {
     render(<DealDetail deal={deal} onClose={vi.fn()} onSaved={vi.fn()} />);
 
-    expect(screen.getByRole('button', { name: 'Score with Laya' })).toBeTruthy();
-    expect(screen.getByText(/does not change this deal/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Score buyer reply with Laya' })).toBeNull();
+    expect(screen.getByText(/No verbatim buyer reply recorded/i)).toBeTruthy();
+    expect(screen.getByText(/does not change deal priority, stage, or workflow/i)).toBeTruthy();
   });
 
   it('does not expand drafting brief by default', () => {
@@ -142,6 +143,21 @@ describe('DealDetail journey modal', () => {
     expect(addToast).toHaveBeenCalledWith('Deal saved!');
   });
 
+  it('saves the buyer reply separately and preserves the exact entered message', async () => {
+    render(<DealDetail deal={deal} onClose={vi.fn()} onSaved={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit deal' }));
+    const reply = screen.getByRole('textbox', { name: 'Latest buyer reply (verbatim)' });
+    fireEvent.change(reply, { target: { value: 'Can you send the sample next week?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save deal' }));
+
+    await waitFor(() => expect(crmMocks.updateDealIfUnchanged).toHaveBeenCalledTimes(1));
+    expect(crmMocks.updateDealIfUnchanged).toHaveBeenCalledWith(
+      'deal-1',
+      deal.updated_at,
+      { buyer_reply: 'Can you send the sample next week?' }
+    );
+  });
+
   const movedDeal: Deal = {
     ...deal,
     workflow_action: 'reply',
@@ -158,7 +174,7 @@ describe('DealDetail journey modal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit deal' }));
 
     expect((screen.getByLabelText('Action lane') as HTMLSelectElement).value).toBe('reply');
-    expect(screen.getByText(/waiting on reply: Sent follow-up email/)).toBeTruthy();
+    expect(document.body.textContent).toMatch(/waiting on reply: Sent follow-up email/);
   });
 
   it('keeps unsaved edits while the record moves on, and names the conflicted field', () => {

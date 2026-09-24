@@ -133,6 +133,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
     draft_primary_ask: deal.draft_primary_ask || null,
     followup_date: deal.followup_date,
     last_outcome: deal.last_outcome,
+    buyer_reply: deal.buyer_reply || null,
     lost_reason: deal.lost_reason || null,
     park_reason: deal.park_reason || null,
     won_note: deal.won_note || null,
@@ -736,9 +737,27 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
           </details>
 
           {/* Hidden until there is an outcome (or the editor is open) — fresh deals stay lean. */}
-          {(editing || deal.last_outcome) && (
+          {(editing || deal.last_outcome || deal.buyer_reply) && (
           <section>
             <p className="text-clay-body">Outcome history</p>
+            <label className="mt-2 block text-xs text-clay-body">
+              Latest buyer reply (verbatim)
+              {editing ? (
+                <textarea
+                  aria-label="Latest buyer reply (verbatim)"
+                  value={editData.buyer_reply}
+                  onChange={event => setField('buyer_reply', event.target.value)}
+                  rows={3}
+                  placeholder="Paste the buyer’s exact words here; keep this separate from your outcome note."
+                  className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card resize-y"
+                />
+              ) : (
+                <span className="mt-1 block whitespace-pre-wrap rounded-lg bg-clay-surface p-3 text-xs leading-relaxed">
+                  {deal.buyer_reply || 'No verbatim buyer reply recorded.'}
+                </span>
+              )}
+              {editing && <span className="mt-1 block text-[10px] text-clay-muted">Keep the exact buyer message; paraphrases belong in Outcome history and will not be sent to Laya.</span>}
+            </label>
             {editing ? (
               <textarea
                 value={editData.last_outcome_new}

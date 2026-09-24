@@ -54,6 +54,11 @@ describe('dealToEditDraft', () => {
   it('renders a missing value as the unknown blank, not zero', () => {
     expect(dealToEditDraft(deal).value).toBe('');
   });
+
+  it('loads the latest exact buyer reply into the separate editor field', () => {
+    expect(dealToEditDraft({ ...deal, buyer_reply: 'Please send a quote for 20 kg.' }).buyer_reply)
+      .toBe('Please send a quote for 20 kg.');
+  });
 });
 
 describe('mergeDraft', () => {
@@ -136,6 +141,27 @@ describe('buildDealEditPayload', () => {
     });
 
     expect(payload).toEqual({ next_action: null });
+  });
+
+  it('writes an edited buyer reply separately from the outcome journal', () => {
+    const reply = 'Please send us a quotation for 20 kg.';
+    const payload = buildDealEditPayload({
+      deal,
+      draft: draftOf(deal, { buyer_reply: reply }),
+      editedFields: new Set(['buyer_reply']),
+    });
+    expect(payload).toEqual({ buyer_reply: reply });
+    expect(payload).not.toHaveProperty('last_outcome');
+  });
+
+  it('clears the saved buyer reply only when the user explicitly clears it', () => {
+    const repliedDeal = { ...deal, buyer_reply: 'Old verbatim reply' };
+    const payload = buildDealEditPayload({
+      deal: repliedDeal,
+      draft: draftOf(repliedDeal, { buyer_reply: '' }),
+      editedFields: new Set(['buyer_reply']),
+    });
+    expect(payload).toEqual({ buyer_reply: null });
   });
 
   it('keeps the value unknown when the user cleared it', () => {
