@@ -133,7 +133,7 @@ CLOSED_STAGES = {"closed_won", "closed_lost"}
 
 
 def old_attention_state(case: dict) -> str:
-    """Replica of buildLayaAttentionInput in src/utils/lead-scoring.ts."""
+    """Historical attention-state format (retired; kept as eval baseline)."""
     product = (case.get("product") or "Butter").strip() or "unknown"
     stage = case.get("stage") or "contacted"
     value = case.get("value")
@@ -177,7 +177,7 @@ def _convo_state(c: dict) -> str:
 
 
 def _verbatim_state(c: dict) -> str:
-    """Exact replica of buildLayaBuyerResponseInput in src/utils/lead-scoring.ts."""
+    """Exact replica of buildLayaBuyerResponseInput in src/utils/laya-buyer-response.ts."""
     product = (c.get("product") or "").strip() or "our products"
     reply = reply_of(c)
     if reply:

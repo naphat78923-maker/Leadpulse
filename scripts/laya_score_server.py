@@ -34,7 +34,7 @@ def model_engine(model_manifest: dict[str, Any]) -> str:
 
 MODEL_ENGINE = model_engine(manifest)
 INFERENCE_SLOTS = threading.BoundedSemaphore(1)
-# Must match LAYA_BUYER_RESPONSE_QUESTION in src/utils/lead-scoring.ts exactly —
+# Must match BUYER_RESPONSE_QUESTION in src/utils/laya-buyer-response.ts exactly —
 # the boundary test builds the request through the real TypeScript builder.
 BUYER_RESPONSE_QUESTION = {"buyer_response": {
     "type": "choice",

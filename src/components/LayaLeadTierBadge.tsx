@@ -11,7 +11,7 @@ export default function LayaLeadTierBadge({ signal }: { signal: LeadSignal | nul
   if (!signal) return null;
   return (
     <span
-      title={`Laya lead scoring · hottest open deal: ${signal.deal.title} · ${signal.score}/100`}
+      title={`Deterministic lead score (no model) · hottest open deal: ${signal.deal.title} · ${signal.score}/100`}
       className={clsx(
         'inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded border',
         TIER_COLORS[signal.tier],

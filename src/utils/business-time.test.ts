@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BUSINESS_TIMEZONE, businessDateKey, businessDateKeysEndingAt, isDateKey } from './business-time';
+import { BUSINESS_TIMEZONE, businessDateKey, businessDateKeysEndingAt, isCalendarDateKey, isDateKey } from './business-time';
 
 describe('business timezone date keys', () => {
   it('names the business timezone explicitly', () => {
@@ -42,5 +42,26 @@ describe('business timezone date keys', () => {
     expect(isDateKey('')).toBe(false);
     expect(isDateKey(null)).toBe(false);
     expect(isDateKey('2026-09-15T00:00:00Z')).toBe(false);
+  });
+
+  it('isCalendarDateKey additionally rejects impossible calendar dates', () => {
+    // Pattern-only isDateKey accepts these; the strict sibling must not, because
+    // scoring and evidence labels rely on the key being a real day.
+    expect(isDateKey('2026-02-30')).toBe(true);
+    expect(isCalendarDateKey('2026-02-30')).toBe(false);
+    expect(isCalendarDateKey('2026-13-01')).toBe(false);
+    expect(isCalendarDateKey('2026-04-31')).toBe(false);
+  });
+
+  it('isCalendarDateKey accepts real dates and rejects non-keys', () => {
+    expect(isCalendarDateKey('2026-02-28')).toBe(true);
+    expect(isCalendarDateKey('2028-02-29')).toBe(true); // leap year
+    expect(isCalendarDateKey('2027-02-29')).toBe(false); // not a leap year
+    expect(isCalendarDateKey('2026-09-15')).toBe(true);
+    expect(isCalendarDateKey('2026-9-5')).toBe(false);
+    expect(isCalendarDateKey('')).toBe(false);
+    expect(isCalendarDateKey(null)).toBe(false);
+    expect(isCalendarDateKey(undefined)).toBe(false);
+    expect(isCalendarDateKey('2026-09-15T00:00:00Z')).toBe(false);
   });
 });

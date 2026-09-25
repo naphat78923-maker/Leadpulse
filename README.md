@@ -31,7 +31,7 @@ Each deal sits in a lane: `outreach → reply → sample → testing → success
 
 ### Lead scoring
 
-Weighted 0–100 score (`src/utils/lead-scoring.ts`): stage (30) + priority (20) + deal value (20) + follow-up urgency (20) + last outcome sentiment (10), mapped to tiers **S (Hot) → D (Cold)**.
+Weighted 0–100 score (`src/utils/lead-scoring.ts`): stage (30) + priority (20) + deal value (20) + follow-up urgency (20) + last outcome sentiment (10), mapped to tiers **S (Hot) → D (Cold)**. Pure arithmetic over CRM fields — no model involved, so it renders identically on any device. The model-facing Laya rules live separately in `src/utils/laya-buyer-response.ts` (buyer-response question) and `src/utils/laya-evidence.ts` (reviewer panel).
 
 ## Tech Stack
 
@@ -246,7 +246,7 @@ the downloaded model tokenizer/config files (no neural inference in this suite):
 
 ```bash
 /Users/pat/laya-coreml/.venv/bin/python -B -m unittest discover -s scripts -p 'test_laya_score_server.py' -v
-npm test -- src/utils/lead-scoring.laya.test.ts src/components/LayaScoreCard.test.tsx
+npm test -- src/utils/laya-buyer-response.test.ts src/utils/laya-buyer-response.contract.test.ts src/components/LayaScoreCard.test.tsx
 ```
 
 The default paths match Pat's install. Override either only if Laya lives elsewhere;

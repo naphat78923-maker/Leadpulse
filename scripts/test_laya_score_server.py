@@ -47,10 +47,11 @@ class InputBoundaryTests(unittest.TestCase):
         with patch.dict(os.environ, {'LAYA_COREML_MODEL_PATH': str(MODEL), 'LAYA_SCORE_TAILNET_HOST': 'phats-macbook-air.tailc9beb9.ts.net'}), patch('laya_coreml.load', return_value=cls.agent):
             spec.loader.exec_module(cls.server)
         # Exercise the real TypeScript builder, so regressions cannot hide behind
-        # separately maintained Python prompt fixtures.
+        # separately maintained Python prompt fixtures. The rules module must stay
+        # free of runtime imports for this standalone transpile to work.
         javascript = r"""
 const fs = require('fs'), ts = require('typescript');
-const source = fs.readFileSync('src/utils/lead-scoring.ts', 'utf8');
+const source = fs.readFileSync('src/utils/laya-buyer-response.ts', 'utf8');
 const code = ts.transpileModule(source, {compilerOptions: {module:ts.ModuleKind.CommonJS}}).outputText;
 const m = {exports:{}};
 new Function('exports', 'require', 'module', code)(m.exports, require, m);
@@ -377,7 +378,8 @@ console.log(JSON.stringify({
                 with patch.object(self.agent, 'shape', {**self.agent.shape, 'max_length': limit}):
                     for count in (limit - 1, limit, limit + 1):
                         with self.subTest(limit=limit, count=count):
-                            state = 'yes ' * (count - overhead)
+                            state = ('yes ' * (count - overhead)).strip()
+                            self.assertEqual(len(self.agent.tok(state, add_special_tokens=False)['input_ids']) + overhead, count)
                             if count <= limit:
                                 server.check_input_budget(self.agent, state, questions)
                             else:

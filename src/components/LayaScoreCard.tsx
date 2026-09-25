@@ -7,11 +7,11 @@ import { bangkokDateKey } from '@/utils/format';
 import { getWorkflowAction } from '@/utils/deal-workflow';
 import {
   buildLayaBuyerResponseInput,
-  buildLayaSalesEvidence,
   buyerResponseSignal,
   LAYA_BUYER_REQUEST_LABEL,
   type LayaBuyerResponseLevel,
-} from '@/utils/lead-scoring';
+} from '@/utils/laya-buyer-response';
+import { buildLayaSalesEvidence } from '@/utils/laya-evidence';
 import { requestLocalLaya, type LayaConnection } from '@/utils/laya-transport';
 import clsx from 'clsx';
 

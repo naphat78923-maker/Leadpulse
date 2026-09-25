@@ -150,3 +150,19 @@ export function buildDealCardPresentation(
     timing: timingFor(deal, due),
   };
 }
+
+// ── Priority chip presentation ──
+// Moved here from lead-scoring.ts: these are Tailwind classes, not scoring
+// rules, and this module is where deal-card presentation lives.
+export const PRIORITY_CLASSES: Record<Deal['priority'], string> = {
+  high: 'bg-clay-error/15 text-clay-error border-l-2 border-clay-error/40 px-2 py-0.5 rounded text-xs font-semibold min-h-[20px]',
+  medium: 'bg-clay-ochre/15 text-clay-ochre border-l-2 border-clay-ochre/30 px-2 py-0.5 rounded text-xs font-medium min-h-[20px]',
+  low: 'bg-clay-card text-clay-muted border-l-2 border-clay-hairline/50 px-2 py-0.5 rounded text-xs min-h-[20px]',
+};
+
+export const PRIORITY_LABELS: Record<Deal['priority'], string> = {
+  high: '🔥 High',
+  medium: '◉ Medium',
+  low: '○ Low',
+};
+

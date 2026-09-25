@@ -37,6 +37,18 @@ export function businessDateKeysEndingAt(date: Date, count: number): string[] {
   });
 }
 
+/**
+ * True for a real calendar date key ('YYYY-MM-DD') — the strict sibling of
+ * `isDateKey`: it also rejects impossible dates such as '2026-02-30' and
+ * '2026-13-01'. Use it wherever a bad date must not be silently treated as a
+ * real one (scoring, due dates, evidence labels).
+ */
+export function isCalendarDateKey(value: string | null | undefined): value is string {
+  if (typeof value !== 'string' || !DATE_KEY_PATTERN.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
 /** Days from `from` to `to` on the business calendar (negative when `to` is earlier). */
 export function businessDaysBetween(from: string, to: string): number {
   const parse = (key: string) => {

@@ -27,7 +27,7 @@ import {
 } from '@dnd-kit/core';
 import { Plus, TrendingUp, AlertCircle, Loader2, CalendarDays, ArrowRight, Search, X } from 'lucide-react';
 import clsx from 'clsx';
-import { PRIORITY_CLASSES, PRIORITY_LABELS } from '@/utils/lead-scoring';
+import { PRIORITY_CLASSES, PRIORITY_LABELS } from '@/utils/deal-card';
 import { formatBaht, sumLaneValues } from '@/utils/format';
 import { calculateWeightedForecast, calculateSourcePerformance } from '@/utils/analytics-metrics';
 import { WORKFLOW_LANES, WORKFLOW_BY_ID, getWorkflowAction, isOnJourneyBoard, isJourneyLane, deriveNudge, formatDerivedNudgeBadge, outboundSendCountForDeal, nudgeLabel } from '@/utils/deal-workflow';
