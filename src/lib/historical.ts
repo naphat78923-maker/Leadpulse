@@ -29,6 +29,12 @@ export interface ReorderSignal {
   name: string;
   medianGapDays: number;
   daysSinceLast: number;
+  thresholdDays: number;
+  /** Days past their usual cycle (0 when still inside it). */
+  severityDays: number;
+  isOverdue: boolean;
+  orderCount: number;
+  matchConfidence: string | null;
   typicalValue: number;
   crmCompanyId: string | null;
   inCrm: boolean;
@@ -94,19 +100,25 @@ export function getReorderSignals(
  * Capping is the caller's job (Home teaser caps at 5; /signals shows all).
  * @param dismissed map of customerId -> epoch ms until which it's hidden
  *                  (Number.MAX_SAFE_INTEGER = permanent dismiss).
+ * @param options.includeUnlinked — Home keeps the CRM-link gate (its comment
+ *                  below explains why); /signals passes true so historical
+ *                  buyers not yet in the CRM are visible somewhere.
  */
 export function rankSignals(
   rows: ReorderSignalRow[],
   meetings: Meeting[],
   deals: Deal[],
   dismissed: Record<string, number>,
+  options: { includeUnlinked?: boolean } = {},
 ): ReorderSignal[] {
   const now = Date.now();
   return rows
-    // Phase 1 gate: only buyers with a confirmed CRM link may reach Home.
-    // Unlinked historical customers stay off the daily surface entirely —
-    // no "add as a company" prompts competing with today's work.
-    .filter((r) => !!r.crm_company_id)
+    // Gate: on Home, only buyers with a confirmed CRM link may appear.
+    // Unlinked historical customers stay off the daily surface — no
+    // "add as a company" prompts competing with today's work. /signals opts
+    // out so those rows are reachable at all (and suggestedAction below is
+    // written for exactly that case).
+    .filter((r) => options.includeUnlinked || !!r.crm_company_id)
     .filter((r) => {
       // dismissed maps customerId -> epoch ms UNTIL WHICH the signal is hidden,
       // so the row stays hidden while `until` is in the future.
@@ -120,20 +132,32 @@ export function rankSignals(
       (a, b) =>
         b.severity_days * b.median_value - a.severity_days * a.median_value,
     )
-    .map((r) => ({
-      customerId: r.customer_id,
-      name: r.name_en,
-      medianGapDays: Math.round(r.median_gap_days),
-      daysSinceLast: r.days_since_last,
-      typicalValue: Math.round(r.median_value),
-      crmCompanyId: r.crm_company_id,
-      inCrm: !!r.crm_company_id,
-      evidence:
-        Math.round(r.median_gap_days) === 0
-          ? `Orders arrive in bursts — no clear cycle. Last order was ${r.days_since_last} days ago. Typical order value ${fmtBaht(r.median_value)}.`
-          : `Usually reorders every ~${Math.round(r.median_gap_days)} days. Last order was ${r.days_since_last} days ago. Typical order value ${fmtBaht(r.median_value)}.`,
-      suggestedAction: r.crm_company_id
-        ? 'Check current stock and ask about the next delivery.'
-        : 'Not yet in CRM — add as a company to track.',
-    }));
+    .map((r) => {
+      const gap = Math.round(r.median_gap_days);
+      const threshold = Math.round(r.threshold_days || r.median_gap_days);
+      const severity = Math.max(0, r.days_since_last - threshold);
+      return {
+        customerId: r.customer_id,
+        name: r.name_en,
+        medianGapDays: gap,
+        daysSinceLast: r.days_since_last,
+        thresholdDays: threshold,
+        severityDays: severity,
+        isOverdue: r.is_overdue,
+        orderCount: r.order_count,
+        matchConfidence: r.match_confidence,
+        typicalValue: Math.round(r.median_value),
+        crmCompanyId: r.crm_company_id,
+        inCrm: !!r.crm_company_id,
+        evidence:
+          gap === 0
+            ? `Orders arrive in bursts — no clear cycle. Last order was ${r.days_since_last} days ago. Typical order ${fmtBaht(r.median_value)}.`
+            : severity > 0
+              ? `Usually reorders every ~${gap} days — ${severity} days past that cycle. Last order ${r.days_since_last} days ago. Typical order ${fmtBaht(r.median_value)}.`
+              : `Usually reorders every ~${gap} days. Last order was ${r.days_since_last} days ago — still inside the cycle. Typical order ${fmtBaht(r.median_value)}.`,
+        suggestedAction: r.crm_company_id
+          ? 'Check current stock and ask about the next delivery.'
+          : 'Not yet in CRM — add as a company to track.',
+      };
+    });
 }

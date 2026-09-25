@@ -10,54 +10,27 @@
 
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import Link from 'next/link';
 import { useCrm } from '@/components/CrmProvider';
 import { Blob } from '@/components/blob';
 import { ArrowRight } from 'lucide-react';
-import {
-  fetchReorderSignalRows,
-  getReorderSignals,
-  type ReorderSignal,
-} from '@/lib/historical';
-import { fetchSignalDismissals, type DismissalMap } from '@/lib/signal-dismissals';
+import { getReorderSignals, type ReorderSignal } from '@/lib/historical';
+import { useReorderSignalData } from '@/hooks/useReorderSignals';
 
 export default function ReorderSignalsCard() {
   const { meetings, deals } = useCrm();
-  const [rows, setRows] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  // SSR-safe: seed empty, then hydrate from Supabase in an effect.
-  const [dismissed, setDismissed] = useState<DismissalMap>({});
-
-  useEffect(() => {
-    let active = true;
-    fetchSignalDismissals().then((map) => {
-      if (active) setDismissed(map);
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    fetchReorderSignalRows()
-      .then((r) => {
-        if (active) {
-          setRows(r);
-          setLoading(false);
-        }
-      })
-      .catch(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+  // Shared with /signals — same fetch + dismissal migration, one implementation.
+  const { rows, loading, dismissed } = useReorderSignalData();
 
   const signals = useMemo(
-    () => getReorderSignals(rows, meetings as any[], deals as any[], dismissed),
+    () =>
+      getReorderSignals(
+        rows,
+        meetings as unknown as Parameters<typeof getReorderSignals>[1],
+        deals as unknown as Parameters<typeof getReorderSignals>[2],
+        dismissed,
+      ),
     [rows, meetings, deals, dismissed],
   );
 

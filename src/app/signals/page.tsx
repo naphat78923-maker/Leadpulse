@@ -1,152 +1,39 @@
 'use client';
 
 // LeadPulse — Signals page (full ranked list of historical reorder signals).
-// Companion to the Home teaser card. Every dismiss/snooze shows an undo toast
-// so the action is always visible; state persists via lp_reorder_signal_dismiss.
+// Companion to the Home teaser card. Unlike Home this list is NOT CRM-gated:
+// historical buyers that aren't in the CRM yet are exactly what this page is
+// for (they're invisible everywhere else). Dismiss/Snooze always carry a
+// working undo window; state persists via signal_dismissals.
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useCrm } from '@/components/CrmProvider';
 import CompanyDetail from '@/components/CompanyDetail';
 import { Blob } from '@/components/blob';
 import { X, Clock, Loader2, Radar, Undo2 } from 'lucide-react';
-import {
-  fetchReorderSignalRows,
-  rankSignals,
-  type ReorderSignal,
-} from '@/lib/historical';
-import {
-  fetchSignalDismissals,
-  saveSignalDismissal,
-  restoreSignalDismissal,
-  PERMANENT_DISMISS,
-  type DismissalMap,
-} from '@/lib/signal-dismissals';
+import { useReorderSignals } from '@/hooks/useReorderSignals';
 import type { Contact } from '@/types/crm';
-
-// Legacy key from the pre-Supabase era — read once for migration, then removed.
-const DISMISS_KEY = 'lp_reorder_signal_dismiss';
-
-function loadDismissed(): DismissalMap {
-  try {
-    return JSON.parse(localStorage.getItem(DISMISS_KEY) || '{}');
-  } catch {
-    return {};
-  }
-}
-
-const SNOOZE_MS = 30 * 86400000;
-const UNDO_WINDOW_MS = 5000;
 
 const fmtBaht = (n: number) => '฿' + Math.round(n).toLocaleString('en-US');
 
+/** Median of a numeric list (0 when empty). Even counts average the middle two. */
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
 export default function SignalsPage() {
-  const { meetings, deals, companies, contacts } = useCrm();
-  const [rows, setRows] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  // SSR-safe: seed empty, then hydrate from Supabase in an effect.
-  const [dismissed, setDismissed] = useState<DismissalMap>({});
+  const { companies, contacts } = useCrm();
+  const { signals, loading, toast, hide, undo } = useReorderSignals({ includeUnlinked: true });
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ signal: ReorderSignal; snooze: boolean } | null>(null);
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      const remote = await fetchSignalDismissals();
-      if (!active) return;
-      // One-time migration: pull any pre-Supabase localStorage entries up.
-      // Only fills gaps — never clobbers a newer server value. Removes the
-      // legacy key afterwards so this runs once per browser.
-      const legacy = loadDismissed();
-      const legacyKeys = Object.keys(legacy);
-      if (legacyKeys.length > 0) {
-        let merged = { ...remote };
-        for (const id of legacyKeys) {
-          if (!(id in merged)) merged[id] = legacy[id];
-        }
-        setDismissed(merged);
-        await Promise.all(
-          legacyKeys
-            .filter((id) => !(id in remote))
-            .map((id) => saveSignalDismissal(id, legacy[id])),
-        );
-        try {
-          localStorage.removeItem(DISMISS_KEY);
-        } catch {}
-      } else {
-        setDismissed(remote);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    fetchReorderSignalRows()
-      .then((r) => {
-        if (active) {
-          setRows(r);
-          setLoading(false);
-        }
-      })
-      .catch(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (toastTimer.current) clearTimeout(toastTimer.current);
-    };
-  }, []);
-
-  const signals = useMemo(
-    () => rankSignals(rows, meetings as any[], deals as any[], dismissed),
-    [rows, meetings, deals, dismissed],
-  );
-
-  const valueAtStake = useMemo(
-    () => signals.reduce((sum, s) => sum + s.typicalValue, 0),
-    [signals],
-  );
-
-  function hideSignal(signal: ReorderSignal, snooze: boolean) {
-    // Optimistic update first (UI reacts instantly), then persist.
-    const prevEntry = dismissed[signal.customerId];
-    const next = {
-      ...dismissed,
-      [signal.customerId]: snooze ? Date.now() + SNOOZE_MS : PERMANENT_DISMISS,
-    };
-    setDismissed(next);
-    saveSignalDismissal(signal.customerId, next[signal.customerId]);
-
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    setToast({ signal, snooze });
-    toastTimer.current = setTimeout(() => setToast(null), UNDO_WINDOW_MS);
-
-    return async () => {
-      // undo closure — restore previous value (or delete the row if none)
-      await restoreSignalDismissal(signal.customerId, prevEntry);
-      setDismissed((current) => {
-        // Drop our entry only if nothing newer replaced it meanwhile.
-        if (current[signal.customerId] !== next[signal.customerId]) return current;
-        const restored = { ...current };
-        if (prevEntry === undefined) delete restored[signal.customerId];
-        else restored[signal.customerId] = prevEntry;
-        return restored;
-      });
-      if (toastTimer.current) clearTimeout(toastTimer.current);
-      setToast(null);
-    };
-  }
+  const unlinkedCount = useMemo(() => signals.filter((s) => !s.inCrm).length, [signals]);
+  const medianValue = useMemo(() => median(signals.map((s) => s.typicalValue)), [signals]);
 
   const activeCompany = useMemo(
-    () => companies.find((c: any) => c.id === selectedCompanyId) || null,
+    () => companies.find((c) => c.id === selectedCompanyId) || null,
     [companies, selectedCompanyId],
   );
   const companyContacts = useMemo(
@@ -178,38 +65,35 @@ export default function SignalsPage() {
         </div>
       </div>
 
-      {/* KPI strip */}
-      {!loading && (
-        <div className="grid grid-cols-2 gap-3 mb-5">
-          <div className="bg-clay-card border border-clay-hairline rounded-xl p-4 clay-card">
-            <div className="flex items-center gap-1.5 mb-2 text-clay-lavender">
-              <Radar className="w-4 h-4" />
-              <span className="text-xs font-medium">Due for revisit</span>
-            </div>
-            <p className="text-xl font-bold text-clay-ink tracking-tight">{signals.length}</p>
-            <p className="text-[11px] text-clay-muted-soft mt-0.5">accounts past their usual cycle</p>
+      {/* KPI strip — both numbers describe the list below, nothing inferred */}
+      <div className="grid grid-cols-2 gap-3 mb-5">
+        <div className="bg-clay-card border border-clay-hairline rounded-xl p-4 clay-card">
+          <div className="flex items-center gap-1.5 mb-2 text-clay-lavender">
+            <Radar className="w-4 h-4" />
+            <span className="text-xs font-medium">Waiting on you</span>
           </div>
-          <div className="bg-clay-card border border-clay-hairline rounded-xl p-4 clay-card">
-            <div className="flex items-center gap-1.5 mb-2 text-clay-mint">
-              <Clock className="w-4 h-4" />
-              <span className="text-xs font-medium">Typical value</span>
-            </div>
-            <p className="text-xl font-bold text-clay-ink tracking-tight">{fmtBaht(valueAtStake)}</p>
-            <p className="text-[11px] text-clay-muted-soft mt-0.5">combined order value at stake</p>
-          </div>
+          <p className="text-xl font-bold text-clay-ink tracking-tight">{signals.length}</p>
+          <p className="text-[11px] text-clay-muted-soft mt-0.5">
+            {unlinkedCount > 0 ? `${unlinkedCount} not in the CRM yet` : 'not dismissed or snoozed'}
+          </p>
         </div>
-      )}
+        <div className="bg-clay-card border border-clay-hairline rounded-xl p-4 clay-card">
+          <div className="flex items-center gap-1.5 mb-2 text-clay-mint">
+            <Clock className="w-4 h-4" />
+            <span className="text-xs font-medium">Median order value</span>
+          </div>
+          <p className="text-xl font-bold text-clay-ink tracking-tight">{fmtBaht(medianValue)}</p>
+          <p className="text-[11px] text-clay-muted-soft mt-0.5">per order, across these accounts</p>
+        </div>
+      </div>
+
 
       {/* Signal list */}
       {signals.length === 0 ? (
         <div className="text-center py-16 bg-white dark:bg-clay-card rounded-xl border border-clay-hairline">
           <div className="relative mx-auto mb-4 w-24 h-24">
             <div className="absolute inset-0 rounded-full bg-clay-lavender/15" />
-            <Blob
-              state="sleep"
-              size={88}
-              aria-label="No signals mascot"
-            />
+            <Blob state="sleep" size={88} aria-label="No signals mascot" />
           </div>
           <p className="text-sm font-medium text-clay-ink mb-1">No signals right now</p>
           <p className="text-xs text-clay-muted px-8">
@@ -218,41 +102,65 @@ export default function SignalsPage() {
         </div>
       ) : (
         <ul className="space-y-3">
-          {signals.map((s) => (
-            <li
-              key={s.customerId}
-              className="rounded-xl bg-white dark:bg-clay-card border border-clay-hairline p-3.5"
-            >
-              <div className="flex items-start gap-2">
-                <button
-                  onClick={() => s.crmCompanyId && setSelectedCompanyId(s.crmCompanyId)}
-                  className="flex-1 min-w-0 text-left active:opacity-70"
-                >
+          {signals.map((s) => {
+            const body = (
+              <>
+                <div className="flex items-center gap-2 min-w-0">
                   <p className="text-sm font-medium text-clay-ink truncate">{s.name}</p>
-                  <p className="text-xs text-clay-muted mt-0.5">{s.evidence}</p>
-                  <p className="text-xs font-semibold text-clay-body mt-1">{s.suggestedAction}</p>
-                </button>
-                <div className="flex flex-col gap-1 shrink-0">
-                  <button
-                    onClick={() => hideSignal(s, false)}
-                    aria-label={`Dismiss ${s.name}`}
-                    className="w-9 h-9 rounded-lg border border-clay-hairline flex items-center justify-center text-clay-muted hover:text-clay-error transition-colors"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => hideSignal(s, true)}
-                    aria-label={`Snooze ${s.name} for 30 days`}
-                    className="w-9 h-9 rounded-lg border border-clay-hairline flex items-center justify-center text-clay-muted hover:text-clay-ochre transition-colors"
-                  >
-                    <Clock className="w-4 h-4" />
-                  </button>
+                  {!s.inCrm && (
+                    <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-clay-ochre/15 text-clay-ochre">
+                      Not in CRM
+                    </span>
+                  )}
+                  {s.severityDays > 0 && (
+                    <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-clay-coral/15 text-clay-coral">
+                      {s.severityDays}d past cycle
+                    </span>
+                  )}
                 </div>
-              </div>
-            </li>
-          ))}
+                <p className="text-xs text-clay-muted mt-0.5">{s.evidence}</p>
+                <p className="text-xs font-semibold text-clay-body mt-1">{s.suggestedAction}</p>
+              </>
+            );
+            return (
+              <li
+                key={s.customerId}
+                className="rounded-xl bg-white dark:bg-clay-card border border-clay-hairline p-3.5"
+              >
+                <div className="flex items-start gap-2">
+                  {s.crmCompanyId ? (
+                    <button
+                      onClick={() => setSelectedCompanyId(s.crmCompanyId)}
+                      className="flex-1 min-w-0 text-left active:opacity-70"
+                    >
+                      {body}
+                    </button>
+                  ) : (
+                    <div className="flex-1 min-w-0">{body}</div>
+                  )}
+                  <div className="flex flex-col gap-1 shrink-0">
+                    <button
+                      onClick={() => hide(s, false)}
+                      aria-label={`Dismiss ${s.name}`}
+                      className="w-9 h-9 rounded-lg border border-clay-hairline flex items-center justify-center text-clay-muted hover:text-clay-error transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => hide(s, true)}
+                      aria-label={`Snooze ${s.name} for 30 days`}
+                      className="w-9 h-9 rounded-lg border border-clay-hairline flex items-center justify-center text-clay-muted hover:text-clay-ochre transition-colors"
+                    >
+                      <Clock className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
+
 
       {/* Company detail panel */}
       {activeCompany && (
@@ -260,12 +168,12 @@ export default function SignalsPage() {
           company={activeCompany}
           onClose={() => setSelectedCompanyId(null)}
           onSaved={() => {}}
-          contacts={contacts as any}
-          companyContacts={companyContacts as any}
+          contacts={contacts as unknown as Contact[]}
+          companyContacts={companyContacts}
         />
       )}
 
-      {/* Undo toast */}
+      {/* Undo toast — the button calls the undo closure captured by the hook */}
       {toast && (
         <div className="fixed bottom-20 lg:bottom-6 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-sm">
           <div className="bg-clay-ink text-clay-canvas rounded-full pl-4 pr-2 py-2 shadow-lg flex items-center gap-2">
@@ -273,7 +181,7 @@ export default function SignalsPage() {
               {toast.snooze ? 'Snoozed 30 days' : 'Dismissed'} · {toast.signal.name}
             </span>
             <button
-              onClick={() => hideSignal(toast.signal, toast.snooze)()}
+              onClick={undo}
               className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full bg-clay-canvas/10 hover:bg-clay-canvas/20 transition-colors min-h-[36px]"
             >
               <Undo2 className="w-3.5 h-3.5" /> Undo
