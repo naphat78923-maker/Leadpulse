@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { Company, Deal } from '@/types/crm';
 import LayaScoreCard from './LayaScoreCard';
+import { bangkokDateKey } from '@/utils/format';
 
 const deal: Deal = {
   id: 'deal-buyer-reply',
@@ -16,7 +17,9 @@ const deal: Deal = {
   priority: 'medium',
   next_action: null,
   draft_primary_ask: null,
-  followup_date: '2026-09-24',
+  // Business "today" (Asia/Bangkok) — not a hardcoded date, so this assertion
+  // can't rot into "overdue" the way a fixed calendar date does.
+  followup_date: bangkokDateKey(),
   last_outcome: 'Prior rep note: requested price',
   buyer_reply: 'Please send us a quotation for 20 kg.',
   nudge_count: 0,
