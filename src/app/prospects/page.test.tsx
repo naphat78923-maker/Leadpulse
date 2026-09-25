@@ -11,7 +11,10 @@ import { cleanup, render, screen, fireEvent } from '@testing-library/react';
 
 // This repo's vitest setup does not auto-clean between tests (existing component
 // tests call cleanup explicitly), so repeated renders stack in the DOM otherwise.
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const crm = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 
@@ -321,5 +324,51 @@ describe('Prospects review queue', () => {
     expect(screen.getByText(/Candidates per archetype/i)).toBeTruthy();
     expect(screen.getByText(/Review counts/i)).toBeTruthy();
     expect(screen.getByText(/highest match score first/i)).toBeTruthy();
+  });
+
+  it('opens the Laya terminal from a candidate row, prefills it, and never scores automatically', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    setCrm({
+      companies: [candidate],
+      deals: [
+        {
+          id: 'deal-1',
+          title: 'Butter · Bakery',
+          stage: 'contacted',
+          product: 'Butter',
+          client: 'Green Bowl',
+          company_id: 'c1',
+          contact_ids: [],
+          value: null,
+          priority: 'medium',
+          next_action: null,
+          draft_primary_ask: null,
+          followup_date: null,
+          last_outcome: null,
+          buyer_reply: 'Please send us a quotation for 20 kg.',
+          nudge_count: 0,
+          workflow_action: null,
+          nudge_stage: null,
+          sample_status: null,
+          created_at: '2026-09-01T00:00:00Z',
+          updated_at: '2026-09-01T00:00:00Z',
+        },
+      ],
+    });
+    render(<ProspectsPage />);
+
+    // Expand the candidate, then hand its buyer text to the terminal.
+    fireEvent.click(await screen.findByRole('button', { name: /Green Bowl/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Open in terminal' }));
+
+    // The terminal expands at the top of the page with the builder's own state
+    // sentence in the box, focused — and no worker call has been made.
+    const textarea = (await screen.findByLabelText('State input')) as HTMLTextAreaElement;
+    expect(textarea.value).toContain('We supply Butter');
+    expect(textarea.value).toContain('Please send us a quotation for 20 kg.');
+    expect(document.activeElement).toBe(textarea);
+    expect(screen.getByRole('button', { name: 'Laya terminal' }).getAttribute('aria-expanded')).toBe('true');
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

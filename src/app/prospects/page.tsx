@@ -47,6 +47,7 @@ import { loadProspectReviews, type ProspectReviewRow, type ReviewsLoad } from '@
 import type { Company, Deal } from '@/types/crm';
 import LayaLeadTierBadge from '@/components/LayaLeadTierBadge';
 import LayaBuyerSignalsSection from '@/components/LayaBuyerSignalsSection';
+import { LayaTerminal, LayaTerminalOpenButton, type LayaTerminalPrefill } from '@/components/LayaTerminal';
 import { bestLeadSignal, type LeadSignal } from '@/utils/lead-scoring';
 import {
   decisionSpec,
@@ -143,6 +144,7 @@ function CandidateDetail({
   layaDeals,
   company,
   onReviewChanged,
+  onOpenTerminal,
 }: {
   fit: ProspectFit;
   evidenceContacts: ReviewContact[];
@@ -153,6 +155,7 @@ function CandidateDetail({
   layaDeals: Deal[];
   company: Company | undefined;
   onReviewChanged: () => Promise<void> | void;
+  onOpenTerminal: (prefill: LayaTerminalPrefill) => void;
 }) {
   return (
     <div className="border-t border-clay-hairline bg-clay-canvas px-4 py-4 text-sm">
@@ -298,6 +301,10 @@ function CandidateDetail({
           scored on demand only (this section never triggers a model call). */}
       <LayaBuyerSignalsSection deals={layaDeals} companyFor={() => company} />
 
+      {/* Prefills the top-of-page terminal with this account's buyer text —
+          opens and focuses the box, but never scores (explicit action only). */}
+      <LayaTerminalOpenButton deals={layaDeals} onOpen={onOpenTerminal} />
+
       {/* The saved review. Keyed by company so one account's draft can never be saved
           onto another when the user expands a different candidate. */}
       <ProspectReviewPanel
@@ -424,6 +431,9 @@ export default function ProspectsPage() {
   const [reviewsError, setReviewsError] = useState<string | null>(null);
   const [reviewsMissingTable, setReviewsMissingTable] = useState(false);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  // A row's "Open in terminal" hands the terminal a fresh prefill object; the
+  // terminal treats each one as a deliberate snapshot (no auto-rescoring).
+  const [terminalPrefill, setTerminalPrefill] = useState<LayaTerminalPrefill | null>(null);
 
   const input = useMemo(
     () => ({ companies, deals, meetings, events: accountEvents, contacts }),
@@ -560,6 +570,10 @@ export default function ProspectsPage() {
           <Info className="mt-0.5 w-3.5 h-3.5 shrink-0" />
           <span>{CAUTION}</span>
         </p>
+
+        {/* Laya terminal — collapsed by default; candidate rows can prefill its
+            state box, but a score only ever happens on an explicit Run. */}
+        <LayaTerminal prefill={terminalPrefill} />
 
         {/* Loading. The list is deliberately NOT rendered until the first load settles:
             a candidate list built from partially loaded data would understate the pipeline. */}
@@ -735,6 +749,7 @@ export default function ProspectsPage() {
                             layaDeals={deals.filter((d) => d.company_id === f.company_id)}
                             company={companies.find((c) => c.id === f.company_id)}
                             onReviewChanged={handleReviewChanged}
+                            onOpenTerminal={setTerminalPrefill}
                           />
                         )}
                       </li>

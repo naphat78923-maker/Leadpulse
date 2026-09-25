@@ -55,6 +55,11 @@ const BUYER_RESPONSE_QUESTION: LayaBuyerResponseInput['questions'] = {
   },
 };
 
+// The same frozen object, exported for the Laya terminal UI: it needs the
+// exact question to build a /score body (and to render in its Questions pane)
+// before any deal exists to derive it from. Same bytes as the constant above.
+export const LAYA_BUYER_FROZEN_QUESTIONS: LayaBuyerResponseInput['questions'] = BUYER_RESPONSE_QUESTION;
+
 /**
  * Small sentence-form state for the narrow buyer-response question.
  *
