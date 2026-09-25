@@ -105,7 +105,7 @@ describe('deal_amount question parity', () => {
   it('the ordered bucket list is byte-identical in TypeScript and Python', () => {
     expect(criteriaList(rulesDealDef)).toEqual(criteriaList(workerDealDef));
     expect(criteriaList(rulesDealDef)).toEqual([
-      '0-2500', '2501-5000', '5001-15000', '15001-35000', '35001-50000', '50000+', 'no amount stated',
+      '0-2500', '2501-5000', '5001-15000', '15001-35000', '35001-50000', '50001+', 'no amount stated',
     ]);
   });
 

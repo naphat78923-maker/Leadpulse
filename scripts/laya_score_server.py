@@ -59,7 +59,7 @@ DEAL_AMOUNT_QUESTION = {"deal_amount": {
         "5001-15000",
         "15001-35000",
         "35001-50000",
-        "50000+",
+        "50001+",
         "no amount stated",
     ],
 }}
