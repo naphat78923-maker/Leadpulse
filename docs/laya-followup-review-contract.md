@@ -185,7 +185,7 @@ Successful response shape:
 
 **Illustrative example only:** the numbers above are not model output or an accuracy claim. At runtime, `scored_input.state` and `scored_input.questions` contain the exact state and fixed questions used. `usage.input_tokens` totals the prepared tokens across questions; the model limit applies to each fully encoded question, including its instructions and options. Multiple questions are processed in batches; do not assume parallel execution. The `action.act_probability` field is a native Laya field, not a user action or send authorization.
 
-The bridge validates that all expected answers are present and typed correctly; labels, numeric ranges, legends, probability keys and sums, Score/distribution consistency, Noul confidence consistency, and usage fields are valid. Any missing or invalid answer rejects the entire review; partial reviews are not returned.
+The bridge validates that all expected answers are present and typed correctly, with exact native answer fields (unknown fields are rejected); labels, numeric ranges, legends, probability keys and sums, Choice winner/distribution consistency, Score/distribution consistency, Noul confidence consistency, and usage fields are valid. The Choice check tolerates one four-decimal rounding unit (`0.0001`). Any missing or invalid answer rejects the entire review; partial reviews are not returned. JSON serialization disallows NaN and Infinity. Health metadata and input preflight share the effective-limit calculation, including the native default of 512 when `cfg.max_len` is absent.
 
 ## Health metadata
 
