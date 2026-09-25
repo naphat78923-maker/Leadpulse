@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
-import { LayoutDashboard, Users, Building2, Kanban, Calendar, Activity, Zap, Menu, X, Bell, HeartPulse, Radar, Target } from 'lucide-react';
+import { LayoutDashboard, Users, Building2, Kanban, Calendar, Activity, Zap, Menu, X, HeartPulse, Radar, Target } from 'lucide-react';
 import clsx from 'clsx';
 import { useTheme } from '@/components/ThemeProvider';
 import { drawerVariants, overlayVariants, tweenBase, tweenFast } from '@/lib/motion';
@@ -19,7 +19,6 @@ const navItems = [
   { href: '/meetings', label: 'Meetings', icon: Calendar },
   { href: '/retention', label: 'Retention', icon: HeartPulse },
   { href: '/signals', label: 'Signals', icon: Radar },
-  { href: '/nudges', label: 'Nudges', icon: Bell },
 ];
 
 export default function Sidebar() {

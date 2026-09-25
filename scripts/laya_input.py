@@ -32,9 +32,14 @@ class InputRejected(ValueError):
         }
 
 
+def effective_input_limit(agent) -> int:
+    """Respect both the native prompt default and the exported collate shape cap."""
+    return min(agent.shape['max_length'], agent.cfg.get('max_len', 512))
+
+
 def check_input_budget(agent, state: Any, questions: dict) -> None:
     tok = agent.tok
-    limit = min(agent.shape['max_length'], agent.cfg.get('max_len', 512))
+    limit = effective_input_limit(agent)
     state_ids = tok(serialize_state(state), add_special_tokens=False)['input_ids']
     complete = []
     for definition in questions.values():

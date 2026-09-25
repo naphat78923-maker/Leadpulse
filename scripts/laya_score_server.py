@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import laya_coreml as laya
-from laya_input import InputRejected, check_input_budget, has_explicit_contact_opt_out
+from laya_input import InputRejected, check_input_budget, effective_input_limit, has_explicit_contact_opt_out
 
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("LAYA_SCORE_PORT", "8765"))
@@ -142,7 +142,7 @@ def add_cors_headers(handler: BaseHTTPRequestHandler) -> None:
 
 
 def json_response(handler: BaseHTTPRequestHandler, status: HTTPStatus, payload: dict[str, Any]) -> None:
-    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    body = json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8")
     handler.send_response(status)
     add_cors_headers(handler)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
@@ -164,7 +164,7 @@ MODEL_IDENTITY = {
     "package_sha256": manifest["package_sha256"],
     "engine": MODEL_ENGINE,
 }
-EFFECTIVE_INPUT_LIMIT = min(AGENT.shape["max_length"], AGENT.cfg.get("max_len", AGENT.shape["max_length"]))
+EFFECTIVE_INPUT_LIMIT = effective_input_limit(AGENT)
 
 
 def validate_review_request(payload: Any) -> dict[str, Any]:
@@ -239,9 +239,17 @@ def validate_review_result(result: Any) -> tuple[dict[str, Any], dict[str, int]]
         raise ValueError("Missing review answer")
 
     choice_labels = set(FOLLOWUP_REVIEW_QUESTIONS["primary_ask_alignment"]["criteria"])
+    native_fields = {
+        "choice": {"type", "confidence", "action", "choice", "probabilities"},
+        "score": {"type", "confidence", "action", "score", "legend", "probabilities"},
+        "noul": {"type", "confidence", "action", "noul"},
+    }
     for key, answer in answers.items():
-        if not isinstance(answer, dict) or answer.get("type") != FOLLOWUP_REVIEW_QUESTIONS[key]["type"]:
+        expected_type = FOLLOWUP_REVIEW_QUESTIONS[key]["type"]
+        if not isinstance(answer, dict) or answer.get("type") != expected_type:
             raise ValueError("Invalid review answer type")
+        if set(answer) != native_fields[expected_type]:
+            raise ValueError("Invalid review answer fields")
         if not _finite_unit_interval(answer.get("confidence")):
             raise ValueError("Invalid review confidence")
         _validate_action(answer)
@@ -250,6 +258,10 @@ def validate_review_result(result: Any) -> tuple[dict[str, Any], dict[str, int]]
     if choice.get("choice") not in choice_labels:
         raise ValueError("Invalid alignment label")
     _validate_probabilities(choice.get("probabilities"), choice_labels)
+    # Native probabilities are rounded to four decimals; tolerate one rounding unit.
+    winner_probability = choice["probabilities"][choice["choice"]]
+    if max(choice["probabilities"].values()) > winner_probability + 0.0001:
+        raise ValueError("Choice does not match its distribution")
 
     score = answers["ask_clarity"]
     score_probabilities = score.get("probabilities")

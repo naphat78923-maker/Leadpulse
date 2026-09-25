@@ -70,7 +70,7 @@ console.log(JSON.stringify({
         self.agent.predict.reset_mock()
 
     def test_launcher_defaults_to_downloaded_1024_token_model(self):
-        with tempfile.TemporaryDirectory(dir=str(Path.home() / '.hermes/cache/scratch')) as directory:
+        with tempfile.TemporaryDirectory(dir=str(Path('/Users/pat/.hermes/profiles/ebimaru/cache/scratch'))) as directory:
             probe = Path(directory) / 'fake-python'
             probe.write_text('#!/bin/sh\nprintf "%s\\n" "$LAYA_COREML_MODEL_PATH"\n')
             probe.chmod(0o700)
@@ -250,6 +250,45 @@ console.log(JSON.stringify({
         finally:
             self.agent.predict.return_value = original
 
+    def test_json_response_rejects_nonfinite_numbers_before_writing_headers(self):
+        for value in (float('nan'), float('inf'), float('-inf')):
+            with self.subTest(value=value):
+                handler = Mock()
+                handler.wfile = io.BytesIO()
+                with self.assertRaises(ValueError):
+                    self.server.json_response(handler, 200, {'nested': {'value': value}})
+                handler.send_response.assert_not_called()
+                self.assertEqual(handler.wfile.getvalue(), b'')
+
+    def test_review_choice_winner_matches_distribution_with_rounding_tolerance(self):
+        for probabilities, expected_status in (
+            ({'aligned': 0.04, 'different_ask': 0.9, 'multiple_asks': 0.03, 'unclear': 0.03}, 422),
+            ({'aligned': 0.4499, 'different_ask': 0.4501, 'multiple_asks': 0.05, 'unclear': 0.05}, 422),
+            ({'aligned': 0.45, 'different_ask': 0.4501, 'multiple_asks': 0.05, 'unclear': 0.0499}, 200),
+            ({'aligned': 0.45, 'different_ask': 0.45, 'multiple_asks': 0.05, 'unclear': 0.05}, 200),
+        ):
+            with self.subTest(probabilities=probabilities):
+                result = self.review_result()
+                result['answers']['primary_ask_alignment']['probabilities'] = probabilities
+                with patch.object(self.agent, 'predict', Mock(return_value=result)):
+                    status, data = self.post(self.review_payload(), path='/review')
+                self.assertEqual(status, expected_status)
+                if expected_status == 422:
+                    self.assertNotIn('answers', data)
+                else:
+                    self.assertEqual(data['answers'], result['answers'])
+
+    def test_review_rejects_unexpected_native_answer_fields(self):
+        for key in self.review_result()['answers']:
+            for value in ('unexpected', float('nan')):
+                with self.subTest(answer=key, value=value):
+                    result = self.review_result()
+                    result['answers'][key]['extra'] = value
+                    with patch.object(self.agent, 'predict', Mock(return_value=result)):
+                        status, data = self.post(self.review_payload(), path='/review')
+                    self.assertEqual(status, 422)
+                    self.assertEqual(data, {'error': 'Laya returned an invalid draft review'})
+
     def test_review_model_failure_and_busy_worker_are_sanitized(self):
         original_side_effect = self.agent.predict.side_effect
         try:
@@ -314,6 +353,39 @@ console.log(JSON.stringify({
         self.assertEqual(respond.call_args.args[2]['model'], self.server.MODEL_IDENTITY)
         self.assertEqual(respond.call_args.args[2]['effective_input_limit'], self.server.EFFECTIVE_INPUT_LIMIT)
         self.assertEqual(respond.call_args.args[2]['supported_review_schemas'], ['followup_review_v1'])
+
+    def test_missing_max_len_uses_native_512_default_for_health_and_preflight(self):
+        cfg = {key: value for key, value in self.agent.cfg.items() if key != 'max_len'}
+        spec = importlib.util.spec_from_file_location('laya_fallback_limit_test', ROOT / 'scripts/laya_score_server.py')
+        assert spec is not None and spec.loader is not None
+        server = importlib.util.module_from_spec(spec)
+        with patch.object(self.agent, 'cfg', cfg), patch.object(self.agent, 'shape', {**self.agent.shape, 'max_length': 1024}):
+            with patch.dict(os.environ, {'LAYA_COREML_MODEL_PATH': str(MODEL)}), patch('laya_coreml.load', return_value=self.agent):
+                spec.loader.exec_module(server)
+            handler = server.LayaScoreHandler.__new__(server.LayaScoreHandler)
+            handler.headers = Message()
+            handler.headers['Host'] = f'{server.HOST}:{server.PORT}'
+            handler.path = '/health'
+            with patch.object(server, 'json_response') as respond:
+                handler.do_GET()
+            self.assertEqual(respond.call_args.args[2]['effective_input_limit'], 512)
+            self.assertEqual(server.EFFECTIVE_INPUT_LIMIT, 512)
+            questions = {'check': {'type': 'choice', 'instructions': 'Choose.', 'criteria': {'yes': 'yes', 'no': 'no'}}}
+            prepared, _ = self.agent.prepare('', questions)
+            overhead = len(prepared[0]['ids'])
+            for limit in (96, 512):
+                with patch.object(self.agent, 'shape', {**self.agent.shape, 'max_length': limit}):
+                    for count in (limit - 1, limit, limit + 1):
+                        with self.subTest(limit=limit, count=count):
+                            state = 'yes ' * (count - overhead)
+                            if count <= limit:
+                                server.check_input_budget(self.agent, state, questions)
+                            else:
+                                with self.assertRaises(server.InputRejected) as raised:
+                                    server.check_input_budget(self.agent, state, questions)
+                                self.assertEqual(raised.exception.payload['token_limit'], limit)
+                                self.assertEqual(raised.exception.payload['input_tokens'], count)
+            self.agent.predict.assert_not_called()
 
     def test_retained_ane_bundle_uses_cpu_ne_on_rollback(self):
         ane_manifest = json.loads((Path.home() / 'laya-coreml/models/ane/coreml_config.json').read_text())
