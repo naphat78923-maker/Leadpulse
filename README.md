@@ -57,7 +57,7 @@ npm run dev        # http://localhost:3000
 ```bash
 npm run dev     # dev server
 npm run build   # production build
-npm run test    # vitest run (44 suites)
+npm run test    # vitest run (57 suites)
 npm run lint    # eslint
 npm run laya:serve  # local Laya worker for lead recommendations
 ```
@@ -118,8 +118,13 @@ notes still need human review. A negated phrase such as "did not request no
 contact" may also be refused for manual review rather than interpreted as
 permission. No Laya output authorizes outreach.
 
-**Judgment scope:** only `Choice` is active: attention advice, not purchase odds,
-qualification or contact authorization. `Noul` is deferred until a narrow evidence
+**Judgment scope:** two frozen questions are active. Buyer-response `Choice` gives
+attention advice, not purchase odds, qualification or contact authorization. Deal-amount
+`Score` (six ordered ฿ buckets plus an honest "no amount stated" bucket) runs only in the
+/prospects terminal, one inference pass alongside buyer-response; the card never asks it. The
+deal-amount question ships contract-tested but not accuracy-evaluated — buyer-response's 8/8
+numbers came from `scripts/eval_results/2026-09-23-buyer-response-eval-report.md`, which has no
+deal-amount counterpart yet. `Noul` is deferred until a narrow evidence
 question is useful; missing evidence must not be presented as a negative finding.
 The ordered `Score`/sales-readiness proposal is deferred to avoid duplicating deal
 stage. The card labels percentages as option probabilities and does not manufacture

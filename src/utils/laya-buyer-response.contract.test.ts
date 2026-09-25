@@ -8,7 +8,11 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildLayaBuyerResponseInput } from './laya-buyer-response';
+import {
+  buildLayaBuyerResponseInput,
+  LAYA_ALL_FROZEN_QUESTIONS,
+  LAYA_BUYER_FROZEN_QUESTIONS,
+} from './laya-buyer-response';
 
 const RULES_PATH = join(__dirname, 'laya-buyer-response.ts');
 const WORKER_PATH = join(__dirname, '../../scripts/laya_score_server.py');
@@ -20,6 +24,8 @@ const workerSource = readFileSync(WORKER_PATH, 'utf8');
 // contain `type`/`instructions` keys that must not be matched.
 const rulesDef = rulesSource.slice(rulesSource.indexOf('const BUYER_RESPONSE_QUESTION'));
 const workerDef = workerSource.slice(workerSource.indexOf('BUYER_RESPONSE_QUESTION = '));
+const rulesDealDef = rulesSource.slice(rulesSource.indexOf('const DEAL_AMOUNT_QUESTION'));
+const workerDealDef = workerSource.slice(workerSource.indexOf('DEAL_AMOUNT_QUESTION = '));
 
 const PAIR = (key: string) =>
   new RegExp(`"?${key}"?\\s*:\\s*(?:"((?:[^"\\\\]|\\\\.)*)"|'((?:[^'\\\\]|\\\\.)*)')`);
@@ -41,6 +47,19 @@ function criteriaPairs(text: string): Array<[string, string]> {
   return [...text.slice(open + 1, close).matchAll(
     /"?([A-Za-z_][A-Za-z0-9_]*)"?\s*:\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')/g,
   )].map(([, key, double, single]) => [key, double ?? single]);
+}
+
+/** Ordered items of the list-form `criteria: [ ... ]` used by score questions. */
+function criteriaList(text: string): string[] {
+  const start = text.search(/"?criteria"?\s*:\s*\[/);
+  expect(start, 'criteria list not found').toBeGreaterThan(-1);
+  const open = text.indexOf('[', start);
+  const close = text.indexOf(']', open);
+  expect(open, 'criteria list not opened').toBeGreaterThan(-1);
+  expect(close, 'criteria list not closed').toBeGreaterThan(-1);
+  return [...text.slice(open + 1, close).matchAll(
+    /"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'/g,
+  )].map(([, double, single]) => double ?? single);
 }
 
 describe('TS ↔ Python worker prompt parity', () => {
@@ -72,8 +91,37 @@ describe('TS ↔ Python worker prompt parity', () => {
       .toEqual(Object.entries(built.questions.buyer_response.criteria));
   });
 
-  it('the worker only accepts this one question shape', () => {
-    expect(workerSource).toContain('ALLOWED_QUESTIONS = (BUYER_RESPONSE_QUESTION,)');
+  it('the worker only accepts the buyer-only or combined frozen question set', () => {
+    expect(workerSource).toContain(
+      'ALLOWED_QUESTIONS = (BUYER_RESPONSE_QUESTION, ALL_FROZEN_QUESTIONS)',
+    );
+    expect(workerSource).toContain(
+      'ALL_FROZEN_QUESTIONS = {**BUYER_RESPONSE_QUESTION, **DEAL_AMOUNT_QUESTION}',
+    );
+  });
+});
+
+describe('deal_amount question parity', () => {
+  it('the ordered bucket list is byte-identical in TypeScript and Python', () => {
+    expect(criteriaList(rulesDealDef)).toEqual(criteriaList(workerDealDef));
+    expect(criteriaList(rulesDealDef)).toEqual([
+      '0-2500', '2501-5000', '5001-15000', '15001-35000', '35001-50000', '50000+', 'no amount stated',
+    ]);
+  });
+
+  it('type and instructions match the worker', () => {
+    expect(field(rulesDealDef, 'type')).toBe('score');
+    for (const key of ['type', 'instructions']) {
+      expect(field(rulesDealDef, key), key).toBe(field(workerDealDef, key));
+    }
+  });
+
+  it('the exported combined payload is buyer_response + deal_amount, in worker order', () => {
+    expect(Object.keys(LAYA_ALL_FROZEN_QUESTIONS)).toEqual(['buyer_response', 'deal_amount']);
+    expect(LAYA_ALL_FROZEN_QUESTIONS.buyer_response).toBe(LAYA_BUYER_FROZEN_QUESTIONS.buyer_response);
+    expect(criteriaList(rulesDealDef)).toEqual(
+      Object.values(LAYA_ALL_FROZEN_QUESTIONS.deal_amount.criteria),
+    );
   });
 });
 

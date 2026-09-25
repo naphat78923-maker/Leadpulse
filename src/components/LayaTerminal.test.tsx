@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { Deal } from '@/types/crm';
-import { buildLayaBuyerResponseInput } from '@/utils/laya-buyer-response';
+import { buildLayaBuyerResponseInput, LAYA_ALL_FROZEN_QUESTIONS } from '@/utils/laya-buyer-response';
 import { LayaTerminal, LayaTerminalOpenButton, type LayaTerminalPrefill } from './LayaTerminal';
 
 const deal: Deal = {
@@ -28,10 +28,23 @@ const deal: Deal = {
   updated_at: '2026-09-01T00:00:00Z',
 };
 
+// Exactly what the prefill hands the terminal: buyer text plus the recorded
+// value for the deal-amount question.
 const built = buildLayaBuyerResponseInput({
-  deal: { product: deal.product, buyer_reply: deal.buyer_reply },
+  deal: { product: deal.product, buyer_reply: deal.buyer_reply, value: deal.value },
+  includeDealValue: true,
 })!;
 
+const dealAmountLegend = Object.fromEntries(
+  LAYA_ALL_FROZEN_QUESTIONS.deal_amount.criteria.map((bucket, index) => [String(index), bucket]),
+);
+
+const buyerProbabilities = {
+  requested_next_step: 0.4, deferred: 0.2, declined: 0.2, no_commitment: 0.1, unclear: 0.1,
+};
+
+// The worker echoes both answers plus the legacy buyer_response top-level
+// fields — the exact /score shape for a combined run.
 const success = () => ({
   ok: true,
   status: 200,
@@ -39,7 +52,21 @@ const success = () => ({
     question: 'buyer_response',
     recommendation: 'requested_next_step',
     confidence: 0.4,
-    probabilities: { requested_next_step: 0.4, deferred: 0.2, declined: 0.2, no_commitment: 0.1, unclear: 0.1 },
+    probabilities: buyerProbabilities,
+    answers: {
+      buyer_response: {
+        choice: 'requested_next_step',
+        confidence: 0.4,
+        probabilities: buyerProbabilities,
+      },
+      deal_amount: {
+        type: 'score',
+        score: 2.85,
+        confidence: 0.5,
+        legend: dealAmountLegend,
+        probabilities: { '0': 0.05, '1': 0.1, '2': 0.25, '3': 0.3, '4': 0.2, '5': 0.05, '6': 0.05 },
+      },
+    },
     usage: { input_tokens: 93, output_tokens: 0 },
     trace: {
       // Echo the actual request body, exactly like the worker's trace does.
@@ -93,11 +120,13 @@ describe('Laya terminal', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Open in terminal' }));
 
-    // The prefill is buildLayaBuyerResponseInput's own state sentence.
+    // The prefill is buildLayaBuyerResponseInput's own state sentence, with
+    // the recorded deal value for the deal-amount question.
     const textarea = screen.getByLabelText('State input') as HTMLTextAreaElement;
     expect(textarea.value).toBe(built.state);
     expect(textarea.value).toContain('We supply Butter');
     expect(textarea.value).toContain('Please send us a quotation for 20 kg.');
+    expect(textarea.value).toContain('Deal value on record: ฿30,000.');
     expect(document.activeElement).toBe(textarea);
     expect(screen.getByRole('button', { name: 'Laya terminal' }).getAttribute('aria-expanded')).toBe('true');
     // Provenance stays visible: verbatim reply, not a paraphrased note.
@@ -111,11 +140,11 @@ describe('Laya terminal', () => {
     vi.stubGlobal('fetch', fetchMock);
     openPanel();
 
-    // Same bytes the builder emits; laya-buyer-response.contract.test.ts pins
-    // those to the worker's BUYER_RESPONSE_QUESTION, so the pane is byte-
-    // identical to what the worker accepts (and refuses anything else).
+    // Same bytes the builder's questions ship; laya-buyer-response.contract.test.ts
+    // pins those to the worker's frozen questions, so the pane is byte-identical
+    // to what the worker accepts (and refuses anything else).
     expect(screen.getByTestId('laya-terminal-questions').textContent).toBe(
-      JSON.stringify(built.questions, null, 2)
+      JSON.stringify(LAYA_ALL_FROZEN_QUESTIONS, null, 2)
     );
     // Nothing to score yet: Run stays disabled until the box holds text.
     expect(screen.getByRole('button', { name: 'Run' }).hasAttribute('disabled')).toBe(true);
@@ -133,18 +162,27 @@ describe('Laya terminal', () => {
     for (const label of ['Deferred', 'Declined', 'No commitment', 'Unclear']) {
       expect(card.textContent).toContain(label);
     }
+    // The deal-amount score row: winning bucket, expected score, every bar.
+    const scoreCard = await screen.findByTestId('laya-terminal-result-deal_amount');
+    expect(scoreCard.textContent).toContain('฿15001-35000');
+    expect(scoreCard.textContent).toContain('confidence 50%');
+    expect(scoreCard.textContent).toContain('expected score 2.85 on a 0–6 scale');
+    for (const pct of ['5%', '10%', '25%', '30%', '20%']) {
+      expect(scoreCard.textContent).toContain(pct);
+    }
+    expect(scoreCard.textContent).toContain('no amount stated');
     // Usage, client-side elapsed time, and the honesty copy on the trace.
     expect(screen.getByText(/93 input tokens/)).toBeTruthy();
     expect(screen.getAllByText(/elapsed \d+ ms/).length).toBeGreaterThan(0);
     expect(screen.getByText(/input and provenance trace, not an explanation/)).toBeTruthy();
     expect(screen.getByText(/source revision 052592a/)).toBeTruthy();
 
-    // The request is exactly { state, questions } with the frozen question.
+    // The request is exactly { state, questions } with both frozen questions.
     const [, request] = fetchMock.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(request.body as string);
     expect(Object.keys(body)).toEqual(['state', 'questions']);
     expect(body.state).toBe(built.state);
-    expect(JSON.stringify(body.questions)).toBe(JSON.stringify(built.questions));
+    expect(JSON.stringify(body.questions)).toBe(JSON.stringify(LAYA_ALL_FROZEN_QUESTIONS));
   });
 
   it('drops an old result when the connection route changes', async () => {

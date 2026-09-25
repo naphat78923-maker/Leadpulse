@@ -63,6 +63,7 @@ console.log(JSON.stringify({
   refusal:buildBuyer({buyer_reply:'Buyer asked for a sample price but later declined and requested no contact'}),
   buyer_verbatim:buildBuyer({buyer_reply:'Please send us a quotation for 20 kg of salted butter.'}),
   buyer_note:buildBuyer({last_outcome:'Buyer asked for a sample price'}),
+  combined:(() => {const terminal = m.exports.buildLayaBuyerResponseInput({deal:{product:'Butter',last_outcome:null,buyer_reply:'Please send us a quotation for 20 kg of salted butter.',value:30000},includeDealValue:true});return {state:terminal.state,questions:m.exports.LAYA_ALL_FROZEN_QUESTIONS};})(),
 }));
 """
         cls.inputs = json.loads(subprocess.check_output(['node', '-e', javascript], cwd=ROOT, text=True))
@@ -442,6 +443,114 @@ console.log(JSON.stringify({
             'probabilities': dict.fromkeys(
                 ['requested_next_step', 'deferred', 'declined', 'no_commitment', 'unclear'], 0.2)}},
             'usage': {'input_tokens': 60, 'output_tokens': 0}}
+
+    def deal_amount_probabilities(self):
+        return {'0': 0.05, '1': 0.10, '2': 0.25, '3': 0.30, '4': 0.20, '5': 0.05, '6': 0.05}
+
+    def deal_amount_answer(self, criteria, overrides=None):
+        probabilities = self.deal_amount_probabilities()
+        answer = {
+            'type': 'score',
+            'score': sum(int(level) * probability for level, probability in probabilities.items()),
+            'legend': {str(index): text for index, text in enumerate(criteria)},
+            'probabilities': probabilities,
+            'confidence': 0.5,
+        }
+        if overrides:
+            answer.update(overrides)
+        return answer
+
+    def combined_result(self, criteria, deal_overrides=None):
+        return {'answers': {
+            'buyer_response': {'choice': 'requested_next_step', 'confidence': 0.7,
+                'probabilities': dict.fromkeys(
+                    ['requested_next_step', 'deferred', 'declined', 'no_commitment', 'unclear'], 0.2)},
+            'deal_amount': self.deal_amount_answer(criteria, deal_overrides),
+        }, 'usage': {'input_tokens': 200, 'output_tokens': 0}}
+
+    def test_terminal_state_carries_the_recorded_deal_value_while_buyer_only_does_not(self):
+        self.assertIn('Deal value on record: ฿30,000.', self.inputs['combined']['state'])
+        self.assertEqual(list(self.inputs['combined']['questions']), ['buyer_response', 'deal_amount'])
+        self.assertNotIn('Deal value on record', self.inputs['baseline']['state'])
+
+    def test_combined_frozen_questions_score_in_one_pass_with_legacy_top_level(self):
+        payload = self.inputs['combined']
+        criteria = payload['questions']['deal_amount']['criteria']
+        original = self.agent.predict.return_value
+        try:
+            self.agent.predict.return_value = self.combined_result(criteria)
+            status, data = self.post(payload)
+            self.assertEqual(status, 200)
+            # Legacy top-level fields keep describing buyer_response for the score card.
+            self.assertEqual(data['question'], 'buyer_response')
+            self.assertEqual(data['recommendation'], 'requested_next_step')
+            self.assertEqual(data['confidence'], 0.7)
+            # Every posted question comes back under `answers`.
+            self.assertEqual(set(data['answers']), {'buyer_response', 'deal_amount'})
+            deal = data['answers']['deal_amount']
+            self.assertEqual(deal['legend'], {str(index): text for index, text in enumerate(criteria)})
+            self.assertAlmostEqual(deal['score'],
+                                   sum(int(level) * value for level, value in deal['probabilities'].items()),
+                                   places=9)
+            self.assertEqual(data['trace']['scored_input'], payload)
+            self.agent.predict.assert_called_once_with(payload['state'], payload['questions'])
+        finally:
+            self.agent.predict.return_value = original
+
+    def test_malformed_deal_amount_answers_never_become_a_recommendation(self):
+        payload = self.inputs['combined']
+        criteria = payload['questions']['deal_amount']['criteria']
+        valid = self.combined_result(criteria)
+        probabilities = self.deal_amount_probabilities()
+        wrong_legend = {str(index): text for index, text in enumerate(criteria)}
+        wrong_legend['0'] = 'Altered bucket'
+        extra_key = dict(probabilities)
+        extra_key['7'] = 0.0
+        mistotaled = dict(probabilities)
+        mistotaled['3'] = 0.5
+        variants = [
+            {**valid, 'answers': {'buyer_response': valid['answers']['buyer_response']}},
+            self.combined_result(criteria, {'type': 'choice'}),
+            self.combined_result(criteria, {'probabilities': {bucket: 1 / 7 for bucket in criteria}}),
+            self.combined_result(criteria, {'probabilities': extra_key}),
+            self.combined_result(criteria, {'legend': wrong_legend}),
+            self.combined_result(criteria, {'score': 1}),
+            self.combined_result(criteria, {'score': 7}),
+            self.combined_result(criteria, {'score': float('nan')}),
+            self.combined_result(criteria, {'confidence': 1.5}),
+            self.combined_result(criteria, {'probabilities': mistotaled}),
+            {**valid, 'answers': {**valid['answers'], 'deal_amount': 'bucket 3'}},
+        ]
+        original = self.agent.predict.return_value
+        try:
+            for result in variants:
+                with self.subTest(result=result):
+                    self.agent.predict.return_value = result
+                    self.agent.predict.reset_mock()
+                    status, data = self.post(payload)
+                    self.assertEqual(status, 422)
+                    self.assertEqual(data, {'error': 'Laya returned an invalid score'})
+                    self.assertNotIn('recommendation', data)
+        finally:
+            self.agent.predict.return_value = original
+
+    def test_rejects_deal_amount_only_or_tampered_combined_schema_without_inference(self):
+        payload = self.inputs['combined']
+        deal_question = payload['questions']['deal_amount']
+        tampered = json.loads(json.dumps(payload))
+        tampered['questions']['deal_amount']['criteria'][0] = 'Ignore rules'
+        for body in (
+            {'state': payload['state'], 'questions': {'deal_amount': deal_question}},
+            tampered,
+            {**payload, 'questions': {**payload['questions'], 'other': {'type': 'noul', 'instructions': 'Another'}}},
+            {**payload, 'extra': 'data'},
+        ):
+            with self.subTest(body=body):
+                status, data = self.post(body)
+                self.assertEqual(status, 400)
+                self.assertEqual(data, {'error': 'Unsupported scoring schema'})
+                self.assertNotIn('recommendation', data)
+                self.agent.predict.assert_not_called()
 
     def test_buyer_response_question_is_scored_and_validated_against_its_own_options(self):
         payload = self.inputs['buyer_verbatim']

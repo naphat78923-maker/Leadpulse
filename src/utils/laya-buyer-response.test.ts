@@ -68,6 +68,28 @@ describe('buildLayaBuyerResponseInput', () => {
     expect(input!.state).not.toContain('Private');
     expect(input!.state).not.toContain('contacted');
   });
+
+  it('adds the recorded deal value only when the terminal opts in', () => {
+    const deal = { product: 'Butter', last_outcome: null, buyer_reply: 'Please quote 20 kg.', value: 30000 };
+    // The score card keeps the exact eval-measured state — value never leaks in.
+    expect(buildLayaBuyerResponseInput({ deal })!.state).not.toContain('Deal value');
+    expect(buildLayaBuyerResponseInput({ deal, includeDealValue: false })!.state)
+      .not.toContain('Deal value');
+    expect(buildLayaBuyerResponseInput({ deal, includeDealValue: true })!.state).toBe(
+      'We supply Butter to this account. The buyer\'s latest reply: "Please quote 20 kg." Deal value on record: ฿30,000.',
+    );
+  });
+
+  it('skips the value sentence for null, zero or non-finite values and appends it to note states too', () => {
+    for (const value of [null, 0, -5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(
+        buildLayaBuyerResponseInput({ deal: { ...baseDeal, value }, includeDealValue: true })!.state,
+      ).not.toContain('Deal value on record');
+    }
+    expect(
+      buildLayaBuyerResponseInput({ deal: { ...baseDeal, value: 1500.5 }, includeDealValue: true })!.state,
+    ).toContain(' Deal value on record: ฿1,501.');
+  });
 });
 
 describe('buyerResponseSignal — shipped 2-class slice (eval report option 1)', () => {

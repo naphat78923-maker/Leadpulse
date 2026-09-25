@@ -3,13 +3,14 @@
 // ─── Laya terminal — a playground over the same frozen /score contract ───
 //
 // Three panes, Braintrust-screenshot style: State (the exact text to score),
-// Questions (the frozen question that will be asked, read-only) and Response
-// (the worker's answer plus its provenance trace). Everything is explicit:
+// Questions (the frozen questions that will be asked, read-only) and Response
+// (the worker's answers plus their provenance trace). Everything is explicit:
 // the section starts collapsed, "Open in terminal" only prefills the state
 // box, and nothing is scored until Run is pressed.
 //
-// Only buyer_response exists today. The response pane maps over a
-// questionResults[] array with a per-type renderer, so a second entry in the
+// Run sends both frozen questions — buyer_response (a choice) and deal_amount
+// (a score) — in one inference pass. The response pane maps over a
+// questionResults[] array with a per-type renderer, so the next entry in the
 // worker's ALLOWED_QUESTIONS is a data-wiring change, not a layout change.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -18,7 +19,7 @@ import clsx from 'clsx';
 import type { Deal } from '@/types/crm';
 import {
   buildLayaBuyerResponseInput,
-  LAYA_BUYER_FROZEN_QUESTIONS,
+  LAYA_ALL_FROZEN_QUESTIONS,
   type LayaBuyerResponseLevel,
 } from '@/utils/laya-buyer-response';
 import { requestLocalLaya, type LayaConnection } from '@/utils/laya-transport';
@@ -57,9 +58,10 @@ export interface LayaTerminalPrefill {
 
 /**
  * One answered question in the Response pane. The union (and the per-type
- * renderer below) is the multi-question seam: /score answers 'choice' today,
- * and a future ALLOWED_QUESTIONS entry maps to its own row without layout
- * changes. score and noul mirror the worker's follow-up review answer shapes.
+ * renderer below) is the multi-question seam: /score answers 'choice' and
+ * 'score' today, and the next ALLOWED_QUESTIONS entry maps to its own row
+ * without layout changes. The score/noul shapes mirror the worker's follow-up
+ * review answer shapes.
  */
 type QuestionResult =
   | {
@@ -68,10 +70,27 @@ type QuestionResult =
       label: string;
       winner: string;
       confidence: number;
-      bars: { key: string; label: string; value: number; winner: boolean }[];
+      bars: ProbabilityBar[];
     }
-  | { id: string; type: 'score'; label: string; score: number; confidence: number; legend: string[] }
+  | {
+      id: string;
+      type: 'score';
+      label: string;
+      score: number;
+      confidence: number;
+      /** legend label of the highest-probability bucket */
+      winner: string;
+      legend: string[];
+      bars: ProbabilityBar[];
+    }
   | { id: string; type: 'noul'; label: string; value: string; confidence: number };
+
+interface ProbabilityBar {
+  key: string;
+  label: string;
+  value: number;
+  winner: boolean;
+}
 
 interface ScoreRun {
   questionResults: QuestionResult[];
@@ -90,10 +109,64 @@ interface NotScored {
   tokenLimit: number | null;
 }
 
+/** Display form of one deal-amount bucket: money buckets wear the ฿ sign. */
+function bucketLabel(entry: string): string {
+  return /^[0-9]/.test(entry) ? `฿${entry}` : entry;
+}
+
 /**
- * Validate a /score payload and map it onto questionResults. The single
- * question wiring lives here: buyer_response (a 'choice') becomes one row.
- * Anything malformed returns null — an invalid payload never renders.
+ * Validate one deal_amount (score) answer: the legend dict keyed "0".."n-1",
+ * probabilities under the same keys, a score equal to the distribution's
+ * expected value — the same strictness the worker applies. Returns null on
+ * anything malformed.
+ */
+function parseDealAmountAnswer(raw: unknown): QuestionResult | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const a = raw as { type?: unknown; score?: unknown; confidence?: unknown; legend?: unknown; probabilities?: unknown };
+  if (a.type !== undefined && a.type !== 'score') return null;
+  if (typeof a.score !== 'number' || !Number.isFinite(a.score)) return null;
+  if (!isProbability(a.confidence)) return null;
+  if (!a.legend || typeof a.legend !== 'object' || Array.isArray(a.legend)) return null;
+  const legendMap = a.legend as Record<string, unknown>;
+  if (!a.probabilities || typeof a.probabilities !== 'object' || Array.isArray(a.probabilities)) return null;
+  const distribution = a.probabilities as Record<string, unknown>;
+  const bucketCount = Object.keys(legendMap).length;
+  if (bucketCount === 0 || Object.keys(distribution).length !== bucketCount) return null;
+
+  const legend: string[] = [];
+  const bars: ProbabilityBar[] = [];
+  let winnerIndex = 0;
+  for (let index = 0; index < bucketCount; index += 1) {
+    const entry = legendMap[String(index)];
+    const value = distribution[String(index)];
+    if (typeof entry !== 'string' || !isProbability(value)) return null;
+    if (index > 0 && value > bars[winnerIndex].value) winnerIndex = index;
+    legend.push(entry);
+    bars.push({ key: String(index), label: bucketLabel(entry), value, winner: false });
+  }
+  if (a.score < 0 || a.score > bucketCount - 1) return null;
+  const expected = bars.reduce((sum, bar, index) => sum + index * bar.value, 0);
+  if (Math.abs(a.score - expected) > 0.002) return null; // the worker enforces the same tolerance
+  bars[winnerIndex].winner = true;
+
+  return {
+    id: 'deal_amount',
+    type: 'score',
+    label: 'deal_amount — how much is this deal in Thai baht (THB)?',
+    score: a.score,
+    confidence: a.confidence,
+    winner: bars[winnerIndex].label,
+    legend,
+    bars,
+  };
+}
+
+/**
+ * Validate a /score payload and map it onto questionResults. A combined run
+ * carries every answer under `answers`; a buyer-only run keeps the legacy
+ * top-level fields. buyer_response (a 'choice') is always required;
+ * deal_amount renders only when present. Anything malformed returns null —
+ * an invalid payload never renders.
  */
 function parseScorePayload(payload: unknown): ScoreRun | null {
   if (!payload || typeof payload !== 'object') return null;
@@ -102,6 +175,7 @@ function parseScorePayload(payload: unknown): ScoreRun | null {
     recommendation?: unknown;
     confidence?: unknown;
     probabilities?: unknown;
+    answers?: unknown;
     usage?: unknown;
     trace?: {
       scored_input?: { state?: unknown; questions?: unknown };
@@ -109,10 +183,16 @@ function parseScorePayload(payload: unknown): ScoreRun | null {
       scored_at?: unknown;
     };
   };
-  if (p.question !== 'buyer_response') return null; // future questions wire in here
-  if (typeof p.recommendation !== 'string' || !Object.prototype.hasOwnProperty.call(LABELS, p.recommendation)) return null;
-  if (!isProbability(p.confidence)) return null;
-  const probabilities = p.probabilities as Record<string, unknown> | null;
+  const answers = p.answers !== null && p.answers !== undefined ? p.answers : null;
+  if (answers === null && p.question !== 'buyer_response') return null; // future legacy shapes wire in here
+  const buyer = (answers
+    ? (answers as Record<string, unknown>)['buyer_response']
+    : { choice: p.recommendation, confidence: p.confidence, probabilities: p.probabilities }) as
+    | { choice?: unknown; confidence?: unknown; probabilities?: unknown }
+    | undefined;
+  if (!buyer || typeof buyer.choice !== 'string' || !Object.prototype.hasOwnProperty.call(LABELS, buyer.choice)) return null;
+  if (!isProbability(buyer.confidence)) return null;
+  const probabilities = buyer.probabilities as Record<string, unknown> | null;
   if (!probabilities || typeof probabilities !== 'object') return null;
   if (!RESPONSE_LEVELS.every((level) => isProbability(probabilities[level]))) return null;
   const trace = p.trace;
@@ -127,22 +207,35 @@ function parseScorePayload(payload: unknown): ScoreRun | null {
   }
   if (typeof trace.scored_at !== 'string' || !Number.isFinite(Date.parse(trace.scored_at))) return null;
 
+  const questionResults: QuestionResult[] = [
+    {
+      id: 'buyer_response',
+      type: 'choice',
+      label: "buyer_response — which option best describes the buyer's latest message?",
+      winner: buyer.choice,
+      confidence: buyer.confidence,
+      bars: RESPONSE_LEVELS.map((level) => ({
+        key: level,
+        label: LABELS[level],
+        value: probabilities[level] as number,
+        winner: level === buyer.choice,
+      })),
+    },
+  ];
+
+  // deal_amount: only a combined run carries it. Absent (legacy buyer-only
+  // payload) renders just the choice row; present but malformed rejects all.
+  if (answers && typeof answers === 'object') {
+    const raw = (answers as Record<string, unknown>)['deal_amount'];
+    if (raw !== undefined) {
+      const dealAmount = parseDealAmountAnswer(raw);
+      if (!dealAmount) return null;
+      questionResults.push(dealAmount);
+    }
+  }
+
   return {
-    questionResults: [
-      {
-        id: 'buyer_response',
-        type: 'choice',
-        label: "buyer_response — which option best describes the buyer's latest message?",
-        winner: p.recommendation,
-        confidence: p.confidence,
-        bars: RESPONSE_LEVELS.map((level) => ({
-          key: level,
-          label: LABELS[level],
-          value: probabilities[level] as number,
-          winner: level === p.recommendation,
-        })),
-      },
-    ],
+    questionResults,
     usage:
       p.usage && typeof p.usage === 'object'
         ? (p.usage as { input_tokens?: number | null; output_tokens?: number | null })
@@ -161,11 +254,13 @@ function parseScorePayload(payload: unknown): ScoreRun | null {
 /**
  * The first deal whose product + buyer text the frozen builder can sentence-
  * ise — the same prefill contract the score card uses, so what lands in the
- * state box is exactly what a pre-filled run would send.
+ * state box is exactly what a pre-filled run would send. The recorded deal
+ * value comes along for the deal-amount question; the builder adds nothing
+ * else.
  */
 export function buildLayaTerminalPrefill(deals: Deal[]): LayaTerminalPrefill | null {
   for (const deal of deals) {
-    const built = buildLayaBuyerResponseInput({ deal });
+    const built = buildLayaBuyerResponseInput({ deal, includeDealValue: true });
     if (built) return { state: built.state, verbatim: built.verbatim, source: deal.title || 'deal' };
   }
   return null;
@@ -249,7 +344,7 @@ export function LayaTerminal({ prefill }: { prefill?: LayaTerminalPrefill | null
     setElapsedMs(null);
     const startedAt = Date.now();
     try {
-      const body = JSON.stringify({ state: stateToSend, questions: LAYA_BUYER_FROZEN_QUESTIONS });
+      const body = JSON.stringify({ state: stateToSend, questions: LAYA_ALL_FROZEN_QUESTIONS });
       const { ok, status, payload } = await requestLocalLaya('/score', {
         signal: controller.signal,
         body,
@@ -309,8 +404,8 @@ export function LayaTerminal({ prefill }: { prefill?: LayaTerminalPrefill | null
         : `${origin.source} · paraphrased note`;
 
   // The Questions pane shows what will be (or was) sent: the trace's own copy
-  // after a run, byte-identical to the frozen constant before one.
-  const questionsShown: unknown = result ? result.trace.scored_input.questions : LAYA_BUYER_FROZEN_QUESTIONS;
+  // after a run, byte-identical to the frozen constants before one.
+  const questionsShown: unknown = result ? result.trace.scored_input.questions : LAYA_ALL_FROZEN_QUESTIONS;
 
   return (
     <section data-testid="laya-terminal" className="mt-4 rounded-xl border border-clay-hairline bg-clay-card">
@@ -325,7 +420,7 @@ export function LayaTerminal({ prefill }: { prefill?: LayaTerminalPrefill | null
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-clay-ink">Laya terminal</p>
           <p className="mt-0.5 text-[11px] text-clay-muted">
-            Paste buyer text and run the frozen question against the local worker. Explicit action
+            Paste buyer text and run the frozen questions against the local worker. Explicit action
             only — nothing here scores on its own.
           </p>
         </div>
@@ -358,9 +453,10 @@ export function LayaTerminal({ prefill }: { prefill?: LayaTerminalPrefill | null
                 className="mt-2 w-full resize-y rounded-lg border border-clay-hairline bg-white p-2 font-mono text-xs text-clay-ink focus:outline-none focus:ring-1 focus:ring-clay-lavender dark:bg-clay-card"
               />
               <p className="mt-1.5 text-[10px] leading-snug text-clay-muted">
-                Only this text and the frozen question are sent — no company or deal names, IDs,
-                industry, value, stage, dates or history. Free text can still contain personal
-                information; this is not anonymization.
+                Only this text and the frozen questions are sent. A row prefill may add “Deal value
+                on record: ฿…” when the CRM has one, for the deal-amount question — nothing else:
+                no company or deal names, IDs, industry, stage, dates or history. Free text can
+                still contain personal information; this is not anonymization.
               </p>
             </div>
 
@@ -381,8 +477,9 @@ export function LayaTerminal({ prefill }: { prefill?: LayaTerminalPrefill | null
                 {JSON.stringify(questionsShown, null, 2)}
               </pre>
               <p className="mt-1.5 text-[10px] leading-snug text-clay-muted">
-                Read-only. The worker accepts this one question byte-for-byte and refuses any other
-                schema with 400 “Unsupported scoring schema”. This panel is not editable on purpose.
+                Read-only. The worker accepts exactly these questions byte-for-byte and refuses any
+                other schema with 400 “Unsupported scoring schema”. This panel is not editable on
+                purpose.
               </p>
             </div>
             {/* Response — built from the /score payload, question by question */}
@@ -513,10 +610,44 @@ export function LayaTerminal({ prefill }: { prefill?: LayaTerminalPrefill | null
   );
 }
 
+/** The screenshot-style distribution: one bar per option or bucket. */
+function ProbabilityBars({ bars }: { bars: ProbabilityBar[] }) {
+  return (
+    <div className="mt-2 space-y-1.5">
+      {bars.map((bar) => (
+        <div key={bar.key} className="flex items-center gap-2 text-[11px]">
+          <span
+            className={clsx(
+              'w-28 shrink-0 truncate',
+              bar.winner ? 'font-semibold text-clay-ink' : 'text-clay-muted'
+            )}
+          >
+            {bar.label}
+          </span>
+          <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-clay-lavender/20">
+            <span
+              className={clsx('block h-full rounded-full', bar.winner ? 'bg-clay-lavender' : 'bg-clay-lavender/40')}
+              style={{ width: `${bar.value * 100}%` }}
+            />
+          </span>
+          <span
+            className={clsx(
+              'w-8 shrink-0 text-right tabular-nums',
+              bar.winner ? 'text-clay-ink' : 'text-clay-muted'
+            )}
+          >
+            {Math.round(bar.value * 100)}%
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /**
- * Per-type renderer for one answered question. 'choice' is the only shape
- * /score produces today; 'score' and 'noul' mirror the worker's follow-up
- * review answer shapes so a future question only needs payload wiring.
+ * Per-type renderer for one answered question. 'choice' and 'score' are the
+ * shapes /score produces today; 'noul' mirrors the worker's follow-up review
+ * answer shapes so a future question only needs payload wiring.
  */
 function QuestionResultCard({ result }: { result: QuestionResult }) {
   if (result.type === 'choice') {
@@ -531,35 +662,7 @@ function QuestionResultCard({ result }: { result: QuestionResult }) {
           </span>
           <span className="text-clay-muted"> · confidence {Math.round(result.confidence * 100)}%</span>
         </p>
-        {/* The screenshot-style distribution: one bar per option of this question */}
-        <div className="mt-2 space-y-1.5">
-          {result.bars.map((bar) => (
-            <div key={bar.key} className="flex items-center gap-2 text-[11px]">
-              <span
-                className={clsx(
-                  'w-28 shrink-0 truncate',
-                  bar.winner ? 'font-semibold text-clay-ink' : 'text-clay-muted'
-                )}
-              >
-                {bar.label}
-              </span>
-              <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-clay-lavender/20">
-                <span
-                  className={clsx('block h-full rounded-full', bar.winner ? 'bg-clay-lavender' : 'bg-clay-lavender/40')}
-                  style={{ width: `${bar.value * 100}%` }}
-                />
-              </span>
-              <span
-                className={clsx(
-                  'w-8 shrink-0 text-right tabular-nums',
-                  bar.winner ? 'text-clay-ink' : 'text-clay-muted'
-                )}
-              >
-                {Math.round(bar.value * 100)}%
-              </span>
-            </div>
-          ))}
-        </div>
+        <ProbabilityBars bars={result.bars} />
       </div>
     );
   }
@@ -568,16 +671,13 @@ function QuestionResultCard({ result }: { result: QuestionResult }) {
       <div data-testid={`laya-terminal-result-${result.id}`}>
         <p className="text-[10px] uppercase tracking-wide text-clay-muted">{result.label}</p>
         <p className="mt-1 text-sm">
-          <span className="font-semibold text-clay-ink">{result.score}</span>
+          <span className="font-semibold text-clay-ink">{result.winner}</span>
           <span className="text-clay-muted"> · confidence {Math.round(result.confidence * 100)}%</span>
         </p>
-        {result.legend.length > 0 && (
-          <ul className="mt-1 space-y-0.5 text-[11px] text-clay-muted">
-            {result.legend.map((entry) => (
-              <li key={entry}>· {entry}</li>
-            ))}
-          </ul>
-        )}
+        <p className="text-[11px] text-clay-muted">
+          expected score {result.score} on a 0–{result.legend.length - 1} scale
+        </p>
+        <ProbabilityBars bars={result.bars} />
       </div>
     );
   }

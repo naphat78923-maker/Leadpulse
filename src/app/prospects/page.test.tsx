@@ -363,10 +363,12 @@ describe('Prospects review queue', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Open in terminal' }));
 
     // The terminal expands at the top of the page with the builder's own state
-    // sentence in the box, focused — and no worker call has been made.
+    // sentence in the box, focused — and no worker call has been made. This
+    // deal has no recorded value, so no deal-value sentence is added.
     const textarea = (await screen.findByLabelText('State input')) as HTMLTextAreaElement;
     expect(textarea.value).toContain('We supply Butter');
     expect(textarea.value).toContain('Please send us a quotation for 20 kg.');
+    expect(textarea.value).not.toContain('Deal value on record');
     expect(document.activeElement).toBe(textarea);
     expect(screen.getByRole('button', { name: 'Laya terminal' }).getAttribute('aria-expanded')).toBe('true');
     expect(fetchSpy).not.toHaveBeenCalled();
