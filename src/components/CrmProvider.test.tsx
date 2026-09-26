@@ -48,6 +48,18 @@ function OutboundFieldProbe() {
   );
 }
 
+function BuyerEvidenceProbe() {
+  const { deals, loading } = useCrm();
+  if (loading) return <p>Loading data</p>;
+  return <p>Buyer evidence: {String(deals[0]?.buyer_reply)}</p>;
+}
+
+function AccountEventAvailabilityProbe() {
+  const { accountEventsUnavailable, loading } = useCrm();
+  if (loading) return <p>Loading data</p>;
+  return <p>Account-event source unavailable: {String(accountEventsUnavailable)}</p>;
+}
+
 describe('CrmProvider refresh lifecycle', () => {
   beforeEach(() => {
     Object.values(crmMocks).forEach(mock => mock.mockReset());
@@ -102,5 +114,29 @@ describe('CrmProvider refresh lifecycle', () => {
 
     expect(await screen.findByText('Contact quality: unknown')).toBeTruthy();
     expect(screen.getByText('Primary ask: null')).toBeTruthy();
+  });
+
+  it('keeps the attributed buyer reply in provider state for explicit evidence review', async () => {
+    crmMocks.getDeals.mockResolvedValueOnce([{
+      id: 'synthetic-deal-1',
+      title: 'Butter · Synthetic Bakery',
+      client: 'Synthetic Bakery',
+      product: 'Butter',
+      stage: 'research',
+      priority: 'medium',
+      buyer_reply: 'Please send a sample quote.',
+    }]);
+
+    render(<CrmProvider><BuyerEvidenceProbe /></CrmProvider>);
+
+    expect(await screen.findByText('Buyer evidence: Please send a sample quote.')).toBeTruthy();
+  });
+
+  it('surfaces an account-event read failure separately from an empty event history', async () => {
+    crmMocks.getAccountEvents.mockRejectedValueOnce(new Error('synthetic read failure'));
+
+    render(<CrmProvider><AccountEventAvailabilityProbe /></CrmProvider>);
+
+    expect(await screen.findByText('Account-event source unavailable: true')).toBeTruthy();
   });
 });

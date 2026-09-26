@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const from = vi.hoisted(() => vi.fn());
 vi.mock('./supabase', () => ({ supabase: { from } }));
 
-import { recordOrderForClosedDeal, updateDeal, updateDealIfUnchanged } from './crm';
+import { getAccountEvents, recordOrderForClosedDeal, updateDeal, updateDealIfUnchanged } from './crm';
 
 function mockVersionConflict(current: Record<string, unknown>) {
   const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
@@ -97,7 +97,23 @@ describe('recordOrderForClosedDeal', () => {
   });
 });
 
-describe('updateDeal explicit outbound fields', () => {
+describe('getAccountEvents', () => {
+  beforeEach(() => from.mockReset());
+
+  it('loads source provenance with sales-history rows', async () => {
+    const order = vi.fn().mockResolvedValue({ data: [], error: null });
+    const select = vi.fn(() => ({ order }));
+    from.mockReturnValueOnce({ select });
+
+    await expect(getAccountEvents()).resolves.toEqual([]);
+
+    expect(from).toHaveBeenCalledWith('account_events');
+    expect(select).toHaveBeenCalledWith('company_id,event_date,amount,product_line,order_id,source');
+    expect(order).toHaveBeenCalledWith('event_date', { ascending: true });
+  });
+});
+
+ describe('updateDeal explicit outbound fields', () => {
   beforeEach(() => from.mockReset());
 
   it('stores a cleared primary client ask as null', async () => {

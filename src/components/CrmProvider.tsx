@@ -25,6 +25,8 @@ interface CrmContextType {
   meetings: Meeting[];
   /** Per-company sales history (account_events) feeding retention scoring. */
   accountEvents: crm.AccountEvent[];
+  /** Distinguishes an empty event history from a failed account_events read. */
+  accountEventsUnavailable: boolean;
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
@@ -46,6 +48,7 @@ const CrmContext = createContext<CrmContextType>({
   deals: [],
   meetings: [],
   accountEvents: [],
+  accountEventsUnavailable: false,
   loading: true,
   error: null,
   refresh: async () => {},
@@ -75,6 +78,7 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [accountEvents, setAccountEvents] = useState<crm.AccountEvent[]>([]);
+  const [accountEventsUnavailable, setAccountEventsUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activities, setActivities] = useState<ActivityEntry[]>([]);
@@ -87,7 +91,7 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
     const showBlockingLoader = !hasCompletedInitialLoad.current;
     try {
       if (showBlockingLoader) setLoading(true);
-      const [companiesRes, contactsRes, dealsRes, meetingsRes, eventsRes, acctEventsRes] = await Promise.all([
+      const [companiesRes, contactsRes, dealsRes, meetingsRes, eventsRes, acctEventsResult] = await Promise.all([
         crm.getCompanies(),
         crm.getContacts(),
         crm.getDeals(),
@@ -95,7 +99,9 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
         crm.getActivityEvents().catch(() => [] as any[]),
         // Sales history powers retention scoring; if the table isn't provisioned
         // yet (pre-DDL) this degrades gracefully to [] and interim weights hold.
-        crm.getAccountEvents().catch(() => [] as crm.AccountEvent[]),
+        crm.getAccountEvents()
+          .then(data => ({ data, unavailable: false }))
+          .catch(() => ({ data: [] as crm.AccountEvent[], unavailable: true })),
       ]);
 
       const mCompanies = (companiesRes || []) as any[];
@@ -160,6 +166,7 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
         draft_primary_ask: el.draft_primary_ask || null,
         followup_date: el.followup_date,
         last_outcome: el.last_outcome,
+        buyer_reply: el.buyer_reply ?? null,
         nudge_count: el.nudge_count || 0,
         workflow_action: el.workflow_action || undefined,
         nudge_stage: el.nudge_stage || null,
@@ -206,7 +213,8 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
         return [...pending, ...dbEvents];
       });
 
-      setAccountEvents(acctEventsRes || []);
+      setAccountEvents(acctEventsResult.data || []);
+      setAccountEventsUnavailable(acctEventsResult.unavailable);
       setError(null);
     } catch (err: any) {
       setError(err.message || 'Failed to load CRM data');
@@ -284,6 +292,7 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
       deals,
       meetings,
       accountEvents,
+      accountEventsUnavailable,
       loading,
       error,
       refresh,

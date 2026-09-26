@@ -1,674 +1,185 @@
 'use client';
 
-import { useState, useMemo, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Deal, Contact, Meeting } from '@/types/crm';
+import { ChevronRight, MessageCircle, Plus } from 'lucide-react';
+import { Blob } from '@/components/blob';
 import { useCrm } from '@/components/CrmProvider';
 import CreateModal from '@/components/CreateModal';
 import LogInteractionModal from '@/components/LogInteractionModal';
-import { Blob } from '@/components/blob';
-import type { BlobState } from '@/components/blob';
-import NudgeLadderRail from '@/components/NudgeLadderRail';
-import TaskActionSheet from '@/components/TaskActionSheet';
-import { Plus, ChevronRight, MessageCircle, Clock } from 'lucide-react';
-import { WORKFLOW_BY_ID, getWorkflowAction, deriveNudge, formatDerivedNudgeBadge, nudgeColorClass, addDaysToDateKey, outboundSendCountForDeal, SEND_LADDER_RUNGS } from '@/utils/deal-workflow';
-import { dealNeedsReview } from '@/utils/deal-board';
-import { dealClientName } from '@/utils/dealLabel';
-import { formatBaht, bangkokDateKey, formatBangkokWeekdayDate } from '@/utils/format';
-import * as crm from '@/lib/crm';
-import { useToast } from '@/components/ToastProvider';
-import clsx from 'clsx';
-import { PageTransition, StaggerList, StaggerItem } from '@/components/motion';
-
-const ACTION_VERBS: Record<string, string> = {
-  outreach: 'Send outreach',
-  reply: 'Waiting on reply',
-  sample: 'Send sample',
-  testing: 'Confirm test',
-  reschedule: 'Follow up',
-  parked: 'Revisit',
-  success: 'Won',
-};
-
-function daysBetween(a: string, b: string): number {
-  const msA = new Date(`${a}T12:00:00`).getTime();
-  const msB = new Date(`${b}T12:00:00`).getTime();
-  return Math.round((msB - msA) / 86400000);
-}
-
-function daysUntil(dateStr: string): number {
-  const today = bangkokDateKey();
-  return Math.max(0, daysBetween(today, dateStr));
-}
-
-function whyNowLine(deal: Deal, kind: 'overdue' | 'today' | 'attention', todayKey: string, sendCount: number): string {
-  const lane = WORKFLOW_BY_ID[getWorkflowAction(deal)];
-  const nudge = deriveNudge(deal, todayKey, { sendCount });
-  if (kind === 'overdue' && deal.followup_date) {
-    const days = Math.abs(daysBetween(deal.followup_date, todayKey));
-    if (nudge) return `${days}d overdue · ${formatDerivedNudgeBadge(nudge)}`;
-    return `${days} day${days === 1 ? '' : 's'} overdue · ${lane?.shortLabel || 'Follow-up'}`;
-  }
-  if (kind === 'today') {
-    if (dealNeedsReview(deal)) return 'Due today · missing lane details';
-    if (deal.priority === 'high') return 'High-priority follow-up due today';
-    return `Due today · ${lane?.shortLabel || 'Follow-up'}`;
-  }
-  if (dealNeedsReview(deal)) return 'Needs review · missing required lane details';
-  return `No follow-up date · ${lane?.shortLabel || 'Set next move'}`;
-}
-
-/** Clamp hero why-now to ~2 lines; expand on demand so next_action never blows the card. */
-function WhyNowCopy({ text }: { text: string }) {
-  const [expanded, setExpanded] = useState(false);
-  const longEnough = text.length > 90;
-  return (
-    <div className="text-sm text-clay-muted">
-      <p className={clsx(!expanded && 'line-clamp-2')}>{text}</p>
-      {longEnough && (
-        <button
-          type="button"
-          onClick={() => setExpanded(v => !v)}
-          className="mt-1 text-[11px] font-semibold text-clay-lavender hover:text-clay-ink transition-colors"
-        >
-          {expanded ? 'Show less' : 'More'}
-        </button>
-      )}
-    </div>
-  );
-}
-
-function preferredChannel(deal: Deal, contacts: Contact[], meetings: Meeting[]): string | null {
-  // Human channels only: LINE / IG / WhatsApp / phone — not email.
-  const linked = (deal.contact_ids || [])
-    .map(id => contacts.find(c => c.id === id))
-    .filter((c): c is Contact => Boolean(c));
-  const primary = linked[0];
-  if (primary?.line) return 'LINE';
-  if (primary?.phone) return 'Call';
-
-  const touches = meetings
-    .filter(m => m.deal_id === deal.id && (m.type === 'dm' || m.type === 'call' || m.type === 'meeting'))
-    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  if (touches[0]?.type === 'dm') return 'DM';
-  if (touches[0]?.type === 'call') return 'Call';
-  if (touches[0]?.type === 'meeting') return 'Meet';
-  return null;
-}
+import TodayFollowupQueue from '@/components/TodayFollowupQueue';
+import { PageTransition } from '@/components/motion';
+import type { CustomerEvidenceFolder } from '@/utils/customer-evidence';
+import { buildCustomerEvidenceFolder, CUSTOMER_EVIDENCE_MAX_INPUT_BYTES } from '@/utils/customer-evidence';
+import {
+  buildFollowupActions,
+  deriveRetentionDueSignals,
+  existingRetentionReferenceDate,
+} from '@/utils/followup-policy';
+import { useBusinessDateKey } from '@/utils/useBusinessDateKey';
+import { formatBangkokWeekdayDate } from '@/utils/format';
 
 export default function TodayPage() {
-  const router = useRouter();
-  const { addToast } = useToast();
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isLogModalOpen, setIsLogModalOpen] = useState(false);
-  const [logDealId, setLogDealId] = useState<string | undefined>(undefined);
-  const [startOpen, setStartOpen] = useState(false);
-  const [snoozing, setSnoozing] = useState(false);
-  const startButtonRef = useRef<HTMLButtonElement>(null);
-  const { deals: dbDeals, contacts: dbContacts, companies: dbCompanies, meetings: dbMeetings, loading, createDeal, addMeeting, refresh, logActivity } = useCrm();
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isLogOpen, setIsLogOpen] = useState(false);
+  const [logDealId, setLogDealId] = useState<string | undefined>();
+  const {
+    deals,
+    contacts,
+    companies,
+    meetings,
+    accountEvents,
+    accountEventsUnavailable,
+    loading,
+    error,
+    createDeal,
+    addMeeting,
+    refresh,
+  } = useCrm();
 
-  // Never paint mock CRM while loading — that caused hero flicker (April's Bakery → real deal).
-  // After load, keep the offline mock fallback only when the DB truly returned empty.
-  const deals = dbDeals;
-  const contacts = dbContacts;
-  const companies = dbCompanies;
-  const meetings = dbMeetings;
-
-  const todayKey = bangkokDateKey();
+  const todayKey = useBusinessDateKey();
   const headerDate = formatBangkokWeekdayDate();
+  // Preserve /retention's UTC health/cadence input; its mixed date boundary is pinned in tests.
+  const retentionCalculationDate = existingRetentionReferenceDate();
+  const retentionSignals = useMemo(() => deriveRetentionDueSignals({
+    today: todayKey,
+    retentionCalculationDate,
+    companies,
+    deals,
+    meetings,
+    accountEvents,
+    accountEventsUnavailable,
+  }), [
+    todayKey,
+    retentionCalculationDate,
+    companies,
+    deals,
+    meetings,
+    accountEvents,
+    accountEventsUnavailable,
+  ]);
+  const actions = useMemo(() => buildFollowupActions({
+    today: todayKey,
+    deals,
+    companies,
+    contacts,
+    retentionDue: retentionSignals,
+  }), [todayKey, deals, companies, contacts, retentionSignals]);
 
-  const dealFollowUps = useMemo(() => {
-    const needsAttention: Deal[] = [];
-    const overdue: Deal[] = [];
-    const dueToday: Deal[] = [];
-    const thisWeek: Deal[] = [];
+  const inspectEvidence = (dealId: string): CustomerEvidenceFolder => {
+    const deal = deals.find((item) => item.id === dealId) ?? null;
+    const primarySources = loading ? 'loading' : error ? 'unavailable' : 'loaded';
+    const accountEventSource = loading
+      ? 'loading'
+      : error || accountEventsUnavailable
+        ? 'unavailable'
+        : 'loaded';
 
-    deals.forEach((deal: Deal) => {
-      if (deal.stage === 'closed_won' || deal.stage === 'closed_lost') return;
-      if (getWorkflowAction(deal) === 'parked') return;
-      if (!deal.followup_date) {
-        needsAttention.push(deal);
-        return;
-      }
-      const diffDays = daysBetween(todayKey, deal.followup_date);
-      if (diffDays < 0) overdue.push(deal);
-      else if (diffDays === 0) dueToday.push(deal);
-      else if (diffDays <= 7) thisWeek.push(deal);
+    return buildCustomerEvidenceFolder({
+      entityId: dealId,
+      deal,
+      meetings,
+      accountEvents,
+      sourceAvailability: {
+        deal: primarySources,
+        meetings: primarySources,
+        accountEvents: accountEventSource,
+      },
+      maxInputBytes: CUSTOMER_EVIDENCE_MAX_INPUT_BYTES,
     });
+  };
 
-    const byDateThenId = (a: Deal, b: Deal) =>
-      (a.followup_date || '').localeCompare(b.followup_date || '') || a.id.localeCompare(b.id);
-    overdue.sort(byDateThenId);
-    dueToday.sort(byDateThenId);
-    thisWeek.sort(byDateThenId);
-    needsAttention.sort((a, b) => a.id.localeCompare(b.id));
-
-    return { needsAttention, overdue, dueToday, thisWeek };
-  }, [deals, todayKey]);
-
-  const priorityRank: Record<string, number> = { high: 0, medium: 1, low: 2 };
-  const sortedOverdue = dealFollowUps.overdue;
-
-  const startHere = useMemo(() => {
-    const pool = [
-      ...sortedOverdue.map(d => ({ d, kind: 'overdue' as const, rank: 0 })),
-      ...dealFollowUps.dueToday.map(d => ({ d, kind: 'today' as const, rank: 1 })),
-      ...dealFollowUps.needsAttention.map(d => ({ d, kind: 'attention' as const, rank: 2 })),
-    ];
-    if (!pool.length) return null;
-    pool.sort(
-      (a, b) =>
-        a.rank - b.rank ||
-        (priorityRank[a.d.priority || 'medium'] ?? 1) - (priorityRank[b.d.priority || 'medium'] ?? 1) ||
-        (a.d.followup_date || '').localeCompare(b.d.followup_date || '') ||
-        a.d.id.localeCompare(b.d.id)
-    );
-    return { deal: pool[0].d, kind: pool[0].kind };
-  }, [sortedOverdue, dealFollowUps.dueToday, dealFollowUps.needsAttention]);
-
-  const heroBlobState: BlobState = loading
-    ? 'thinking'
-    : !startHere
-      ? 'idle'
-      : startHere.kind === 'overdue'
-        ? 'alert'
-        : startHere.kind === 'today'
-          ? 'nudge'
-          : 'thinking';
-
-  const upNext = useMemo(() => {
-    const items: { deal: Deal; kind: 'overdue' | 'today' | 'attention' }[] = [
-      ...sortedOverdue.map(d => ({ deal: d, kind: 'overdue' as const })),
-      ...dealFollowUps.dueToday.map(d => ({ deal: d, kind: 'today' as const })),
-      ...dealFollowUps.needsAttention.map(d => ({ deal: d, kind: 'attention' as const })),
-    ];
-    const heroId = startHere?.deal.id;
-    return items.filter(i => i.deal.id !== heroId).slice(0, 5);
-  }, [sortedOverdue, dealFollowUps.dueToday, dealFollowUps.needsAttention, startHere]);
-
-  const handleCreate = async (data: any) => {
+  const handleCreate = async (data: Parameters<typeof createDeal>[0]) => {
     await createDeal(data);
   };
 
-  const snoozeToTomorrow = async (deal: Deal) => {
-    if (snoozing) return;
-    setSnoozing(true);
-    try {
-      const next = addDaysToDateKey(todayKey, 1);
-      const before = { followup_date: deal.followup_date };
-      await crm.updateDeal(deal.id, { followup_date: next, nudge_stage: null });
-      logActivity({
-        type: 'edit',
-        entity: 'deal',
-        entityId: deal.id,
-        label: 'Snoozed to tomorrow',
-        description: `${dealClientName(deal, companies, contacts)} follow-up → ${next}`,
-        undoPayload: before,
-      });
-      addToast(`Snoozed to ${next}`);
-      await refresh();
-    } catch {
-      addToast('Could not snooze — try again', 'error');
-    } finally {
-      setSnoozing(false);
-    }
+  const openDealLog = (dealId: string) => {
+    setLogDealId(dealId);
+    setIsLogOpen(true);
   };
-
-  const heroChannel = startHere ? preferredChannel(startHere.deal, contacts, meetings) : null;
-  const heroLane = startHere ? WORKFLOW_BY_ID[getWorkflowAction(startHere.deal)] : null;
-  const heroNudge = startHere
-    ? deriveNudge(startHere.deal, todayKey, {
-        sendCount: outboundSendCountForDeal(meetings, startHere.deal.id),
-      })
-    : null;
 
   return (
     <PageTransition className="p-4 md:p-6 max-w-6xl pb-20 lg:pb-6">
-      {/* Header — weekday · Bangkok, big Today */}
-      <div className="flex items-start justify-between mb-5 md:mb-6 gap-3">
-        <div className="flex items-start gap-3 min-w-0">
+      <div className="mb-5 md:mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
           <Blob state="idle" size={48} follow aria-label="Butter mascot" />
           <div className="min-w-0">
-            <p className="zams-eyebrow mb-1">
-              {headerDate} · Bangkok
-            </p>
+            <p className="zams-eyebrow mb-1">{headerDate} · Bangkok</p>
             <h1 className="zams-display text-3xl md:text-[34px] leading-none">Today</h1>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex shrink-0 items-center gap-2">
           <button
-            onClick={() => setIsModalOpen(true)}
-            className="sm:hidden flex items-center justify-center w-10 h-10 border border-clay-hairline text-clay-ink rounded-md active:bg-clay-surface"
-            aria-label="New deal"
+            type="button"
+            onClick={() => setIsCreateOpen(true)}
+            className="inline-flex min-h-11 items-center gap-2 rounded-md border border-clay-hairline px-3 sm:px-4 text-sm font-medium text-clay-ink hover:border-clay-lavender hover:text-clay-lavender transition-colors"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="h-4 w-4" />
+            New deal
           </button>
           <button
-            onClick={() => setIsModalOpen(true)}
-            className="hidden sm:flex items-center gap-2 px-4 py-2.5 border border-clay-hairline text-clay-ink text-sm font-medium rounded-md hover:border-clay-lavender hover:text-clay-lavender transition-colors"
+            type="button"
+            onClick={() => setIsLogOpen(true)}
+            className="clay-btn-primary motion-press min-h-11"
           >
-            <Plus className="w-4 h-4" /> New deal
+            <MessageCircle className="h-4 w-4" />
+            <span>Log interaction</span>
           </button>
-        </div>
-        <button
-          onClick={() => setIsLogModalOpen(true)}
-          className="clay-btn-primary motion-press"
-        >
-          <MessageCircle className="w-4 h-4" /> <span className="hidden sm:inline">Log interaction</span>
-        </button>
-      </div>
-
-      {/* Whisper counters — just what drives today's queue */}
-      <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1.5 px-0.5" aria-label="Today counters">
-        {loading ? (
-          <div className="flex items-center gap-3 animate-pulse" aria-busy="true">
-            <div className="h-3 w-16 rounded bg-clay-surface" />
-            <div className="h-3 w-20 rounded bg-clay-surface/80" />
-          </div>
-        ) : (
-          <>
-            <span className="zams-mono text-[10px] uppercase tracking-[0.14px]">
-              <span className="text-clay-error font-semibold">{dealFollowUps.overdue.length} overdue</span>
-            </span>
-            <span className="text-clay-muted-soft/60 text-[10px]" aria-hidden>·</span>
-            <span className="zams-mono text-[10px] uppercase tracking-[0.14px] text-clay-ochre">
-              {dealFollowUps.dueToday.length} due today
-            </span>
-          </>
-        )}
-      </div>
-
-      {/* Hero — Do this next */}
-      <div className="mb-6 rounded-2xl border border-clay-hairline bg-white dark:bg-clay-card p-5 md:p-6 relative overflow-hidden shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_8px_24px_-12px_rgba(43,33,26,0.28)]">
-        <div className="flex items-start gap-3 mb-4">
-          <Blob
-            state={heroBlobState}
-            size={64}
-            follow
-            aria-label={
-              heroBlobState === 'alert'
-                ? 'Butter mascot staring — something is overdue'
-                : heroBlobState === 'nudge'
-                  ? 'Butter mascot pointing at your next move'
-                  : heroBlobState === 'thinking'
-                    ? 'Butter mascot thinking'
-                    : 'Butter mascot'
-            }
-          />
-          <div className="flex-1 min-w-0">
-            <p className="zams-mono text-[10px] uppercase tracking-[0.16px] text-clay-lavender font-semibold mb-1.5">
-              Do this next
-            </p>
-            {loading ? (
-              <div className="space-y-2 animate-pulse" aria-busy="true" aria-label="Loading next move">
-                <div className="h-7 md:h-8 w-2/3 max-w-[240px] rounded-md bg-clay-surface" />
-                <div className="h-4 w-full max-w-[320px] rounded bg-clay-surface/80" />
-                <div className="h-4 w-4/5 max-w-[260px] rounded bg-clay-surface/60" />
-              </div>
-            ) : startHere ? (
-              <>
-                <h2 className="zams-display text-xl md:text-2xl leading-tight mb-1.5">
-                  {dealClientName(startHere.deal, companies, contacts)}
-                </h2>
-                <WhyNowCopy
-                  text={[
-                    whyNowLine(startHere.deal, startHere.kind, todayKey, outboundSendCountForDeal(meetings, startHere.deal.id)),
-                    startHere.deal.next_action || null,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                />
-              </>
-            ) : (
-              <>
-                <h2 className="zams-display text-xl md:text-2xl leading-tight mb-1.5">All clear</h2>
-                <p className="text-sm text-clay-muted">
-                  Nothing due or overdue — go find the next prospect.
-                </p>
-              </>
-            )}
-          </div>
-        </div>
-
-        {!loading && startHere && (
-          <div className="flex flex-wrap items-center gap-1.5 mb-5">
-            {heroLane && (
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border border-clay-hairline bg-clay-surface text-clay-ink">
-                {heroLane.icon} {heroLane.shortLabel}
-              </span>
-            )}
-            {heroNudge && (
-              <span
-                className={clsx(
-                  'text-[10px] font-semibold px-2 py-0.5 rounded-full border',
-                  nudgeColorClass(heroNudge.stage)
-                )}
-              >
-                {formatDerivedNudgeBadge(heroNudge)}
-              </span>
-            )}
-            {heroChannel && (
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border border-clay-hairline text-clay-muted">
-                {heroChannel}
-              </span>
-            )}
-            {startHere.deal.value != null && startHere.deal.value > 0 && (
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border border-clay-mint/40 bg-clay-mint/10 text-clay-teal">
-                {formatBaht(startHere.deal.value)} open
-              </span>
-            )}
-            {heroNudge && (
-              <NudgeLadderRail
-                stage={heroNudge.stage}
-                rungs={SEND_LADDER_RUNGS}
-                variant="mini"
-                className="basis-full max-w-[8rem] mt-0.5"
-              />
-            )}
-          </div>
-        )}
-
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-          {loading ? (
-            <div className="flex gap-2 animate-pulse w-full" aria-hidden>
-              <div className="h-11 flex-1 sm:w-36 sm:flex-none rounded-lg bg-clay-surface" />
-              <div className="h-11 flex-1 sm:w-28 sm:flex-none rounded-lg bg-clay-surface/70" />
-            </div>
-          ) : startHere ? (
-            <>
-              <button
-                onClick={() => {
-                  setLogDealId(startHere.deal.id);
-                  setIsLogModalOpen(true);
-                }}
-                className="clay-btn-primary inline-flex items-center justify-center gap-2 w-full sm:w-auto"
-              >
-                <MessageCircle className="w-4 h-4" /> Log touch
-              </button>
-              <button
-                onClick={() => router.push('/deals?deal=' + startHere.deal.id)}
-                className="clay-btn-secondary inline-flex items-center justify-center gap-1.5 w-full sm:w-auto"
-              >
-                Open deal <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => snoozeToTomorrow(startHere.deal)}
-                disabled={snoozing}
-                className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 h-11 text-sm font-medium text-clay-muted hover:text-clay-ink transition-colors w-full sm:w-auto disabled:opacity-50"
-              >
-                <Clock className="w-3.5 h-3.5" /> Snooze to tomorrow
-              </button>
-            </>
-          ) : (
-            <button onClick={() => router.push('/companies')} className="clay-btn-primary inline-flex items-center justify-center gap-2">
-              Go prospecting <ChevronRight className="w-3.5 h-3.5" />
-            </button>
-          )}
         </div>
       </div>
 
-      {/* This week — the forward horizon (due-today lives in the hero + queue) */}
-      <section className="mb-6">
-        <div className="rounded-2xl border border-clay-lavender/30 bg-clay-lavender/5 p-4">
-            <button
-              onClick={() => router.push('/deals')}
-              className="w-full flex items-center gap-2 mb-3 text-left group"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-clay-lavender" aria-hidden />
-              <h2 className="zams-display text-base leading-tight group-hover:text-clay-lavender transition-colors">This week</h2>
-              <span className="ml-auto text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-clay-lavender/20 text-clay-lavender">
-                {dealFollowUps.thisWeek.length}
-              </span>
-            </button>
-            {dealFollowUps.thisWeek.length === 0 ? (
-              <p className="text-xs text-clay-muted">Light week ahead.</p>
-            ) : (
-              <>
-                <ul className="space-y-1.5">
-                  {dealFollowUps.thisWeek.slice(0, 4).map(d => {
-                    const verb = ACTION_VERBS[getWorkflowAction(d)] || 'Follow up';
-                    const inDays = d.followup_date ? daysUntil(d.followup_date) : 0;
-                    return (
-                      <li key={d.id}>
-                        <button
-                          onClick={() => router.push('/deals?deal=' + d.id)}
-                          className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-clay-card border border-clay-hairline hover:border-clay-lavender/40 transition-colors min-h-[44px]"
-                        >
-                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-clay-lavender/20 text-clay-lavender shrink-0">
-                            {inDays === 1 ? 'Tomorrow' : `in ${inDays}d`}
-                          </span>
-                          <span className="flex-1 min-w-0">
-                            <span className="block text-sm font-medium text-clay-ink truncate">{dealClientName(d, companies, contacts)}</span>
-                            <span className="block text-xs text-clay-muted truncate">{verb}{d.next_action ? ` — ${d.next_action}` : ''}</span>
-                          </span>
-                          <ChevronRight className="w-4 h-4 text-clay-muted-soft shrink-0" />
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-                {dealFollowUps.thisWeek.length > 4 && (
-                  <button
-                    onClick={() => router.push('/deals')}
-                    className="mt-2 w-full text-[11px] font-semibold text-clay-lavender hover:text-clay-ink transition-colors flex items-center justify-center gap-1"
-                  >
-                    View all {dealFollowUps.thisWeek.length} <ChevronRight className="w-3 h-3" />
-                  </button>
-                )}
-              </>
-            )}
-        </div>
-      </section>
+      <p className="mb-4 max-w-3xl text-sm leading-relaxed text-clay-muted">
+        Saved deal schedules and the existing active-customer retention policy, together. Review each source; nothing is rescheduled automatically.
+      </p>
 
-      {/* Up next — short queue under hero */}
-      <section className="mb-6">
-        <div className="flex items-center gap-2.5 mb-3">
-          <Blob state="nudge" size={24} aria-label="" />
-          <h2 className="zams-display text-lg leading-tight">Up next</h2>
-        </div>
+      <TodayFollowupQueue
+        candidates={actions}
+        today={todayKey}
+        loading={loading}
+        sourceError={Boolean(error)}
+        accountEventsUnavailable={accountEventsUnavailable}
+        signalsEnabled={false}
+        onRetry={() => { void refresh(); }}
+        onLogDeal={openDealLog}
+        onInspectEvidence={inspectEvidence}
+      />
 
-        {loading ? (
-          <div className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline divide-y divide-clay-hairline overflow-hidden animate-pulse" aria-busy="true">
-            {[0, 1, 2].map(i => (
-              <div key={i} className="px-4 py-3 flex items-center gap-3">
-                <div className="flex-1 space-y-2">
-                  <div className="h-4 w-40 max-w-[50%] rounded bg-clay-surface" />
-                  <div className="h-3 w-56 max-w-[70%] rounded bg-clay-surface/70" />
-                </div>
-                <div className="h-9 w-16 rounded-lg bg-clay-surface/80" />
-              </div>
-            ))}
-          </div>
-        ) : upNext.length === 0 ? (
-          <div className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline p-8 flex flex-col items-center gap-3">
-            <Blob state="joy" size={56} aria-label="All clear — nothing waiting" />
-            <p className="text-sm text-clay-muted mb-2">Everything is moving. Nothing waiting.</p>
-            <button
-              ref={startButtonRef}
-              onClick={() => setStartOpen(true)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-clay-ink text-clay-canvas text-sm font-medium rounded-lg active:opacity-85"
-            >
-              Start a task
-            </button>
-          </div>
-        ) : (
-          <StaggerList className="bg-white dark:bg-clay-card rounded-xl border border-clay-hairline divide-y divide-clay-hairline overflow-hidden">
-            {upNext.slice(0, 4).map(item => {
-              const days =
-                item.kind === 'overdue' && item.deal.followup_date
-                  ? Math.abs(daysBetween(item.deal.followup_date, todayKey))
-                  : 0;
-              const lane = WORKFLOW_BY_ID[getWorkflowAction(item.deal)];
-              const verb = ACTION_VERBS[getWorkflowAction(item.deal)] || 'Follow up';
-              const nudge = deriveNudge(item.deal, todayKey, {
-                sendCount: outboundSendCountForDeal(meetings, item.deal.id),
-              });
-              const channel = preferredChannel(item.deal, contacts, meetings);
-              return (
-                <StaggerItem key={item.deal.id} className="px-4 py-3 flex items-center gap-3 group">
-                  {item.kind === 'overdue' && (
-                    <span className="w-1 self-stretch shrink-0 rounded-full bg-clay-error" aria-hidden />
-                  )}
-                  <button
-                    onClick={() => router.push('/deals?deal=' + item.deal.id)}
-                    className="flex-1 min-w-0 text-left"
-                  >
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <p className="text-sm font-medium text-clay-ink truncate">
-                        {dealClientName(item.deal, companies, contacts)}
-                      </p>
-                      {item.kind === 'overdue' && (
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-clay-error/10 text-clay-error shrink-0">
-                          {days}d late
-                        </span>
-                      )}
-                      {item.kind === 'today' && (
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-clay-ochre/15 text-clay-ochre shrink-0">
-                          Due today
-                        </span>
-                      )}
-                      {nudge && (
-                        <span
-                          className={clsx(
-                            'text-[10px] font-medium px-1.5 py-0.5 rounded border shrink-0',
-                            nudgeColorClass(nudge.stage)
-                          )}
-                        >
-                          {formatDerivedNudgeBadge(nudge)}
-                        </span>
-                      )}
-                      {channel && (
-                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-clay-surface text-clay-muted shrink-0">
-                          {channel}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-clay-muted truncate mt-0.5">
-                      <span className="font-semibold text-clay-body">{verb}</span>
-                      {item.deal.next_action
-                        ? ` — ${item.deal.next_action}`
-                        : ` · ${lane?.label?.toLowerCase() || 'next move'}`}
-                    </p>
-                    {nudge && (
-                      <NudgeLadderRail
-                        stage={nudge.stage}
-                        rungs={SEND_LADDER_RUNGS}
-                        variant="mini"
-                        className="mt-1.5 max-w-[7rem]"
-                      />
-                    )}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setLogDealId(item.deal.id);
-                      setIsLogModalOpen(true);
-                    }}
-                    className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-clay-hairline text-clay-ink text-xs font-medium hover:border-clay-lavender hover:text-clay-lavender transition-colors min-h-[44px] motion-press"
-                    aria-label={`Log touch for ${dealClientName(item.deal, companies, contacts)}`}
-                  >
-                    <MessageCircle className="w-4 h-4" />
-                    <span className="hidden sm:inline">Log</span>
-                  </button>
-                  <button
-                    onClick={() => router.push('/deals?deal=' + item.deal.id)}
-                    className="shrink-0 w-9 h-9 rounded-lg bg-clay-lavender text-white flex items-center justify-center hover:bg-[#6a4bc8] transition-colors motion-press"
-                    aria-label={`Open ${dealClientName(item.deal, companies, contacts)}`}
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </StaggerItem>
-              );
-            })}
-          </StaggerList>
-        )}
-
-        {dealFollowUps.overdue.length + dealFollowUps.dueToday.length > 6 && (
-          <button
-            onClick={() => router.push('/deals')}
-            className="mt-2.5 text-xs font-semibold text-clay-muted hover:text-clay-ink transition-colors flex items-center gap-1"
-          >
-            View all on Deals board <ChevronRight className="w-3.5 h-3.5" />
-          </button>
-        )}
-
-        {!loading && deals.filter((d: Deal) => d.stage !== 'closed_won' && d.stage !== 'closed_lost').length === 0 && (
-          <div className="mt-4 text-center py-10 bg-white dark:bg-clay-card rounded-xl border border-clay-hairline">
-            <div className="relative mx-auto mb-4 w-28 h-28 flex items-center justify-center">
-              <Blob state="sleep" size={104} aria-label="Sleeping butter mascot — no active deals" />
-            </div>
-            <p className="text-sm font-medium text-clay-ink mb-1">No active deals yet</p>
-            <p className="text-xs text-clay-muted mb-4">Your first deal card is waiting to be made.</p>
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-clay-ink text-clay-canvas text-sm font-medium rounded-lg active:opacity-85"
-            >
-              <Plus className="w-4 h-4" /> Create your first deal
-            </button>
-          </div>
-        )}
-      </section>
-
-      {/* Demoted secondary links — Buying signals + Recent activity off the fold */}
-      <div className="flex flex-col sm:flex-row gap-2 mb-2">
+      <div className="mb-2 flex flex-col gap-2 sm:flex-row">
         <Link
           href="/signals"
           className="flex-1 flex items-center justify-between gap-2 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-4 py-3 text-sm text-clay-muted hover:text-clay-ink hover:border-clay-lavender/40 transition-colors"
         >
-          <span className="flex items-center gap-2">
-            Buying signals
-          </span>
-          <ChevronRight className="w-4 h-4 text-clay-muted-soft" />
+          Buying signals <ChevronRight className="h-4 w-4 text-clay-muted-soft" />
         </Link>
         <Link
           href="/meetings"
           className="flex-1 flex items-center justify-between gap-2 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-4 py-3 text-sm text-clay-muted hover:text-clay-ink hover:border-clay-lavender/40 transition-colors"
         >
-          <span className="flex items-center gap-2">
-            Recent activity
-          </span>
-          <ChevronRight className="w-4 h-4 text-clay-muted-soft" />
+          Recent activity <ChevronRight className="h-4 w-4 text-clay-muted-soft" />
         </Link>
       </div>
 
-      {/* Modals */}
       <CreateModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        isOpen={isCreateOpen}
+        onClose={() => setIsCreateOpen(false)}
         onSave={handleCreate}
         type="deal"
         companies={companies}
         contacts={contacts}
       />
       <LogInteractionModal
-        isOpen={isLogModalOpen}
+        isOpen={isLogOpen}
         onClose={() => {
-          setIsLogModalOpen(false);
+          setIsLogOpen(false);
           setLogDealId(undefined);
         }}
-        onSave={async meeting => {
+        onSave={async (meeting) => {
           await addMeeting(meeting);
         }}
         deals={deals}
         contacts={contacts}
         companies={companies}
         selectedDealId={logDealId}
-      />
-      <TaskActionSheet
-        open={startOpen}
-        onClose={() => setStartOpen(false)}
-        onFollowUp={() => {
-          setStartOpen(false);
-          startButtonRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }}
-        onNewLead={() => {
-          setStartOpen(false);
-          setIsModalOpen(true);
-        }}
-        onLogTouch={() => {
-          setStartOpen(false);
-          setIsLogModalOpen(true);
-        }}
       />
     </PageTransition>
   );

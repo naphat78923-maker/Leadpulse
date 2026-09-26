@@ -218,7 +218,7 @@ export async function recordOrderForClosedDeal(dealId: string, order: CloseDealO
   const orderId = `deal_${dealId}`;
   const { data: existing, error: existingError } = await supabase
     .from('account_events')
-    .select('company_id,event_date,amount,product_line,order_id')
+    .select('company_id,event_date,amount,product_line,order_id,source')
     .eq('order_id', orderId)
     .maybeSingle();
   if (existingError) throw existingError;
@@ -362,12 +362,14 @@ export interface AccountEvent {
   amount: number;
   product_line: string | null;
   order_id: string | null;
+  /** Origin in account_events; optional for legacy fixtures, required by the persisted table. */
+  source?: string | null;
 }
 
 export async function getAccountEvents(): Promise<AccountEvent[]> {
   const { data, error } = await supabase
     .from('account_events')
-    .select('company_id,event_date,amount,product_line,order_id')
+    .select('company_id,event_date,amount,product_line,order_id,source')
     .order('event_date', { ascending: true });
   if (error) throw error;
   return (data || []) as AccountEvent[];

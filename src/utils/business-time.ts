@@ -26,6 +26,28 @@ export function businessDateKey(date: Date = new Date()): string {
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
+/** Milliseconds until the next midnight on the business calendar. */
+export function millisecondsUntilNextBusinessMidnight(now: Date = new Date()): number {
+  if (!Number.isFinite(now.getTime())) throw new RangeError('now must be a valid instant');
+  const [year, month, day] = businessDateKey(now).split('-').map(Number);
+  const targetUtcMidnight = Date.UTC(year, month - 1, day + 1);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: BUSINESS_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(targetUtcMidnight));
+  const value = (type: string) => Number(parts.find(part => part.type === type)?.value);
+  const localAsUtc = Date.UTC(value('year'), value('month') - 1, value('day'), value('hour'), value('minute'), value('second'));
+  const offsetAtTarget = localAsUtc - targetUtcMidnight;
+  const nextMidnightInstant = targetUtcMidnight - offsetAtTarget;
+  return Math.max(1, nextMidnightInstant - now.getTime());
+}
+
 /** Consecutive business-calendar date keys, oldest first and ending on `date`'s business day. */
 export function businessDateKeysEndingAt(date: Date, count: number): string[] {
   if (count <= 0) return [];

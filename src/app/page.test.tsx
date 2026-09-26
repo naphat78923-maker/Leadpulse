@@ -1,176 +1,212 @@
-// Component tests for the Today page (daily-cadence home).
-//
-// These lock the leanness contract: the hero carries exactly one next move with its
-// actions, due-today deals live in the queue (no duplicate card), the only forward
-// horizon is "This week", and the trimmed chrome (tagline, pulse strips, vanity
-// counters) stays off the page.
-
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, fireEvent } from '@testing-library/react';
-
-// This repo's vitest setup does not auto-clean between tests (existing component
-// tests call cleanup explicitly), so repeated renders stack in the DOM otherwise.
-afterEach(() => cleanup());
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import type { ComponentProps } from 'react';
+import type { Company, Contact, Deal, Meeting } from '@/types/crm';
+import { addDaysToDateKey } from '@/utils/deal-workflow';
+import { businessDateKey } from '@/utils/business-time';
 
 const crm = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
-const router = vi.hoisted(() => ({ push: vi.fn() }));
-const toast = vi.hoisted(() => ({ addToast: vi.fn() }));
-const crmLib = vi.hoisted(() => ({ updateDeal: vi.fn(async () => ({})) }));
 
 vi.mock('@/components/CrmProvider', () => ({ useCrm: () => crm.value }));
-vi.mock('next/navigation', () => ({ useRouter: () => router }));
 vi.mock('next/link', () => ({
-  default: ({ href, children, ...rest }: any) => (
-    <a href={href} {...rest}>{children}</a>
-  ),
-}));
-vi.mock('@/components/ToastProvider', () => ({ useToast: () => toast }));
-vi.mock('@/components/motion', () => ({
-  PageTransition: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  StaggerList: ({ children, stagger, ...rest }: any) => <div {...rest}>{children}</div>,
-  StaggerItem: ({ children, ...rest }: any) => <div {...rest}>{children}</div>,
+  default: ({ href, children, ...rest }: ComponentProps<'a'>) => <a href={href} {...rest}>{children}</a>,
 }));
 vi.mock('@/components/blob', () => ({ Blob: () => null }));
-vi.mock('@/lib/crm', () => crmLib);
-// Heavy modals are out of scope here — this suite covers the page surface.
 vi.mock('@/components/CreateModal', () => ({ default: () => null }));
-vi.mock('@/components/LogInteractionModal', () => ({ default: () => null }));
-vi.mock('@/components/TaskActionSheet', () => ({ default: () => null }));
+vi.mock('@/components/LogInteractionModal', () => ({
+  default: ({ isOpen, selectedDealId }: { isOpen: boolean; selectedDealId?: string }) =>
+    isOpen ? <div data-testid="log-modal">Logging {selectedDealId ?? 'new interaction'}</div> : null,
+}));
 
 import TodayPage from './page';
-import type { Deal } from '@/types/crm';
-import { bangkokDateKey } from '@/utils/format';
-import { addDaysToDateKey } from '@/utils/deal-workflow';
 
-function setCrm(v: Record<string, unknown> = {}) {
+afterEach(() => cleanup());
+
+const today = () => businessDateKey();
+
+function makeDeal(overrides: Partial<Deal> = {}): Deal {
+  return {
+    id: 'synthetic-deal-1',
+    title: 'Synthetic Bakery sample follow-up',
+    stage: 'contacted',
+    product: 'Butter',
+    client: 'Synthetic Bakery',
+    company_id: 'synthetic-company-1',
+    contact_ids: [],
+    value: null,
+    priority: 'medium',
+    next_action: 'Check sample feedback',
+    followup_date: today(),
+    last_outcome: null,
+    nudge_count: 0,
+    workflow_action: 'outreach',
+    ...overrides,
+  } as Deal;
+}
+
+function makeCompany(overrides: Partial<Company> = {}): Company {
+  return {
+    id: 'synthetic-company-1',
+    name: 'Synthetic Bakery',
+    status: 'active_customer',
+    created_at: '2024-01-01T00:00:00.000Z',
+    last_human_touch: null,
+    next_touch_due: addDaysToDateKey(today(), -3),
+    ...overrides,
+  } as Company;
+}
+
+function setCrm(values: Record<string, unknown> = {}) {
   crm.value = {
     deals: [],
     contacts: [],
     companies: [],
     meetings: [],
+    accountEvents: [],
+    accountEventsUnavailable: false,
     loading: false,
+    error: null,
     createDeal: vi.fn(),
     addMeeting: vi.fn(),
     refresh: vi.fn(async () => {}),
-    logActivity: vi.fn(),
-    ...v,
+    ...values,
   };
 }
 
-const makeDeal = (over: Partial<Deal>): Deal =>
-  ({
-    id: 'd1',
-    title: 'Butter · Acme',
-    stage: 'contacted',
-    product: 'Butter',
-    client: 'Acme',
-    company_id: null,
-    contact_ids: [],
-    value: null,
-    priority: 'medium',
-    next_action: null,
-    followup_date: null,
-    last_outcome: null,
-    nudge_count: 0,
-    workflow_action: 'outreach',
-    ...over,
-  }) as Deal;
-
-const todayKey = () => bangkokDateKey();
-
-
-describe('Today page', () => {
-  it('puts the single next move in the hero with its actions', () => {
+describe('Today follow-up queue', () => {
+  it('combines an authoritative saved deal date with an existing retention due signal', () => {
     setCrm({
-      deals: [makeDeal({ id: 'd1', client: 'Acme', followup_date: addDaysToDateKey(todayKey(), -2) })],
+      deals: [makeDeal({ followup_date: addDaysToDateKey(today(), -1) })],
+      companies: [makeCompany()],
     });
     render(<TodayPage />);
 
-    expect(screen.getByRole('heading', { name: 'Acme' })).toBeTruthy();
-    expect(screen.getByText(/2 days? overdue/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Log touch/ })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Open deal/ })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Snooze to tomorrow/ })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Today’s work' })).toBeTruthy();
+    expect(screen.getByText('Saved commitments · 1')).toBeTruthy();
+    expect(screen.getByText('Retention due · 1')).toBeTruthy();
+    expect(screen.getByText(/Check sample feedback/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: /open deal:.*synthetic bakery/i }).getAttribute('href'))
+      .toBe('/deals?deal=synthetic-deal-1');
+    expect(screen.getByRole('link', { name: /open company:.*synthetic bakery/i }).getAttribute('href'))
+      .toBe('/companies?company=synthetic-company-1');
+    expect(screen.getByText('deals.followup_date')).toBeTruthy();
+    expect(screen.getByText('companies.next_touch_due')).toBeTruthy();
   });
 
-  it('keeps the whisper counters to what drives today — no review/won vanity counts', () => {
-    setCrm({
-      deals: [makeDeal({ id: 'd1', followup_date: addDaysToDateKey(todayKey(), -1) })],
-    });
-    render(<TodayPage />);
-
-    const counters = screen.getByLabelText('Today counters');
-    expect(counters.textContent).toContain('1 overdue');
-    expect(counters.textContent).toContain('0 due today');
-    expect(counters.textContent).not.toMatch(/needs review/i);
-    expect(counters.textContent).not.toMatch(/\bwon\b/i);
-  });
-
-  it('keeps trimmed chrome off the page', () => {
-    setCrm({
-      deals: [makeDeal({ id: 'd1', followup_date: addDaysToDateKey(todayKey(), -1) })],
-    });
-    render(<TodayPage />);
-
-    expect(screen.queryByText(/one next move, then the queue/i)).toBeNull();
-    expect(screen.queryByText("Today's pulse")).toBeNull();
-    expect(screen.queryByText(/Pulse · last 7d/i)).toBeNull();
-    expect(screen.queryByText(/waiting after you finish/i)).toBeNull();
-  });
-
-  it('shows a due-today deal in the hero/queue only — no duplicate Due today card', () => {
+  it('keeps distinct obligations for one company and honors parked/closed deal rules', () => {
     setCrm({
       deals: [
-        makeDeal({ id: 'd1', client: 'Acme', followup_date: todayKey() }),
-        makeDeal({ id: 'd2', client: 'Beko', followup_date: todayKey() }),
+        makeDeal({ id: 'deal-a', title: 'Sample request', followup_date: today() }),
+        makeDeal({ id: 'deal-b', title: 'Saved quote', followup_date: today() }),
+        makeDeal({ id: 'deal-parked', workflow_action: 'parked', followup_date: today() }),
+        makeDeal({ id: 'deal-closed', stage: 'closed_lost', followup_date: today() }),
       ],
     });
     render(<TodayPage />);
 
-    expect(screen.queryByRole('heading', { name: 'Due today' })).toBeNull();
-    // One deal is the hero, the other waits in Up next
-    expect(screen.getByRole('heading', { name: 'Acme' })).toBeTruthy();
-    expect(screen.getByText('Beko')).toBeTruthy();
+    expect(screen.getByText('2 items · all shown')).toBeTruthy();
+    expect(screen.getByRole('link', { name: /open deal: sample request/i })).toBeTruthy();
+    expect(screen.getByRole('link', { name: /open deal: saved quote/i })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /deal-parked/i })).toBeNull();
+    expect(screen.queryByRole('link', { name: /deal-closed/i })).toBeNull();
   });
 
-  it('keeps the This week horizon for upcoming follow-ups', () => {
+  it('shows an unscheduled date-or-park decision without inventing a date', () => {
+    setCrm({ deals: [makeDeal({ followup_date: null })] });
+    render(<TodayPage />);
+
+    expect(screen.getByText('Date or park · 1')).toBeTruthy();
+    expect(screen.getByText('No saved date')).toBeTruthy();
+    expect(screen.getByText(/No saved follow-up date\. Review the existing next action/i)).toBeTruthy();
+  });
+
+  it('surfaces a known contact hold as internal review, never as contact clearance', () => {
+    const contact = {
+      id: 'synthetic-contact-1',
+      company_id: 'synthetic-company-1',
+      name: 'Synthetic Contact',
+      status: 'not_interested',
+    } as Contact;
     setCrm({
-      deals: [makeDeal({ id: 'd1', client: 'Cora', followup_date: addDaysToDateKey(todayKey(), 3) })],
+      deals: [makeDeal({ contact_ids: [contact.id], followup_date: today() })],
+      contacts: [contact],
     });
     render(<TodayPage />);
 
-    expect(screen.getByRole('heading', { name: 'This week' })).toBeTruthy();
-    expect(screen.getByText('in 3d')).toBeTruthy();
-    expect(screen.getByText('Cora')).toBeTruthy();
+    expect(screen.getByText('Needs review / contact holds · 1')).toBeTruthy();
+    expect(screen.getByText(/Contact hold · internal review only/)).toBeTruthy();
+    expect(screen.getByText(/unknown contact permission is not clearance/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Log interaction for/i })).toBeNull();
+    expect(screen.queryByText(/safe to contact/i)).toBeNull();
   });
 
-  it('points to prospecting when nothing is due', () => {
-    setCrm({ deals: [] });
+  it('uses the existing interaction modal for a saved deal without adding a send path', () => {
+    setCrm({ deals: [makeDeal({ followup_date: today() })] });
     render(<TodayPage />);
 
-    expect(screen.getByRole('heading', { name: 'All clear' })).toBeTruthy();
-    expect(screen.getByText(/go find the next prospect/i)).toBeTruthy();
-    expect(screen.queryByText(/Good (morning|afternoon|evening), Pat/)).toBeNull();
-    expect(screen.getByRole('button', { name: /Go prospecting/ })).toBeTruthy();
-    expect(screen.getByText(/No active deals yet/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Log interaction for synthetic bakery sample follow-up/i }));
+    expect(screen.getByTestId('log-modal').textContent).toContain('synthetic-deal-1');
+    expect(screen.queryByRole('button', { name: /send|contact now/i })).toBeNull();
   });
 
-  it('snoozes the hero deal to tomorrow and logs the activity', async () => {
-    const logActivity = vi.fn();
+  it('opens exact buyer text only on request and keeps meeting paraphrases excluded', () => {
+    const buyerText = 'Please send the current specification for the next batch.';
+    setCrm({
+      deals: [makeDeal({ buyer_reply: buyerText, updated_at: '2026-09-26T00:00:00.000Z' })],
+      meetings: [{
+        id: 'synthetic-meeting-1',
+        company_id: 'synthetic-company-1',
+        deal_id: 'synthetic-deal-1',
+        date: '2026-09-20',
+        direction: 'inbound',
+        summary: 'Synthetic operator paraphrase.',
+      } as Meeting],
+    });
+    render(<TodayPage />);
+
+    expect(screen.queryByText(buyerText)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /inspect customer evidence/i }));
+    expect(screen.getByText(buyerText)).toBeTruthy();
+    expect(screen.getByText((_, element) => element?.tagName === 'P' && element.textContent?.includes('Observed time: unknown') === true)).toBeTruthy();
+    expect(screen.getByText(/Undated buyer evidence requires manual timing review/i)).toBeTruthy();
+    expect(screen.getByText('Synthetic operator paraphrase.')).toBeTruthy();
+    expect(screen.getByText(/Excluded from customer judgments/i)).toBeTruthy();
+    expect(screen.queryByText('2026-09-26T00:00:00.000Z')).toBeNull();
+  });
+
+  it('shows source failures without claiming an empty queue and retries through the provider', () => {
     const refresh = vi.fn(async () => {});
-    const deal = makeDeal({ id: 'd1', client: 'Acme', followup_date: todayKey() });
-    setCrm({ deals: [deal], logActivity, refresh });
+    setCrm({ error: 'synthetic source failure', refresh });
     render(<TodayPage />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Snooze to tomorrow/ }));
+    expect(screen.getByRole('alert').textContent).toMatch(/queue may be incomplete/i);
+    expect(screen.queryByText(/nothing due/i)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /retry loading/i }));
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(screen.queryByText('synthetic source failure')).toBeNull();
+  });
 
-    const tomorrow = addDaysToDateKey(todayKey(), 1);
-    await vi.waitFor(() => {
-      expect(crmLib.updateDeal).toHaveBeenCalledWith('d1', { followup_date: tomorrow, nudge_stage: null });
-    });
-    expect(logActivity).toHaveBeenCalledWith(
-      expect.objectContaining({ entity: 'deal', entityId: 'd1', label: 'Snoozed to tomorrow' })
-    );
-    expect(toast.addToast).toHaveBeenCalledWith(`Snoozed to ${tomorrow}`);
+  it('labels missing sales-event history and keeps worker judgments visibly disabled', () => {
+    setCrm({ accountEventsUnavailable: true });
+    render(<TodayPage />);
+
+    expect(screen.getByText(/sales history is unavailable/i)).toBeTruthy();
+    expect(screen.getByText(/local customer-message judgments are not enabled/i)).toBeTruthy();
+  });
+
+  it('renders loading separately from an empty result', () => {
+    setCrm({ loading: true });
+    render(<TodayPage />);
+
+    expect(screen.getByRole('status').textContent).toMatch(/loading schedules and retention signals/i);
+    expect(screen.queryByText(/nothing due/i)).toBeNull();
+  });
+
+  it('provides an honest empty state when all available sources have no queue items', () => {
+    setCrm({ deals: [], companies: [] });
+    render(<TodayPage />);
+
+    expect(screen.getByText('0 items · all shown')).toBeTruthy();
+    expect(screen.getByText(/nothing due, overdue, or unscheduled for review today/i)).toBeTruthy();
   });
 });

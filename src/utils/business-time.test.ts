@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { BUSINESS_TIMEZONE, businessDateKey, businessDateKeysEndingAt, isCalendarDateKey, isDateKey } from './business-time';
+import {
+  BUSINESS_TIMEZONE,
+  businessDateKey,
+  businessDateKeysEndingAt,
+  isCalendarDateKey,
+  isDateKey,
+  millisecondsUntilNextBusinessMidnight,
+} from './business-time';
 
 describe('business timezone date keys', () => {
   it('names the business timezone explicitly', () => {
@@ -19,6 +26,11 @@ describe('business timezone date keys', () => {
   it('rolls over exactly at the business midnight boundary', () => {
     expect(businessDateKey(new Date('2026-09-14T16:59:59.999Z'))).toBe('2026-09-14');
     expect(businessDateKey(new Date('2026-09-14T17:00:00.000Z'))).toBe('2026-09-15');
+  });
+
+  it('calculates the next Bangkok midnight independently of the host timezone', () => {
+    expect(millisecondsUntilNextBusinessMidnight(new Date('2026-09-14T16:59:59.000Z'))).toBe(1000);
+    expect(millisecondsUntilNextBusinessMidnight(new Date('2026-09-14T17:00:00.000Z'))).toBe(86400000);
   });
 
   it('does not depend on the device timezone', () => {
