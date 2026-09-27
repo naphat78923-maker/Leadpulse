@@ -379,7 +379,7 @@ export default function ContactDetail({ contact, onClose, onSaved, companies }: 
 
           {confirmArchive && (
             <div className="mt-4 rounded-xl border border-clay-hairline bg-clay-surface p-4">
-              <div className="flex gap-3"><span className="text-2xl">🗑️</span><div><p className="font-semibold text-clay-ink">Archive this contact?</p><p className="text-xs text-clay-muted mt-1">{contact.name} will be hidden from lists and the company view. You can undo this from the Activity feed.</p></div></div>
+              <div className="flex gap-3"><span className="text-2xl">🗑️</span><div><p className="font-semibold text-clay-ink">Archive this contact?</p><p className="text-xs text-clay-muted mt-1">{contact.name} will be hidden from lists and the company view. You can undo this under Recent changes on This week.</p></div></div>
               <div className="grid grid-cols-2 gap-2 mt-3"><button onClick={() => { setConfirmArchive(false); setSaving(true); deleteEntity('contact', contact.id, contact.name).then(() => { setSaving(false); addToast('Contact archived'); onClose(); }).catch(err => { setSaving(false); setError('Could not archive: ' + (err.message || 'Unknown error')); }); }} className="px-3 py-2.5 bg-clay-error text-white text-sm font-medium rounded-lg">Archive</button><button onClick={() => setConfirmArchive(false)} className="px-3 py-2.5 bg-clay-card text-clay-ink text-sm font-medium rounded-lg">Cancel</button></div>
             </div>
           )}

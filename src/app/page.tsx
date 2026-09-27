@@ -7,7 +7,10 @@ import { useCrm } from '@/components/CrmProvider';
 import CreateModal from '@/components/CreateModal';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import ThisWeekQueue from '@/components/ThisWeekQueue';
+import RecentChanges from '@/components/RecentChanges';
 import { PageTransition } from '@/components/motion';
+import { useToast } from '@/components/ToastProvider';
+import * as crm from '@/lib/crm';
 import { useReorderSignals } from '@/hooks/useReorderSignals';
 import {
   buildFollowupActions,
@@ -15,6 +18,7 @@ import {
   existingRetentionReferenceDate,
 } from '@/utils/followup-policy';
 import { buildThisWeekQueue } from '@/utils/this-week-queue';
+import { distinctOrderCount, planRetentionTouch } from '@/utils/retention-touch';
 import { useBusinessDateKey } from '@/utils/useBusinessDateKey';
 import { formatBangkokWeekdayDate } from '@/utils/format';
 
@@ -37,6 +41,7 @@ export default function TodayPage() {
     refresh,
   } = useCrm();
 
+  const { addToast } = useToast();
   const todayKey = useBusinessDateKey();
   const headerDate = formatBangkokWeekdayDate();
   // Preserve /retention's UTC health/cadence input; its mixed date boundary is pinned in tests.
@@ -89,6 +94,45 @@ export default function TodayPage() {
     setIsLogOpen(true);
   };
 
+  // A check-in logged here is a retention touch: move the account's saved check-in date
+  // (otherwise it stays overdue) and run the reward draw, as /retention used to.
+  const recordCheckIn = async (companyId: string, dealId: string | null) => {
+    const company = companies.find((c) => c.id === companyId);
+    const tier = retentionSignals.find((s) => s.companyId === companyId)?.tier;
+    if (!company || !tier) return;
+    const orderCount = distinctOrderCount(
+      accountEvents.filter((e) => e.company_id === companyId),
+      deals.filter((d) => d.company_id === companyId && d.stage === 'closed_won'),
+    );
+    const plan = planRetentionTouch({ company, tier, orderCount, today: todayKey });
+    if (!plan) return;
+    try {
+      await crm.updateCompany(companyId, plan.companyPatch);
+    } catch (err) {
+      console.error('Interaction saved, but the check-in date did not update:', err);
+      addToast('Logged, but the next check-in date did not update', 'error');
+    }
+    const option = plan.reward?.option;
+    if (!option) return;
+    addToast(`Reward idea for ${company.name}: ${option.label}`);
+    try {
+      await addMeeting({
+        description: `Surprise reward (${plan.reward!.trigger}): ${option.label}`,
+        type: 'reward',
+        date: todayKey,
+        company_id: companyId,
+        contact_ids: [],
+        deal_id: dealId,
+        product: null,
+        summary: option.note,
+        outcome: 'positive',
+        followup_date: null,
+      });
+    } catch (err) {
+      console.error('Interaction saved, but reward audit logging failed:', err);
+    }
+  };
+
   return (
     <PageTransition className="p-4 md:p-6 max-w-6xl pb-20 lg:pb-6">
       <div className="mb-5 md:mb-6 flex flex-wrap items-start justify-between gap-3">
@@ -129,6 +173,7 @@ export default function TodayPage() {
         onLogDeal={openDealLog}
         onLogCompany={openCompanyLog}
       />
+      <RecentChanges />
 
       <CreateModal
         isOpen={isCreateOpen}
@@ -147,6 +192,10 @@ export default function TodayPage() {
         }}
         onSave={async (meeting) => {
           await addMeeting(meeting);
+          if (logCompanyId) {
+            await recordCheckIn(logCompanyId, meeting.deal_id ?? null);
+            await refresh();
+          }
         }}
         deals={deals}
         contacts={contacts}

@@ -16,6 +16,10 @@ import InteractionThread from '@/components/InteractionThread';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import { motion } from 'framer-motion';
 import { overlayVariants, panelVariants, tweenBase, tweenSlow } from '@/lib/motion';
+import { AHS_TIERS } from '@/utils/accountHealth';
+import { businessDateKey, businessDaysBetween, isCalendarDateKey } from '@/utils/business-time';
+import { formatScheduleDate } from '@/utils/deal-schedule';
+import { deriveRetentionDueSignals, existingRetentionReferenceDate } from '@/utils/followup-policy';
 
 const statusOptions: CompanyStatus[] = ['prospect', 'active_customer', 'inactive', 'lost'];
 
@@ -29,10 +33,22 @@ interface CompanyDetailProps {
 
 export default function CompanyDetail({ company, onClose, onSaved, contacts, companyContacts }: CompanyDetailProps) {
   const { addToast } = useToast();
-  const { createContact, refresh, deleteEntity, meetings, deals = [], companies = [], addMeeting } = useCrm();
+  const { createContact, refresh, deleteEntity, meetings, deals = [], companies = [], addMeeting, accountEvents = [], accountEventsUnavailable } = useCrm();
   const [openContactId, setOpenContactId] = useState<string | null>(null);
   const [logOpen, setLogOpen] = useState(false);
   const openContact = companyContacts.find((c) => c.id === openContactId) ?? null;
+
+  // Customer health and next check-in, same derivation as This week's check-ins.
+  const today = businessDateKey();
+  const health = useMemo(() => deriveRetentionDueSignals({
+    today,
+    retentionCalculationDate: existingRetentionReferenceDate(),
+    companies: [company],
+    deals,
+    meetings,
+    accountEvents,
+    accountEventsUnavailable,
+  })[0] ?? null, [today, company, deals, meetings, accountEvents, accountEventsUnavailable]);
 
   // Everything logged against this account or any of its people, newest first.
   const accountInteractions = useMemo(() => {
@@ -415,6 +431,26 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
             companyFor={() => company}
           />
 
+          {health && (
+            <div className="mt-4 pt-4 border-t border-clay-hairline">
+              <h3 className="text-sm font-semibold text-clay-ink">Customer health</h3>
+              <p className="mt-1 text-sm text-clay-body">
+                {AHS_TIERS.find((t) => t.tier === health.tier)?.label ?? health.tier}
+                {' · next check-in '}
+                {(() => {
+                  if (!isCalendarDateKey(health.dueDate)) return 'date needs review';
+                  const days = businessDaysBetween(today, health.dueDate);
+                  if (days < 0) return <span className="font-semibold text-clay-error">{-days} day{days === -1 ? '' : 's'} overdue</span>;
+                  if (days === 0) return 'today';
+                  return formatScheduleDate(health.dueDate);
+                })()}
+              </p>
+              {accountEventsUnavailable && (
+                <p className="mt-1 text-xs text-clay-muted">Sales history didn’t load, so health may be understated.</p>
+              )}
+            </div>
+          )}
+
           {/* Rewards history (retention, read-only) */}
           <div className="mt-4 pt-4 border-t border-clay-hairline">
             <h3 className="text-sm font-semibold text-clay-ink flex items-center gap-1.5">
@@ -639,7 +675,7 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
           </div>
           {confirmArchive && (
             <div className="mt-4 rounded-xl border border-clay-hairline bg-clay-surface p-4">
-              <div className="flex gap-3"><span className="text-2xl">🗑️</span><div><p className="font-semibold text-clay-ink">Archive this company?</p><p className="text-xs text-clay-muted mt-1">{company.name} and its linked contacts will be hidden from lists. You can undo this from the Activity feed.</p></div></div>
+              <div className="flex gap-3"><span className="text-2xl">🗑️</span><div><p className="font-semibold text-clay-ink">Archive this company?</p><p className="text-xs text-clay-muted mt-1">{company.name} and its linked contacts will be hidden from lists. You can undo this under Recent changes on This week.</p></div></div>
               <div className="grid grid-cols-2 gap-2 mt-3"><button onClick={() => { setConfirmArchive(false); setSaving(true); deleteEntity('company', company.id, company.name).then(() => { setSaving(false); addToast('Company archived'); onClose(); }).catch(err => { setSaving(false); setError('Could not archive: ' + (err.message || 'Unknown error')); }); }} className="px-3 py-2.5 bg-clay-error text-white text-sm font-medium rounded-lg">Archive</button><button onClick={() => setConfirmArchive(false)} className="px-3 py-2.5 bg-clay-card text-clay-ink text-sm font-medium rounded-lg">Cancel</button></div>
             </div>
           )}

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
-import { CalendarCheck, Building2, Kanban, Activity, Zap, Menu, X, HeartPulse, Radar, ChevronRight } from 'lucide-react';
+import { CalendarCheck, Building2, Kanban, Zap, Menu, X } from 'lucide-react';
 import clsx from 'clsx';
 import { useTheme } from '@/components/ThemeProvider';
 import { drawerVariants, overlayVariants, tweenBase, tweenFast } from '@/lib/motion';
@@ -15,53 +15,28 @@ const navItems = [
   { href: '/companies', label: 'Accounts', icon: Building2 },
 ];
 
-// Pages being folded into the three above; reachable here until they are.
-const moreItems = [
-  { href: '/activity', label: 'Activity', icon: Activity },
-  { href: '/retention', label: 'Retention', icon: HeartPulse },
-  { href: '/signals', label: 'Signals', icon: Radar },
-];
-
 function NavList({ pathname, compact, onNavigate }: { pathname: string; compact: boolean; onNavigate?: () => void }) {
-  // Starts open when landing directly on a More page; toggling always works after that.
-  const [moreOpen, setMoreOpen] = useState(() => moreItems.some((item) => item.href === pathname));
-  const rowClass = compact ? 'px-4 py-2.5' : 'px-4 py-3';
-  const iconClass = compact ? 'w-4 h-4' : 'w-5 h-5';
-  const hover = compact ? 'hover:bg-clay-surface' : 'active:bg-clay-surface';
-
-  const renderItem = (item: (typeof navItems)[number], muted = false) => {
-    const Icon = item.icon;
-    const isActive = pathname === item.href;
-    return (
-      <Link
-        key={item.href}
-        href={item.href}
-        onClick={onNavigate}
-        className={clsx(
-          'nav-link-motion flex items-center gap-3 rounded-lg text-sm font-medium mb-1',
-          rowClass,
-          isActive ? 'bg-clay-card text-clay-lavender' : clsx(muted ? 'text-clay-muted-soft' : 'text-clay-muted', hover),
-        )}
-      >
-        <Icon className={iconClass} strokeWidth={isActive ? 2.5 : 2} />
-        {item.label}
-      </Link>
-    );
-  };
-
   return (
     <nav className="flex-1 p-2 overflow-y-auto">
-      {navItems.map((item) => renderItem(item))}
-      <button
-        type="button"
-        aria-expanded={moreOpen}
-        onClick={() => setMoreOpen((open) => !open)}
-        className={clsx('nav-link-motion mt-3 flex w-full items-center gap-2 rounded-lg text-xs font-medium text-clay-muted-soft', rowClass, hover)}
-      >
-        <ChevronRight className={clsx('w-3.5 h-3.5 transition-transform', moreOpen && 'rotate-90')} />
-        More
-      </button>
-      {moreOpen && moreItems.map((item) => renderItem(item, true))}
+      {navItems.map((item) => {
+        const Icon = item.icon;
+        const isActive = pathname === item.href;
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            onClick={onNavigate}
+            className={clsx(
+              'nav-link-motion flex items-center gap-3 rounded-lg text-sm font-medium mb-1',
+              compact ? 'px-4 py-2.5' : 'px-4 py-3',
+              isActive ? 'bg-clay-card text-clay-lavender' : clsx('text-clay-muted', compact ? 'hover:bg-clay-surface' : 'active:bg-clay-surface'),
+            )}
+          >
+            <Icon className={compact ? 'w-4 h-4' : 'w-5 h-5'} strokeWidth={isActive ? 2.5 : 2} />
+            {item.label}
+          </Link>
+        );
+      })}
     </nav>
   );
 }
