@@ -125,6 +125,17 @@ describe('buildDealCardPresentation', () => {
     });
   });
 
+  it('does not treat a company route (info@, general LINE) as the deal\'s person', () => {
+    const route = contact({ id: 'route-1', name: 'Mello Vegan - public route', identity_quality: 'company_route' });
+    const person = contact({ id: 'contact-1', name: 'Nok S.', job_title: 'Pastry Chef' });
+
+    const onlyRoute = buildDealCardPresentation({ ...baseDeal, contact_ids: ['route-1'] }, [route], [company()], null);
+    expect(onlyRoute.contact.missing).toBe(true);
+
+    const routeFirst = buildDealCardPresentation({ ...baseDeal, contact_ids: ['route-1', 'contact-1'] }, [route, person], [company()], null);
+    expect(routeFirst.contact).toMatchObject({ name: 'Nok S.', additionalCount: 0, missing: false });
+  });
+
   it('carries the linked company brand logo for a missing-contact action card', () => {
     const logoUrl = 'https://example.test/company-logo.webp';
 

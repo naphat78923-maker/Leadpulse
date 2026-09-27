@@ -45,6 +45,21 @@ const presentation: DealCardPresentation = {
 afterEach(() => cleanup());
 
 describe('DealCardContent', () => {
+  it('shows a set value and tags only high priority', () => {
+    render(
+      <DealCardContent
+        deal={{ ...deal, value: 12000, priority: 'high' }}
+        presentation={presentation}
+        whyNow={null}
+        reviewLabels={[]}
+        nudge={null}
+      />
+    );
+    expect(screen.getByTitle('Deal value').textContent).toMatch(/12,000/);
+    expect(screen.getByText('High')).toBeTruthy();
+  });
+
+
   it('keeps company identity independent from a long role and preserves full identity labels', () => {
     const longRole = 'Regional purchasing and pastry development lead';
     const longName = 'ประภัสสร จันทร์สุวรรณกุล';
@@ -58,12 +73,12 @@ describe('DealCardContent', () => {
         showGrip
       />
     );
-    expect(screen.getByText('Mello Vegan').getAttribute('title')).toBe('Mello Vegan');
-    expect(screen.getByText(longRole).getAttribute('title')).toBe(longRole);
-    expect(screen.getByRole('heading').getAttribute('title')).toBe(`${longName} +1`);
+    expect(screen.getByRole('heading', { name: 'Mello Vegan' }).getAttribute('title')).toBe('Mello Vegan');
+    expect(screen.getByText(longName + ' +1 · ' + longRole).getAttribute('title')).toBe(`${longName} · ${longRole}`);
+    expect(screen.getByRole('img', { name: 'Mello Vegan logo' })).toBeTruthy();
   });
 
-  it('renders contact first and keeps action context ahead of quiet footer metadata', () => {
+  it('leads with company identity and keeps product, next action and timing visible, with no value filler', () => {
     const { container } = render(
       <DealCardContent
         deal={deal}
@@ -74,27 +89,23 @@ describe('DealCardContent', () => {
       />
     );
 
-    expect(screen.getByRole('heading', { name: 'Nok S. +1' })).toBeTruthy();
-    expect(screen.getByText('Mello Vegan')).toBeTruthy();
-    expect(screen.getByText('Pastry Chef')).toBeTruthy();
-    expect(screen.getByText('Overdue')).toBeTruthy();
-    expect(screen.getByText('25 Aug')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Mello Vegan' })).toBeTruthy();
+    expect(screen.getByText('Nok S. +1 · Pastry Chef')).toBeTruthy();
+    expect(screen.getByText('Overdue · 25 Aug')).toBeTruthy();
     expect(screen.getByText('Butter + Condensed Milk')).toBeTruthy();
-    expect(screen.getByText('Next action')).toBeTruthy();
     expect(screen.getByText(presentation.nextAction)).toBeTruthy();
-    expect(screen.getByText('Why now · Follow-up is overdue')).toBeTruthy();
-    expect(screen.getByText('Research')).toBeTruthy();
+    // An unset value shows nothing rather than "Value —".
+    expect(screen.queryByTitle('Deal value')).toBeNull();
+    expect(screen.getByText('Overdue · 25 Aug').getAttribute('title')).toBe('Follow-up is overdue');
 
     const text = container.textContent || '';
-    expect(text.indexOf('Nok S.')).toBeLessThan(text.indexOf('Next action'));
-    // The concrete next action leads the body; commercial metadata follows it.
-    expect(text.indexOf('Next action')).toBeLessThan(text.indexOf('Butter + Condensed Milk'));
-    expect(text.indexOf('Next action')).toBeLessThan(text.indexOf('Why now'));
-    expect(text.indexOf('Why now')).toBeLessThan(text.indexOf('Research'));
+    expect(text.indexOf('Mello Vegan')).toBeLessThan(text.indexOf('Nok S.'));
+    expect(text.indexOf('Butter + Condensed Milk')).toBeLessThan(text.indexOf(presentation.nextAction));
+    expect(text.indexOf(presentation.nextAction)).toBeLessThan(text.indexOf('Overdue'));
     expect(text).not.toContain(deal.title);
   });
 
-  it('renders a quiet missing-contact warning with the known company as the primary identity', () => {
+  it('shows only the company when no contact is identified, with no filler line', () => {
     render(
       <DealCardContent
         deal={{ ...deal, contact_ids: [] }}
@@ -115,11 +126,9 @@ describe('DealCardContent', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'Mello Vegan' })).toBeTruthy();
-    const warning = screen.getByText('Contact not identified');
-    expect(warning.tagName).toBe('P');
-    expect(warning.className).toContain('text-[10px]');
-    expect(screen.getByText('Mello Vegan').getAttribute('title')).toBe('Mello Vegan');
-    expect(screen.getByText('?')).toBeTruthy();
+    expect(screen.queryByText('Contact not identified')).toBeNull();
+    expect(screen.getByRole('img', { name: 'Mello Vegan logo' })).toBeTruthy();
+    expect(screen.queryByText('?')).toBeNull();
   });
 
   it('shows the linked company brand logo instead of the question-mark avatar for a missing contact', () => {
@@ -150,25 +159,26 @@ describe('DealCardContent', () => {
     expect(screen.queryByText('?')).toBeNull();
   });
 
-  it('keeps a named contact initial avatar even when the linked company has a logo', () => {
+  it('shows the linked company logo even when a named contact exists', () => {
+    const logoUrl = 'https://example.test/company-logo.webp';
     render(
       <DealCardContent
         deal={deal}
-        presentation={{ ...presentation, companyLogoUrl: 'https://example.test/company-logo.webp' }}
+        presentation={{ ...presentation, companyLogoUrl: logoUrl }}
         whyNow={null}
         reviewLabels={[]}
         nudge={null}
       />
     );
 
-    expect(screen.getByText('NS')).toBeTruthy();
-    expect(screen.queryByRole('img', { name: 'Mello Vegan logo' })).toBeNull();
+    expect(screen.getByText('Nok S. +1 · Pastry Chef')).toBeTruthy();
+    expect(screen.getByRole('img', { name: 'Mello Vegan logo' }).getAttribute('src')).toBe(logoUrl);
   });
 
-  it('leads a compact card with the concrete next action and its reason', () => {
+  it('keeps a compact card actionable without opening the detail panel', () => {
     render(
       <DealCardContent
-        deal={deal}
+        deal={{ ...deal, value: 4500 }}
         presentation={presentation}
         whyNow="Follow-up is overdue"
         reviewLabels={[]}
@@ -177,13 +187,12 @@ describe('DealCardContent', () => {
       />
     );
 
-    expect(screen.getByRole('heading', { name: 'Nok S. +1' })).toBeTruthy();
-    // The compact journey card used to omit the action entirely — that was the defect.
-    expect(screen.getByText('Next action')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Mello Vegan' })).toBeTruthy();
+    expect(screen.getByText('Butter + Condensed Milk')).toBeTruthy();
     expect(screen.getByText(presentation.nextAction)).toBeTruthy();
-    expect(screen.getByText('Why now · Follow-up is overdue')).toBeTruthy();
-    // Still no full-card footer metadata in the compact variant.
-    expect(screen.queryByText('Research')).toBeNull();
+    expect(screen.getByText('Overdue · 25 Aug')).toBeTruthy();
+    expect(screen.getByText('฿4,500')).toBeTruthy();
+    expect(screen.queryByText('Why now · Follow-up is overdue')).toBeNull();
   });
 
   it('offers an actionable empty state instead of a dash when no next action is set', () => {

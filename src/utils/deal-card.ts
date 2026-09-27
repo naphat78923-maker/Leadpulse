@@ -1,4 +1,5 @@
 import type { Company, Contact, Deal } from '@/types/crm';
+import { isCompanyRoute } from '@/utils/contact-identity';
 import { entityInitials } from '@/utils/entity-avatar';
 import { getWorkflowAction } from '@/utils/deal-workflow';
 
@@ -117,9 +118,10 @@ export function buildDealCardPresentation(
   companies: Company[],
   due: DealCardDueState
 ): DealCardPresentation {
+  // People only: a company route (info@, general LINE) is a channel, not "the contact".
   const linkedContacts = (deal.contact_ids || [])
     .map(contactId => contacts.find(contact => contact.id === contactId))
-    .filter((contact): contact is Contact => Boolean(contact));
+    .filter((contact): contact is Contact => Boolean(contact) && !isCompanyRoute(contact!));
   const primaryContact = linkedContacts[0] ?? null;
   const company =
     (deal.company_id ? companies.find(item => item.id === deal.company_id) : null) ??

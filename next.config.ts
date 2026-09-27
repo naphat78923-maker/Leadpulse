@@ -9,6 +9,7 @@ const RETIRED_PAGES: [source: string, destination: string][] = [
   ["/prospects", "/deals"],
   ["/contacts", "/companies"],
   ["/meetings", "/companies"],
+  ["/add", "/deals"],
 ];
 
 const nextConfig: NextConfig = {

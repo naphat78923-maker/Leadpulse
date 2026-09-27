@@ -11,6 +11,7 @@ import EntityAvatar from '@/components/EntityAvatar';
 import LayaLeadTierBadge from '@/components/LayaLeadTierBadge';
 import { useQuerySelection } from '@/hooks/useQuerySelection';
 import { bestLeadSignal, type LeadSignal } from '@/utils/lead-scoring';
+import { isCompanyRoute } from '@/utils/contact-identity';
 import { Search, Plus, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
 import { PageTransition } from '@/components/motion';
@@ -21,6 +22,7 @@ function contactMatches(contact: Contact, q: string): boolean {
   return (
     contact.name.toLowerCase().includes(q) ||
     Boolean(contact.email?.toLowerCase().includes(q)) ||
+    Boolean(contact.phone?.toLowerCase().includes(q)) ||
     Boolean(contact.job_title?.toLowerCase().includes(q))
   );
 }
@@ -46,6 +48,9 @@ function Accounts() {
   const companies: Company[] = dbCompanies;
   const contacts: Contact[] = dbContacts;
   const deals: Deal[] = dbDeals;
+
+  // People per account for counts and name matches; routes (info@, general LINE) aren't people.
+  const peopleCount = useMemo(() => contacts.filter((c) => !isCompanyRoute(c)).length, [contacts]);
 
   const contactsByCompany = useMemo(() => {
     const map = new Map<string, Contact[]>();
@@ -83,10 +88,11 @@ function Accounts() {
     const matchedPeople = new Map<string, Contact[]>();
     if (!q) return { filtered: companies, matchedPeople };
     const filtered = companies.filter((c) => {
-      const people = (contactsByCompany.get(c.id) ?? []).filter((contact) => contactMatches(contact, q));
+      const matches = (contactsByCompany.get(c.id) ?? []).filter((contact) => contactMatches(contact, q));
+      const people = matches.filter((contact) => !isCompanyRoute(contact));
       if (people.length) matchedPeople.set(c.id, people);
       return (
-        people.length > 0 ||
+        matches.length > 0 ||
         c.name.toLowerCase().includes(q) ||
         Boolean(c.industry?.toLowerCase().includes(q)) ||
         c.tags.some((t) => t.toLowerCase().includes(q))
@@ -151,9 +157,14 @@ function Accounts() {
               </span>
             )}
             <LayaLeadTierBadge signal={signalByCompanyId.get(company.id) ?? null} />
-            <span className="inline-block text-[10px] font-medium text-clay-muted bg-clay-card px-1.5 py-0.5 rounded">
-              {contactsByCompany.get(company.id)?.length ?? 0} contacts
-            </span>
+            {(() => {
+              const people = (contactsByCompany.get(company.id) ?? []).filter((c) => !isCompanyRoute(c)).length;
+              return people > 0 ? (
+                <span className="inline-block text-[10px] font-medium text-clay-muted bg-clay-card px-1.5 py-0.5 rounded">
+                  {people} {people === 1 ? 'person' : 'people'}
+                </span>
+              ) : null;
+            })()}
           </div>
         </div>
       </div>
@@ -165,7 +176,7 @@ function Accounts() {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-xl md:text-2xl font-semibold text-clay-ink">Accounts</h1>
-          <p className="text-xs md:text-sm text-clay-muted mt-0.5">{companies.length} accounts · {contacts.length} people</p>
+          <p className="text-xs md:text-sm text-clay-muted mt-0.5">{companies.length} accounts · {peopleCount} people</p>
         </div>
         <button
           onClick={() => setIsModalOpen(true)}

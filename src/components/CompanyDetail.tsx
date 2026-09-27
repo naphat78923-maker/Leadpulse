@@ -17,6 +17,7 @@ import LogInteractionModal from '@/components/LogInteractionModal';
 import { motion } from 'framer-motion';
 import { overlayVariants, panelVariants, tweenBase, tweenSlow } from '@/lib/motion';
 import { AHS_TIERS } from '@/utils/accountHealth';
+import { isCompanyRoute } from '@/utils/contact-identity';
 import { businessDateKey, businessDaysBetween, isCalendarDateKey } from '@/utils/business-time';
 import { formatScheduleDate } from '@/utils/deal-schedule';
 import { deriveRetentionDueSignals, existingRetentionReferenceDate } from '@/utils/followup-policy';
@@ -37,6 +38,9 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
   const [openContactId, setOpenContactId] = useState<string | null>(null);
   const [logOpen, setLogOpen] = useState(false);
   const openContact = companyContacts.find((c) => c.id === openContactId) ?? null;
+  // Routes (info@, general LINE, front desk) are how to reach the account, not people.
+  const people = companyContacts.filter((c) => !isCompanyRoute(c));
+  const routes = companyContacts.filter(isCompanyRoute);
 
   // Customer health and next check-in, same derivation as This week's check-ins.
   const today = businessDateKey();
@@ -535,7 +539,7 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
           {/* Contacts Section */}
           <div className="mt-4 pt-4 border-t border-clay-hairline">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold text-clay-ink">👥 Contacts ({companyContacts.length})</h3>
+              <h3 className="text-sm font-semibold text-clay-ink">People ({people.length})</h3>
               <button
                 onClick={() => setShowAddContact(!showAddContact)}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-clay-hairline bg-clay-surface text-xs font-medium text-clay-ink active:bg-clay-card transition-colors"
@@ -630,9 +634,9 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
               </div>
             )}
 
-            {companyContacts.length > 0 ? (
+            {people.length > 0 ? (
               <div className="space-y-2">
-                {companyContacts.map((contact: Contact) => (
+                {people.map((contact: Contact) => (
                   <button
                     key={contact.id}
                     type="button"
@@ -655,7 +659,31 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-clay-muted-soft">No contacts linked yet. Add one above.</p>
+              <p className="text-xs text-clay-muted-soft">No named person yet. Add one above.</p>
+            )}
+
+            {routes.length > 0 && (
+              <div className="mt-3">
+                <p className="mb-1.5 text-xs font-medium text-clay-muted">Contact channels</p>
+                <ul className="divide-y divide-clay-hairline rounded-lg border border-clay-hairline">
+                  {routes.map((route) => (
+                    <li key={route.id}>
+                      <button
+                        type="button"
+                        onClick={() => setOpenContactId(route.id)}
+                        aria-label={`Open contact channel: ${route.name}`}
+                        className="flex w-full flex-wrap items-center gap-x-3 gap-y-0.5 px-3 py-2 text-left text-xs text-clay-body hover:bg-clay-surface"
+                      >
+                        {route.phone && <span>📞 {route.phone}</span>}
+                        {route.email && <span className="break-all">✉️ {route.email}</span>}
+                        {/* The LINE field sometimes holds another app's handle ("WhatsApp +65…"); don't mislabel it. */}
+                        {route.line && <span>{/line|whatsapp|ig\b|instagram|facebook/i.test(route.line) ? route.line : `LINE ${route.line}`}</span>}
+                        {!route.phone && !route.email && !route.line && <span className="text-clay-muted">{route.name}</span>}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </div>
 
