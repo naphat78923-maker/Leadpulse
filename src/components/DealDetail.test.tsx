@@ -74,12 +74,11 @@ describe('DealDetail journey modal', () => {
 
   afterEach(cleanup);
 
-  it('shows first-screen fields: lane, next action, follow-up, Log touch — not Open/Won/Lost', () => {
+  it('shows first-screen fields: stage, next action, follow-up, Log touch — not Open/Won/Lost', () => {
     render(<DealDetail deal={deal} onClose={vi.fn()} onSaved={vi.fn()} />);
 
-    expect(screen.getByText('ACTION LANE')).toBeTruthy();
-    expect(screen.getByText('NEXT ACTION')).toBeTruthy();
-    expect(screen.getByText('Follow-up date')).toBeTruthy();
+    expect(screen.getByText('Next action')).toBeTruthy();
+    expect(screen.getByText(/^Follow-up ·/)).toBeTruthy();
     expect(screen.getByRole('button', { name: /Log touch/i })).toBeTruthy();
     expect(screen.queryByText('DEAL STATUS')).toBeNull();
     expect(screen.queryByRole('button', { name: /● Open/ })).toBeNull();
@@ -95,7 +94,7 @@ describe('DealDetail journey modal', () => {
 
   it('keeps account intelligence available but collapsed beneath the operational fields', () => {
     render(<DealDetail deal={deal} onClose={vi.fn()} onSaved={vi.fn()} />);
-    const summary = screen.getByText('Account context & buyer map');
+    const summary = screen.getByText('Account and buyer map');
     const details = summary.closest('details');
     expect(details?.open).toBe(false);
     expect(screen.getByRole('button', { name: /Log touch/i })).toBeTruthy();
@@ -105,7 +104,7 @@ describe('DealDetail journey modal', () => {
 
   it('does not expand drafting brief by default', () => {
     render(<DealDetail deal={deal} onClose={vi.fn()} onSaved={vi.fn()} />);
-    const summary = screen.getByText('Ebimaru drafting brief');
+    const summary = screen.getByText('Drafting brief');
     expect(summary).toBeTruthy();
     const details = summary.closest('details');
     expect(details).toBeTruthy();
@@ -136,8 +135,8 @@ describe('DealDetail journey modal', () => {
     render(<DealDetail deal={deal} onClose={vi.fn()} onSaved={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit deal' }));
-    // Expand drafting brief
-    fireEvent.click(screen.getByText('Ebimaru drafting brief'));
+    // Editing opens every section, so the drafting brief field is reachable directly.
+    expect(screen.getByText('Drafting brief').closest('details')?.open).toBe(true);
     const ask = screen.getByPlaceholderText('What one thing should the client answer?');
     fireEvent.change(ask, { target: { value: 'Ask only for first trial feedback' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save deal' }));
@@ -255,15 +254,15 @@ describe('DealDetail cadence', () => {
 
   afterEach(cleanup);
 
-  it('shows product, value, and priority under the title', () => {
+  it('shows product, value, and (high) priority under the title', () => {
     render(<DealDetail deal={{ ...deal, value: 100000, priority: 'high' }} onClose={vi.fn()} onSaved={vi.fn()} />);
 
-    expect(screen.getByText('Butter · 100,000 THB · High')).toBeTruthy();
+    expect(screen.getByText('Butter · ฿100,000 · High')).toBeTruthy();
   });
 
   it('hides the outcome history until there is one', () => {
     render(<DealDetail deal={deal} onClose={vi.fn()} onSaved={vi.fn()} />);
-    expect(screen.queryByText('Outcome history')).toBeNull();
+    expect(screen.queryByText('History')).toBeNull();
     cleanup();
 
     render(
@@ -273,7 +272,7 @@ describe('DealDetail cadence', () => {
         onSaved={vi.fn()}
       />
     );
-    expect(screen.getByText('Outcome history')).toBeTruthy();
+    expect(screen.getByText('History')).toBeTruthy();
   });
 
   it('snoozes the follow-up date with one tap and logs it for undo', async () => {
@@ -286,7 +285,7 @@ describe('DealDetail cadence', () => {
     expected.setDate(expected.getDate() + 3);
     const expectedKey = localDateKey(expected);
 
-    fireEvent.click(screen.getByRole('button', { name: '+3d' }));
+    fireEvent.click(screen.getByRole('button', { name: '+3 days' }));
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
     expect(crmMocks.updateDealIfUnchanged).toHaveBeenCalledTimes(1);
@@ -305,7 +304,7 @@ describe('DealDetail cadence', () => {
       <DealDetail deal={{ ...deal, followup_date: '2020-01-01' }} onClose={vi.fn()} onSaved={onSaved} />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '+1d' }));
+    fireEvent.click(screen.getByRole('button', { name: '+1 day' }));
 
     expect(await screen.findByText(/Could not save: network down/)).toBeTruthy();
     expect(onSaved).not.toHaveBeenCalled();

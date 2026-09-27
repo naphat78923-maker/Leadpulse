@@ -256,14 +256,14 @@ describe('end-to-end journey on synthetic fixtures', () => {
         <Harness />
       </CrmProvider>
     );
-    await screen.findByText('ACTION LANE');
+    await screen.findByRole('button', { name: /Log touch/i });
 
     // 1 ── log the outreach and wait for a reply: no reply is recorded, no outcome invented.
     fireEvent.click(screen.getByRole('button', { name: /Log touch/i }));
     fireEvent.change(await screen.findByLabelText('What happened'), {
       target: { value: 'Sent the intro email' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /More/ }));
+    fireEvent.click(screen.getByRole('button', { name: /More: move lane/ }));
     fireEvent.click(screen.getByRole('radio', { name: /Log outreach and wait for reply/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(meetingRows()).toHaveLength(1));
@@ -280,7 +280,7 @@ describe('end-to-end journey on synthetic fixtures', () => {
       target: { value: 'Buyer called back asking for pricing' },
     });
     fireEvent.click(screen.getByRole('radio', { name: /They replied/i }));
-    fireEvent.click(screen.getByRole('button', { name: /More/ }));
+    fireEvent.click(screen.getByRole('button', { name: /More: move lane/ }));
     fireEvent.click(screen.getByRole('radio', { name: /Record reply and schedule the follow-up/i }));
     // The lane move needs a date, so it OWNS the deal schedule for this save — Keep and
     // Clear are not offered on top of it.
@@ -322,7 +322,7 @@ describe('end-to-end journey on synthetic fixtures', () => {
         <Harness />
       </CrmProvider>
     );
-    await screen.findByText('ACTION LANE');
+    await screen.findByRole('button', { name: /Log touch/i });
 
     fireEvent.click(screen.getByRole('button', { name: /Won/i }));
     await screen.findByText(/This deal's current action/i);
@@ -347,7 +347,7 @@ describe('end-to-end journey on synthetic fixtures', () => {
         <Harness />
       </CrmProvider>
     );
-    await screen.findByText('ACTION LANE');
+    await screen.findByRole('button', { name: /Log touch/i });
 
     fireEvent.click(screen.getByRole('button', { name: /Won/i }));
     await screen.findByText(/This deal's current action/i);
@@ -365,7 +365,7 @@ describe('end-to-end journey on synthetic fixtures', () => {
         <Harness />
       </CrmProvider>
     );
-    await screen.findByText('ACTION LANE');
+    await screen.findByRole('button', { name: /Log touch/i });
 
     fireEvent.click(screen.getByRole('button', { name: /Won/i }));
     await screen.findByText(/This deal's current action/i);
@@ -383,7 +383,7 @@ describe('end-to-end journey on synthetic fixtures', () => {
         <Harness />
       </CrmProvider>
     );
-    await screen.findByText('ACTION LANE');
+    await screen.findByRole('button', { name: /Log touch/i });
 
     fireEvent.click(screen.getByRole('button', { name: /Log touch/i }));
     fireEvent.click(await screen.findByRole('radio', { name: 'Note' }));
@@ -401,12 +401,12 @@ describe('end-to-end journey on synthetic fixtures', () => {
         <Harness />
       </CrmProvider>
     );
-    await screen.findByText('ACTION LANE');
+    await screen.findByRole('button', { name: /Log touch/i });
 
     store.state.failNextDealWrite = new Error('network down');
     fireEvent.click(screen.getByRole('button', { name: /Log touch/i }));
     fireEvent.change(await screen.findByLabelText('What happened'), { target: { value: 'Sent the intro email' } });
-    fireEvent.click(screen.getByRole('button', { name: /More/ }));
+    fireEvent.click(screen.getByRole('button', { name: /More: move lane/ }));
     fireEvent.click(screen.getByRole('radio', { name: /Log outreach and wait for reply/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
@@ -428,14 +428,14 @@ describe('end-to-end journey on synthetic fixtures', () => {
         <Harness />
       </CrmProvider>
     );
-    await screen.findByText('ACTION LANE');
+    await screen.findByRole('button', { name: /Log touch/i });
 
     // Another surface moved the deal after this editor read it.
     store.state.deals[0] = { ...store.state.deals[0], workflow_action: 'sample', stage: 'proposal', updated_at: '2026-09-14T05:00:00.000Z' };
 
     fireEvent.click(screen.getByRole('button', { name: /Log touch/i }));
     fireEvent.change(await screen.findByLabelText('What happened'), { target: { value: 'Sent the intro email' } });
-    fireEvent.click(screen.getByRole('button', { name: /More/ }));
+    fireEvent.click(screen.getByRole('button', { name: /More: move lane/ }));
     fireEvent.click(screen.getByRole('radio', { name: /Log outreach and wait for reply/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
