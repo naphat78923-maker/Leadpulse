@@ -95,7 +95,7 @@ export default function CompaniesPage() {
     <PageTransition className="p-4 md:p-6 max-w-6xl pb-20 lg:pb-6">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-xl md:text-2xl font-semibold text-clay-ink">Companies</h1>
+          <h1 className="text-xl md:text-2xl font-semibold text-clay-ink">Accounts</h1>
           <p className="text-xs md:text-sm text-clay-muted mt-0.5">{companies.length} total</p>
         </div>
         <button
