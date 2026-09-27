@@ -43,43 +43,89 @@ const buyerProbabilities = {
   requested_next_step: 0.4, deferred: 0.2, declined: 0.2, no_commitment: 0.1, unclear: 0.1,
 };
 
-// The worker echoes both answers plus the legacy buyer_response top-level
-// fields — the exact /score shape for a combined run.
-const success = () => ({
+// Uniform probabilities across a choice's frozen criteria: valid by
+// construction whatever the option count is.
+function uniform(criteria: object): Record<string, number> {
+  const keys = Object.keys(criteria);
+  return Object.fromEntries(keys.map((key) => [key, 1 / keys.length]));
+}
+
+const obstacleStrengthLegend = Object.fromEntries(
+  LAYA_ALL_FROZEN_QUESTIONS.obstacle_strength.criteria.map((text, index) => [String(index), text]),
+);
+
+// The subset of the /score payload the corruption cases mutate. Deep leaves
+// stay `unknown` so a test can put anything there — including something wrong.
+interface MutableScorePayload {
+  answers: Record<string, Record<string, unknown>>;
+  trace: { scored_input: { state: string; questions: Record<string, Record<string, unknown>> } };
+}
+
+// The worker echoes every answer plus the legacy buyer_response top-level
+// fields — the exact /score shape for the combined seven-question run.
+// `mutate` corrupts a copy so one payload shape covers every rejection case.
+const success = (mutate?: (payload: MutableScorePayload) => void) => ({
   ok: true,
   status: 200,
-  json: async () => ({
-    question: 'buyer_response',
-    recommendation: 'requested_next_step',
-    confidence: 0.4,
-    probabilities: buyerProbabilities,
-    answers: {
-      buyer_response: {
-        choice: 'requested_next_step',
-        confidence: 0.4,
-        probabilities: buyerProbabilities,
+  json: async () => {
+    // The trace echoes the request body, so it is built here — when json() is
+    // read, after this run's fetch call exists — then `mutate` corrupts it.
+    const payload = {
+      question: 'buyer_response',
+      recommendation: 'requested_next_step',
+      confidence: 0.4,
+      probabilities: buyerProbabilities,
+      answers: {
+        buyer_response: {
+          choice: 'requested_next_step',
+          confidence: 0.4,
+          probabilities: buyerProbabilities,
+        },
+        deal_amount: {
+          type: 'score',
+          score: 2.85,
+          confidence: 0.5,
+          legend: dealAmountLegend,
+          probabilities: { '0': 0.05, '1': 0.1, '2': 0.25, '3': 0.3, '4': 0.2, '5': 0.05, '6': 0.05 },
+        },
+        next_step_commitment: { type: 'noul', noul: 0.7, confidence: 0.7 },
+        sample_trial_report: {
+          type: 'choice',
+          choice: 'testing_planned',
+          confidence: 0.55,
+          probabilities: uniform(LAYA_ALL_FROZEN_QUESTIONS.sample_trial_report.criteria),
+        },
+        commercial_info_request: { type: 'noul', noul: 0.62, confidence: 0.62 },
+        obstacle_kind: {
+          type: 'choice',
+          choice: 'price_terms',
+          confidence: 0.42,
+          probabilities: uniform(LAYA_ALL_FROZEN_QUESTIONS.obstacle_kind.criteria),
+        },
+        obstacle_strength: {
+          type: 'score',
+          score: 1.3,
+          confidence: 0.5,
+          legend: obstacleStrengthLegend,
+          probabilities: { '0': 0.1, '1': 0.6, '2': 0.2, '3': 0.1 },
+        },
       },
-      deal_amount: {
-        type: 'score',
-        score: 2.85,
-        confidence: 0.5,
-        legend: dealAmountLegend,
-        probabilities: { '0': 0.05, '1': 0.1, '2': 0.25, '3': 0.3, '4': 0.2, '5': 0.05, '6': 0.05 },
+      usage: { input_tokens: 93, output_tokens: 0 },
+      trace: {
+        // Echo the actual request body, exactly like the worker's trace does.
+        scored_input: JSON.parse(String(vi.mocked(fetch).mock.calls.at(-1)?.[1]?.body)),
+        model: {
+          repository: 'aac6fef/laya-multilingual-coreml-ane',
+          source_revision: '052592a',
+          package_sha256: '53ba84d9',
+          engine: 'cpu_ne',
+        },
+        scored_at: '2026-09-23T04:05:06+00:00',
       },
-    },
-    usage: { input_tokens: 93, output_tokens: 0 },
-    trace: {
-      // Echo the actual request body, exactly like the worker's trace does.
-      scored_input: JSON.parse(String(vi.mocked(fetch).mock.calls.at(-1)?.[1]?.body)),
-      model: {
-        repository: 'aac6fef/laya-multilingual-coreml-ane',
-        source_revision: '052592a',
-        package_sha256: '53ba84d9',
-        engine: 'cpu_ne',
-      },
-      scored_at: '2026-09-23T04:05:06+00:00',
-    },
-  }),
+    };
+    mutate?.(payload);
+    return payload;
+  },
 });
 
 function openPanel() {
@@ -177,12 +223,68 @@ describe('Laya terminal', () => {
     expect(screen.getByText(/input and provenance trace, not an explanation/)).toBeTruthy();
     expect(screen.getByText(/source revision 052592a/)).toBeTruthy();
 
-    // The request is exactly { state, questions } with both frozen questions.
+    // The request is exactly { state, questions } with every frozen question.
     const [, request] = fetchMock.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(request.body as string);
     expect(Object.keys(body)).toEqual(['state', 'questions']);
     expect(body.state).toBe(built.state);
     expect(JSON.stringify(body.questions)).toBe(JSON.stringify(LAYA_ALL_FROZEN_QUESTIONS));
+  });
+
+  it('renders all five buyer-detail rows from the one combined run', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(success()));
+    openPanel();
+    typeStateAndRun(built.state);
+
+    await screen.findByTestId('laya-terminal-result-buyer_response');
+    const rows: Record<string, string> = {};
+    for (const id of [
+      'next_step_commitment',
+      'sample_trial_report',
+      'commercial_info_request',
+      'obstacle_kind',
+      'obstacle_strength',
+    ]) {
+      rows[id] = screen.getByTestId(`laya-terminal-result-${id}`).textContent ?? '';
+    }
+    // Noul rows show the raw value and both sides — never a decision.
+    expect(rows.next_step_commitment).toContain('noul 0.7000');
+    expect(rows.next_step_commitment).toContain('true 70% / false 30%');
+    expect(rows.commercial_info_request).toContain('noul 0.6200');
+    // Choice rows show the pretty option label from the frozen criteria.
+    expect(rows.sample_trial_report).toContain('Testing planned');
+    expect(rows.sample_trial_report).toContain('Not established');
+    expect(rows.obstacle_kind).toContain('Price / terms');
+    expect(rows.obstacle_kind).toContain('No obstacle stated');
+    // The score row names the winning rubric level and the scale.
+    expect(rows.obstacle_strength).toContain('Minor friction');
+    expect(rows.obstacle_strength).toContain('expected score 1.3 on a 0–3 scale');
+    expect(rows.obstacle_strength).toContain('Explicit blocker');
+  });
+
+  it('never renders a payload with a missing, extra, unknown, or malformed answer', async () => {
+    const corruptions: Array<[string, (payload: MutableScorePayload) => void]> = [
+      ['missing answer', (p) => { delete p.answers.next_step_commitment; }],
+      ['extra answer', (p) => { p.answers.stray_question = { noul: 0.1, confidence: 0.9 }; }],
+      ['unknown choice option', (p) => { p.answers.sample_trial_report.choice = 'loved_it'; }],
+      ['noul confidence off its value', (p) => { p.answers.next_step_commitment.confidence = 0.9; }],
+      ['choice probability key missing',
+        (p) => { delete (p.answers.obstacle_kind.probabilities as Record<string, unknown>).timing; }],
+      ['score out of step with its legend', (p) => { p.answers.obstacle_strength.score = 3; }],
+      ['frozen question removed from the trace', (p) => { delete p.trace.scored_input.questions.obstacle_kind; }],
+    ];
+
+    for (const [name, corrupt] of corruptions) {
+      cleanup();
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(success(corrupt)));
+      openPanel();
+      typeStateAndRun(built.state);
+
+      const alert = await screen.findByRole('alert');
+      expect(alert.textContent, name).toContain('invalid score');
+      expect(screen.queryByTestId('laya-terminal-result-buyer_response'), name).toBeNull();
+      expect(screen.queryByTestId('laya-terminal-result-obstacle_kind'), name).toBeNull();
+    }
   });
 
   it('drops an old result when the connection route changes', async () => {

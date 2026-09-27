@@ -3,45 +3,58 @@
 // ─── LeadPulse Intelligence — Prospects: the review queue ───
 //
 // A candidate list you work through, not a dashboard explaining how the list was built.
-// The evaluator's own diagnostics (counts of excluded accounts, per-archetype breakdown,
-// reconciliation, source attribution) still exist — they live under "How matching works"
-// at the foot of the page instead of above the list, so the queue starts where the page
-// starts.
+// Membership is deterministic: three pre-gates (buying evidence, status, institutional
+// identity) decide who is a candidate, and nothing is scored to get there. Archetype
+// fit is a Laya JUDGMENT a human presses for, one candidate at a time or in a batch,
+// against the frozen archetype_select + role_support questions.
 //
-// Four things this screen deliberately does NOT do:
+// The evaluator's own diagnostics (counts of excluded accounts, judgment counts,
+// reconciliation, source attribution) live under "How matching works" at the foot of
+// the page instead of above the list, so the queue starts where the page starts.
+//
+// Five things this screen deliberately does NOT do:
 //   1. It does not fall back to src/data mock arrays when the database returns empty
 //      (every other list page does). A candidate list built from seed data would be
 //      indistinguishable from real pipeline, so an empty corpus shows an empty state.
 //   2. It does not show pilot findings. The richer dimensions from the local pilot
 //      (route quality, serviceability, relationship history, blockers) have no
 //      approved structured source, so they render as "not assessed" and say so.
-//   3. It does not show a bare score in a row. Match scores are heuristic, so they are
-//      only shown in the detail panel, labelled "Match score", next to the sentence
-//      that says what they are not.
-//   4. It does not repeat the campaign archetype on every row. The archetype a candidate
-//      matched is named in its detail, and the per-archetype breakdown is in the help.
+//   3. It does not score anything without an explicit press. Judgments are made only
+//      when a button is pressed; this page never judges on load or on expand.
+//   4. It does not show a bare model number in a row. The archetype and the
+//      probabilities live in the detail panel, next to the sentence that says what
+//      they are not.
+//   5. It does not repeat the campaign archetype on every row.
 //
-// Every count is computed at runtime from live CRM rows by the shared evaluator, and the
-// saved review decision is loaded and written through the existing review module.
+// Judgments are SESSION-ONLY: they are not persisted anywhere, a reload returns every
+// candidate to "not judged", and the detail says so. Every count is computed at
+// runtime from live CRM rows by the shared evaluator, and the saved review decision
+// is loaded and written through the existing review module.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, ChevronDown, ExternalLink, Info, Loader2, Search, Target } from 'lucide-react';
+import { AlertTriangle, ArrowUpDown, ChevronDown, ExternalLink, Info, Loader2, Search, Target, X } from 'lucide-react';
 import clsx from 'clsx';
 import { useCrm } from '@/components/CrmProvider';
 import { PageTransition } from '@/components/motion';
-import { buildProspectFitReport, type ProspectFit } from '@/utils/prospectFit';
+import {
+  buildProspectFitReport,
+  judgmentFromAnswers,
+  orderCandidates,
+  type ProspectCandidate,
+  type ProspectJudgment,
+} from '@/utils/prospectFit';
 import {
   buildProspectSourceRows,
-  classificationFor,
   contactAvailability,
   filterProspects,
-  roleLabel,
+  judgmentOptions,
   READINESS_DIMENSIONS,
-  segmentForRole,
-  segmentOptions,
   type ReviewContact,
 } from '@/utils/prospectReview';
+import { buildLayaProspectFitInput, scoreFitFromLaya } from '@/utils/laya-buyer-response';
+import { requestLocalLaya } from '@/utils/laya-transport';
+import { TAXONOMY_VERSION } from '@/utils/companyRole';
 import ProspectReviewPanel from '@/components/ProspectReviewPanel';
 import { loadProspectReviews, type ProspectReviewRow, type ReviewsLoad } from '@/lib/prospectReviews';
 import type { Company, Deal } from '@/types/crm';
@@ -78,7 +91,7 @@ function tabLabel(tab: ReviewTab): string {
   return String(tab);
 }
 
-function reachLabel(r: ProspectFit['reachability']): string {
+function reachLabel(r: ProspectCandidate['reachability']): string {
   if (r === 'named_contact') return 'Named contact';
   if (r === 'route_only') return 'Route only, no name';
   return 'No route found';
@@ -138,7 +151,10 @@ function CandidateDetail({
   fit,
   evidenceContacts,
   contactSummary,
-  classification,
+  judgment,
+  judging,
+  judgeError,
+  onJudge,
   review,
   companyDeals,
   layaDeals,
@@ -146,10 +162,13 @@ function CandidateDetail({
   onReviewChanged,
   onOpenTerminal,
 }: {
-  fit: ProspectFit;
+  fit: ProspectCandidate;
   evidenceContacts: ReviewContact[];
   contactSummary: { named: number; routeOnly: number; none: number; total: number } | undefined;
-  classification: ReturnType<typeof classificationFor>;
+  judgment: ProspectJudgment | null;
+  judging: boolean;
+  judgeError: string | null;
+  onJudge: () => void;
   review: ProspectReviewRow | null;
   companyDeals: FollowupDeal[];
   layaDeals: Deal[];
@@ -157,76 +176,105 @@ function CandidateDetail({
   onReviewChanged: () => Promise<void> | void;
   onOpenTerminal: (prefill: LayaTerminalPrefill) => void;
 }) {
+  const judgmentInput = useMemo(
+    () => buildLayaProspectFitInput({
+      name: fit.name,
+      industry: fit.industry,
+      tags: fit.tags,
+      taxonomyVersion: TAXONOMY_VERSION,
+    }),
+    [fit.name, fit.industry, fit.tags]
+  );
   return (
     <div className="border-t border-clay-hairline bg-clay-canvas px-4 py-4 text-sm">
       <div className="grid gap-4 lg:grid-cols-3">
-        {/* Why it matched — the score lives HERE, never in the row */}
+        {/* The model's judgment — the numbers live HERE, never in the row */}
         <div>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-clay-muted">Why it matched</h3>
-          <p className="mt-2 text-sm text-clay-ink">
-            <span className="font-semibold">Match score {fit.fit_score}</span>
-            <span className="text-clay-muted">
-              {' '}
-              / 100{fit.fit_score >= 100 ? ' · capped at 100' : ''}
-            </span>
-          </p>
-          <p className="mt-1 text-[11px] leading-snug text-clay-muted">
-            A heuristic keyword score over industry and tags. It is not a qualification, not a
-            delivery-coverage check, not an approval, and not a probability of a sale.
-          </p>
-          <ul className="mt-2 space-y-1 text-xs text-clay-body">
-            {fit.fit_reasons.map((r) => (
-              <li key={r}>· {r}</li>
-            ))}
-          </ul>
-          <SourceNote>the shared evaluator (keyword signals over industry and tags)</SourceNote>
-          {fit.signal_hits.length > 0 && (
-            <p className="mt-2 text-xs text-clay-muted">
-              Criteria signals matched: <span className="text-clay-body">{fit.signal_hits.join(', ')}</span>{' '}
-              — textual matches, not verified facts.
-            </p>
-          )}
-          <p className="mt-2 text-xs text-clay-muted">
-            Matched archetype: <span className="text-clay-body">{fit.archetype_name}</span>
-          </p>
-        </div>
-
-        {/* Classified role + method + evidence */}
-        <div>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-clay-muted">
-            Proposed role and how it was decided
-          </h3>
-          {classification ? (
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-clay-muted">Laya fit judgment</h3>
+          {judgment ? (
             <div className="mt-2 space-y-2 text-xs">
-              <p className="text-clay-ink">
-                <span className="font-semibold">{roleLabel(classification.role)}</span>
-                <span className="text-clay-muted"> ({classification.role})</span>
-              </p>
+              <p className="text-clay-ink font-semibold">{judgment.archetype_name ?? judgment.archetype_id}</p>
               <div className="flex flex-wrap gap-2">
-                <Chip>{classification.reason_code}</Chip>
-                <Chip>confidence {classification.confidence}</Chip>
-                {classification.ambiguous && <Chip>ambiguous</Chip>}
+                <Chip>archetype confidence {judgment.archetype_confidence.toFixed(2)}</Chip>
+                <Chip>{judgment.role_support < 0.5 ? 'identity supports this' : 'goes beyond the identity'}</Chip>
               </div>
-              <p className="text-clay-body">{classification.reason}</p>
-              {classification.evidence.length > 0 ? (
-                <ul className="space-y-1 text-clay-body">
-                  {classification.evidence.map((e, i) => (
-                    <li key={`${e.rule}-${i}`}>
-                      · matched <span className="font-mono text-[11px]">{e.matched_text}</span> in{' '}
-                      <span className="font-medium">{e.field}</span> (rule {e.rule})
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-clay-muted">No textual evidence produced this role.</p>
-              )}
-              <SourceNote>classifier taxonomy {classification.taxonomy_version} over name, industry, tags</SourceNote>
-              <p className="text-[10px] uppercase tracking-wide text-clay-muted">
-                heuristic confidence, not a verified business fact
+              <ul className="space-y-0.5 text-clay-body">
+                {(Object.entries(judgment.probabilities) as [string, number][]).map(([id, p]) => (
+                  <li key={id} className={clsx(id === judgment.archetype_id && 'font-medium text-clay-ink')}>
+                    · {id}: {p.toFixed(2)}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-clay-body">
+                role_support {judgment.role_support.toFixed(2)} —{' '}
+                {judgment.role_support < 0.5
+                  ? 'the name, industry and tags support the assigned archetype'
+                  : 'the assigned archetype goes beyond what the name, industry and tags establish'}
+                .
               </p>
+              <SourceNote>
+                local Laya worker (frozen archetype_select + role_support), judged {judgment.judged_at} · this
+                session only, not saved
+              </SourceNote>
+              <p className="text-[10px] uppercase tracking-wide text-clay-muted">
+                model judgment, not a qualification and not a verified business fact
+              </p>
+              <button
+                onClick={onJudge}
+                disabled={judging}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-clay-hairline bg-clay-card px-2.5 py-1.5 text-xs font-medium text-clay-ink motion-press disabled:opacity-60"
+              >
+                {judging && <Loader2 className="w-3 h-3 animate-spin" />}
+                {judging ? 'Judging…' : 'Judge again'}
+              </button>
             </div>
           ) : (
-            <p className="mt-2 text-xs text-clay-muted">Classification unavailable for this row.</p>
+            <div className="mt-2 space-y-2 text-xs">
+              <p className="text-clay-body">
+                Not judged yet. One press sends this account&apos;s name, industry and tags to the local Laya
+                worker, which answers the frozen archetype and support questions in a single inference pass.
+              </p>
+              <button
+                onClick={onJudge}
+                disabled={judging}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-clay-hairline bg-clay-card px-2.5 py-1.5 text-xs font-medium text-clay-ink motion-press disabled:opacity-60"
+              >
+                {judging && <Loader2 className="w-3 h-3 animate-spin" />}
+                {judging ? 'Judging…' : 'Judge fit with Laya'}
+              </button>
+              <SourceNote>explicit action only — expanding a candidate never judges it</SourceNote>
+              <p className="text-[10px] uppercase tracking-wide text-clay-muted">
+                advisory, not a qualification, not a delivery-coverage check, not an approval
+              </p>
+            </div>
+          )}
+          {judgeError && (
+            <p role="alert" className="mt-2 text-xs text-clay-error">
+              {judgeError}
+            </p>
+          )}
+        </div>
+
+        {/* The exact text a judge press sends — transparency, nothing else */}
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-clay-muted">What Laya is asked</h3>
+          {judgmentInput ? (
+            <>
+              <p className="mt-2 rounded-xl border border-clay-hairline bg-clay-card p-2 text-xs leading-snug text-clay-body">
+                {judgmentInput.state}
+              </p>
+              <p className="mt-2 text-xs text-clay-muted">
+                Two frozen questions: <span className="font-mono text-[11px]">archetype_select</span> (which
+                published archetype fits, or <span className="font-mono text-[11px]">no_fit</span>) and{' '}
+                <span className="font-mono text-[11px]">role_support</span> (is that assignment supported by
+                the identity?).
+              </p>
+              <SourceNote>the exact payload a judge press sends; nothing else leaves this app</SourceNote>
+            </>
+          ) : (
+            <p className="mt-2 text-xs text-clay-muted">
+              Nothing would be sent: this account states no name, industry or tags to judge.
+            </p>
           )}
         </div>
 
@@ -287,11 +335,11 @@ function CandidateDetail({
                 ))}
               </ul>
             ) : (
-              <p className="mt-2 text-xs text-clay-muted">The evaluator raised no gaps for this row.</p>
+              <p className="mt-2 text-xs text-clay-muted">The evaluator raised no row-fact gaps for this account.</p>
             )}
             <p className="mt-2 text-xs text-clay-muted">
               Serviceability, sales qualification and outreach authorisation are all shown above as
-              not assessed. They are not inferred from this fit.
+              not assessed. They are not inferred from this judgment.
             </p>
           </div>
         </div>
@@ -306,12 +354,14 @@ function CandidateDetail({
       <LayaTerminalOpenButton deals={layaDeals} onOpen={onOpenTerminal} />
 
       {/* The saved review. Keyed by company so one account's draft can never be saved
-          onto another when the user expands a different candidate. */}
+          onto another when the user expands a different candidate. The archetypeId
+          comes from the model's judgment when there is one: before that, no published
+          criteria can be cited, and the panel says so by offering none. */}
       <ProspectReviewPanel
         key={fit.company_id}
         companyId={fit.company_id}
         companyName={fit.name}
-        archetypeId={fit.archetype_id}
+        archetypeId={judgment && judgment.archetype_id !== 'no_fit' ? judgment.archetype_id : ''}
         deals={companyDeals}
         review={review}
         onChanged={onReviewChanged}
@@ -322,18 +372,25 @@ function CandidateDetail({
 
 /**
  * Everything the queue no longer shows on its face, kept available and un-deleted:
- * what matching actually does, what is still unestablished for every candidate, the
- * shared evaluator's own accounting, and the review-count reconciliation.
+ * what membership and judging actually do, what is still unestablished for every
+ * candidate, the shared evaluator's own accounting, and the review-count
+ * reconciliation.
  */
 function HowMatchingWorks({
   report,
+  judgments,
+  droppedNotFit,
   reviewSummary,
   reviewsError,
 }: {
   report: NonNullable<ReturnType<typeof buildProspectFitReport>>;
+  judgments: Record<string, ProspectJudgment | undefined>;
+  droppedNotFit: number;
   reviewSummary: ReturnType<typeof summariseReviews>;
   reviewsError: string | null;
 }) {
+  const judged = Object.values(judgments).filter((j) => j && j.archetype_id !== 'no_fit').length;
+  const unjudged = report.corpus.candidates - Object.keys(judgments).length;
   return (
     <details className="mt-6 rounded-xl border border-clay-hairline bg-clay-card p-3">
       <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-clay-muted">
@@ -341,28 +398,38 @@ function HowMatchingWorks({
       </summary>
       <div className="mt-3 space-y-3 text-xs leading-snug text-clay-body">
         <p>
-          Companies are compared against the published campaign archetypes by keyword signals over
-          free-text fields (industry and tags). These are candidates, not qualified accounts: nothing
-          here is qualified, cleared for outreach, or confirmed serviceable. No contact is verified,
-          and no suppression check exists in this app. The list keeps the evaluator&apos;s order:
-          highest match score first, then name.
+          Membership is deterministic: an account is a candidate when it has no buying evidence, its
+          status is &quot;prospect&quot;, and its stated industry is not an institutional identity (a school
+          or college is never a commercial prospect, so it is never sent to the model). Nothing is scored
+          to get this far.
+        </p>
+        <p>
+          Archetype fit is a Laya judgment, made only when you press a judge button — one account at a
+          time, or the batch button above the list. One local inference pass answers two frozen questions:
+          which published archetype fits (or <span className="font-mono text-[11px]">no_fit</span>), and
+          whether the name, industry and tags actually support that assignment. Judgments are session-only
+          — they are not saved — and advisory: nothing here is qualified, cleared for outreach, or
+          confirmed serviceable. No contact is verified, and no suppression check exists in this app.
+        </p>
+        <p>
+          The list keeps judged candidates first, ranked by the model&apos;s archetype confidence (name
+          breaks ties), then unjudged candidates by name. A candidate judged not to fit any published
+          archetype leaves the queue rather than staying on as filler.
         </p>
         <p>
           Readiness is three separate dimensions — serviceability, sales qualification, outreach
-          authorisation — and none of them is established by a match. Each candidate states its own
+          authorisation — and none of them is established by a judgment. Each candidate states its own
           three states in its detail.
         </p>
 
         <div>
-          <p className="font-semibold text-clay-ink">Candidates per archetype</p>
+          <p className="font-semibold text-clay-ink">Judgments this session</p>
           <ul className="mt-1 space-y-1">
-            {report.by_archetype.map((a) => (
-              <li key={a.archetype_id}>
-                · {a.name}: {a.candidates} candidate(s) · {a.with_named_contact} with a named contact ·{' '}
-                {a.untouched} with no logged interaction
-              </li>
-            ))}
+            <li>· Judged and in the queue: {judged}</li>
+            <li>· Not judged yet: {unjudged}</li>
+            <li>· Judged no_fit (left the queue): {droppedNotFit}</li>
           </ul>
+          <SourceNote>local Laya worker · held for this session only, never written anywhere</SourceNote>
         </div>
 
         <div>
@@ -372,7 +439,7 @@ function HowMatchingWorks({
             <li>· Candidates: {report.corpus.candidates}</li>
             <li>· Already buying: {report.corpus.excluded_already_buying}</li>
             <li>· Status is not a prospect: {report.corpus.excluded_not_a_prospect}</li>
-            <li>· Outside every published archetype: {report.corpus.excluded_no_archetype}</li>
+            <li>· Institutional identity: {report.corpus.excluded_institutional}</li>
           </ul>
           <SourceNote>
             computed live by the shared evaluator{' '}
@@ -421,7 +488,7 @@ function HowMatchingWorks({
 export default function ProspectsPage() {
   const { companies, deals, meetings, accountEvents, contacts, loading, refresh } = useCrm();
   const [query, setQuery] = useState('');
-  const [segment, setSegment] = useState<string>('');
+  const [judgmentFilter, setJudgmentFilter] = useState<string>('');
   const [reachability, setReachability] = useState<string>('');
   const [tab, setTab] = useState<ReviewTab>('unreviewed');
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -434,49 +501,153 @@ export default function ProspectsPage() {
   // A row's "Open in terminal" hands the terminal a fresh prefill object; the
   // terminal treats each one as a deliberate snapshot (no auto-rescoring).
   const [terminalPrefill, setTerminalPrefill] = useState<LayaTerminalPrefill | null>(null);
+  // Fit judgments are SESSION state, never persisted: nothing is written, and a
+  // reload returns every candidate to "not judged". A judgment only ever appears
+  // after an explicit press — this page never judges on load or on expand.
+  const [judgments, setJudgments] = useState<Record<string, ProspectJudgment>>({});
+  const [judgingId, setJudgingId] = useState<string | null>(null);
+  const [batch, setBatch] = useState<{ done: number; total: number } | null>(null);
+  const [judgeErrors, setJudgeErrors] = useState<Record<string, string>>({});
+  const abortRef = useRef<AbortController | null>(null);
 
   const input = useMemo(
     () => ({ companies, deals, meetings, events: accountEvents, contacts }),
     [companies, deals, meetings, accountEvents, contacts]
   );
 
-  const { rows, report, error } = useMemo(() => {
+  const { report, error } = useMemo(() => {
     try {
       const r = buildProspectSourceRows(input);
       const rep = buildProspectFitReport(r, { source: SOURCE, now: new Date() });
-      return { rows: r, report: rep, error: null as string | null };
+      return { report: rep, error: null as string | null };
     } catch (e) {
-      return { rows: [], report: null, error: (e as Error).message };
+      return { report: null, error: (e as Error).message };
     }
   }, [input]);
 
+  /**
+   * One judge press = one local inference pass over the candidate's own identity
+   * fields. Returns a failure message, or null on success (the judgment is
+   * stored). Mirrors the terminal's error handling: a refusal is named, and a
+   * malformed payload is never rendered as a result.
+   */
+  const judgeOne = useCallback(
+    async (candidate: ProspectCandidate, signal: AbortSignal): Promise<string | null> => {
+      const fitInput = buildLayaProspectFitInput({
+        name: candidate.name,
+        industry: candidate.industry,
+        tags: candidate.tags,
+        taxonomyVersion: report?.taxonomy_version ?? TAXONOMY_VERSION,
+      });
+      if (!fitInput) return 'Nothing to send: this account states no name, industry or tags.';
+      try {
+        const { ok, status, payload } = await requestLocalLaya('/score', {
+          signal,
+          body: JSON.stringify({ state: fitInput.state, questions: fitInput.questions }),
+        });
+        if (!ok) {
+          const p = payload as { status?: unknown; error?: unknown } | null;
+          const message =
+            typeof p?.error === 'string' && p.error
+              ? p.error
+              : `The local worker refused this judgment (HTTP ${status}).`;
+          return p?.status === 'not_scored' || status === 422 ? `Not judged: ${message}` : message;
+        }
+        const answers = scoreFitFromLaya(payload);
+        if (!answers) {
+          return 'Laya returned an invalid score. A malformed payload is never rendered as a result.';
+        }
+        setJudgments((prev) => ({
+          ...prev,
+          [candidate.company_id]: judgmentFromAnswers(candidate.company_id, answers),
+        }));
+        return null;
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return 'Judging cancelled.';
+        return err instanceof Error ? err.message : 'Cannot reach the local Laya worker.';
+      }
+    },
+    [report?.taxonomy_version]
+  );
+
+  const handleJudge = useCallback(
+    async (candidate: ProspectCandidate) => {
+      if (judgingId || batch) return;
+      setJudgingId(candidate.company_id);
+      const message = await judgeOne(candidate, new AbortController().signal);
+      setJudgingId(null);
+      setJudgeErrors((prev) => {
+        const next = { ...prev };
+        if (message) next[candidate.company_id] = message;
+        else delete next[candidate.company_id];
+        return next;
+      });
+    },
+    [batch, judgeOne, judgingId]
+  );
+
+  /** Batch judging is sequential and cancellable: one press, visible progress. */
+  const handleJudgeAll = useCallback(async () => {
+    if (judgingId || batch) return;
+    const pending = (report?.candidates ?? []).filter((c) => !judgments[c.company_id]);
+    if (pending.length === 0) return;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setBatch({ done: 0, total: pending.length });
+    let done = 0;
+    for (const candidate of pending) {
+      const message = await judgeOne(candidate, controller.signal);
+      if (message) {
+        setJudgeErrors((prev) => ({ ...prev, [candidate.company_id]: message }));
+        break;
+      }
+      done += 1;
+      setBatch({ done, total: pending.length });
+    }
+    abortRef.current = null;
+    setBatch(null);
+  }, [batch, judgeOne, judgments, report, judgingId]);
+
+  // Cancel an in-flight batch if the page unmounts; nothing is written either way.
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  // The queue: judged candidates first (model confidence, then name), unjudged by
+  // name, and no_fit judgments dropped out with their count stated in the help.
+  const { queue, droppedNoFit } = useMemo(
+    () => orderCandidates(report?.candidates ?? [], judgments),
+    [report, judgments]
+  );
+
   // Deterministic Laya lead-tier rollup per candidate account (hottest open
-  // deal). Distinct from the heuristic match score: this is the deal signal,
-  // computed client-side with no model call.
+  // deal). This is the deal signal, computed client-side with no model call —
+  // separate from the fit judgment above it.
   const signalByCompanyId = useMemo(() => {
     const map = new Map<string, LeadSignal>();
-    for (const fit of report?.fits ?? []) {
-      const signal = bestLeadSignal(deals.filter(d => d.company_id === fit.company_id));
-      if (signal) map.set(fit.company_id, signal);
+    for (const candidate of queue) {
+      const signal = bestLeadSignal(deals.filter((d) => d.company_id === candidate.company_id));
+      if (signal) map.set(candidate.company_id, signal);
     }
     return map;
-  }, [report, deals]);
-
+  }, [queue, deals]);
 
   const availability = useMemo(() => contactAvailability(contacts as ReviewContact[]), [contacts]);
-  const segments = useMemo(() => segmentOptions(report?.fits ?? []), [report]);
+  const filterOptions = useMemo(() => judgmentOptions(queue, judgments), [queue, judgments]);
 
   const visible = useMemo(() => {
     if (!report) return [];
-    const base = filterProspects(report.fits, {
-      query,
-      segment: segment || null,
-      reachability: reachability || null,
-    });
+    const base = filterProspects(
+      queue,
+      {
+        query,
+        judgment: judgmentFilter || null,
+        reachability: reachability || null,
+      },
+      judgments
+    );
     if (tab === 'all') return base;
     if (tab === 'unreviewed') return base.filter((f) => !reviews[f.company_id]);
     return base.filter((f) => reviews[f.company_id]?.decision === tab);
-  }, [report, query, segment, reachability, tab, reviews]);
+  }, [report, queue, judgments, query, judgmentFilter, reachability, tab, reviews]);
 
   const applyReviews = useCallback((res: ReviewsLoad) => {
     if (res.ok) {
@@ -515,7 +686,10 @@ export default function ProspectsPage() {
     await refresh();
   }, [reloadReviews, refresh]);
 
-  const candidateIds = useMemo(() => (report ? report.fits.map((f) => f.company_id) : []), [report]);
+  // Review counts partition the QUEUE (post-judgment), so a saved review on an
+  // account judged no_fit is reported as outside the queue rather than silently
+  // counted in a tab whose row is not shown.
+  const candidateIds = useMemo(() => queue.map((c) => c.company_id), [queue]);
   const reviewSummary = useMemo(
     () => summariseReviews(Object.values(reviews), candidateIds),
     [reviews, candidateIds]
@@ -529,7 +703,7 @@ export default function ProspectsPage() {
     all: reviewSummary.total,
   };
 
-  const filtered = Boolean(query.trim() || segment || reachability);
+  const filtered = Boolean(query.trim() || judgmentFilter || reachability);
 
   function handleTabKeyDown(e: React.KeyboardEvent<HTMLButtonElement>, index: number) {
     const last = TABS.length - 1;
@@ -544,11 +718,17 @@ export default function ProspectsPage() {
     tabRefs.current[next]?.focus();
   }
 
+  const pendingCount = report
+    ? report.candidates.filter((c) => !judgments[c.company_id]).length
+    : 0;
+
   const emptyMessage = !report || report.corpus.candidates === 0
-    ? 'No companies loaded, or no account currently matches a published archetype. This screen never falls back to sample data.'
-    : !filtered && tab === 'unreviewed' && reviewSummary.unreviewed === 0
-      ? 'This queue is clear: every candidate carries a saved review decision. Open All to see them.'
-      : 'No candidate matches the current search or filters.';
+    ? 'No companies loaded, or no account passes the deterministic pre-gates (buying evidence, status, institutional identity). This screen never falls back to sample data.'
+    : queue.length === 0
+      ? 'Every candidate was judged not to fit a published archetype this session, so the queue is empty. Judgments are session-only: reload to judge them again.'
+      : !filtered && tab === 'unreviewed' && reviewSummary.unreviewed === 0
+        ? 'This queue is clear: every shown candidate carries a saved review decision. Open All to see them.'
+        : 'No candidate matches the current search or filters.';
 
   return (
     <PageTransition>
@@ -560,11 +740,12 @@ export default function ProspectsPage() {
         </div>
         {!loading && !error && report ? (
           <p className="mt-1 text-sm text-clay-body">
-            <span className="font-semibold text-clay-ink">{report.corpus.candidates}</span> candidates ·{' '}
+            <span className="font-semibold text-clay-ink">{queue.length}</span> candidates ·{' '}
+            <span className="font-semibold text-clay-ink">{pendingCount}</span> not judged ·{' '}
             <span className="font-semibold text-clay-ink">{reviewSummary.unreviewed}</span> unreviewed
           </p>
         ) : (
-          <p className="mt-1 text-sm text-clay-muted">Companies that match a published campaign archetype.</p>
+          <p className="mt-1 text-sm text-clay-muted">Prospect accounts awaiting a Laya fit judgment.</p>
         )}
         <p className="mt-1 flex items-start gap-1.5 text-xs text-clay-muted">
           <Info className="mt-0.5 w-3.5 h-3.5 shrink-0" />
@@ -616,15 +797,15 @@ export default function ProspectsPage() {
                 />
               </div>
               <select
-                value={segment}
-                onChange={(e) => setSegment(e.target.value)}
-                aria-label="Filter by segment"
+                value={judgmentFilter}
+                onChange={(e) => setJudgmentFilter(e.target.value)}
+                aria-label="Filter by judgment"
                 className="rounded-xl border border-clay-hairline bg-clay-card px-3 py-2 text-sm text-clay-ink"
               >
-                <option value="">All segments</option>
-                {segments.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.label} ({s.count})
+                <option value="">Any judgment state</option>
+                {filterOptions.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.label} ({o.count})
                   </option>
                 ))}
               </select>
@@ -639,6 +820,39 @@ export default function ProspectsPage() {
                 <option value="route_only">Route only, no name</option>
                 <option value="none">No route found</option>
               </select>
+            </div>
+
+            {/* Judging controls. One explicit press either judges the next pending
+                account or the whole pending set, sequentially, with a cancel. */}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {batch ? (
+                <>
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-clay-ink">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Judging {batch.done} / {batch.total}…
+                  </span>
+                  <button
+                    onClick={() => abortRef.current?.abort()}
+                    className="inline-flex items-center gap-1 rounded-lg border border-clay-hairline bg-clay-card px-2.5 py-1.5 text-xs font-medium text-clay-ink motion-press"
+                  >
+                    <X className="w-3 h-3" /> Cancel
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => void handleJudgeAll()}
+                    disabled={pendingCount === 0 || judgingId !== null}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-clay-hairline bg-clay-card px-2.5 py-1.5 text-xs font-medium text-clay-ink motion-press disabled:opacity-60"
+                  >
+                    <ArrowUpDown className="w-3 h-3" />
+                    Judge all {pendingCount > 0 ? pendingCount : ''} not-judged with Laya
+                  </button>
+                  <span className="text-[11px] leading-snug text-clay-muted">
+                    one local inference pass each, judged in sequence · session only, nothing is saved
+                  </span>
+                </>
+              )}
             </div>
 
             <div role="tablist" aria-label="Review state" className="mt-3 flex flex-wrap gap-1.5">
@@ -689,7 +903,9 @@ export default function ProspectsPage() {
               className="mt-3"
             >
               <p className="text-xs text-clay-muted">
-                Showing {visible.length} of {report.corpus.candidates} candidates ({tabLabel(tab)}).
+                Showing {visible.length} of {queue.length} candidates ({tabLabel(tab)})
+                {droppedNoFit.length > 0 ? ` · ${droppedNoFit.length} judged no_fit this session, dropped from the queue` : ''}
+                .
               </p>
 
               {visible.length === 0 ? (
@@ -719,7 +935,7 @@ export default function ProspectsPage() {
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-semibold text-clay-ink">{f.name}</p>
                             <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-clay-muted">
-                              <span>{segmentForRole(f.role)}</span>
+                              <span>{judgments[f.company_id] ? 'judged' : 'not judged'}</span>
                               <span aria-hidden="true">·</span>
                               <span>{reachLabel(f.reachability)}</span>
                               <LayaLeadTierBadge signal={signalByCompanyId.get(f.company_id) ?? null} />
@@ -741,7 +957,10 @@ export default function ProspectsPage() {
                             fit={f}
                             evidenceContacts={evidenceContacts}
                             contactSummary={summary}
-                            classification={classificationFor(f, rows)}
+                            judgment={judgments[f.company_id] ?? null}
+                            judging={judgingId === f.company_id}
+                            judgeError={judgeErrors[f.company_id] ?? null}
+                            onJudge={() => void handleJudge(f)}
                             review={review}
                             companyDeals={(deals as unknown as FollowupDeal[]).filter(
                               (d) => d.company_id === f.company_id
@@ -761,6 +980,8 @@ export default function ProspectsPage() {
 
             <HowMatchingWorks
               report={report}
+              judgments={judgments}
+              droppedNotFit={droppedNoFit.length}
               reviewSummary={reviewSummary}
               reviewsError={reviewsError}
             />

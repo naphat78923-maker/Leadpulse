@@ -12,13 +12,10 @@ import {
   buildProspectReview,
   contactAvailability,
   filterProspects,
-  classificationFor,
+  judgmentOptions,
   READINESS_DIMENSIONS,
-  segmentForRole,
-  segmentOptions,
   type ProspectReviewInput,
 } from './prospectReview.ts';
-import { COMPANY_ROLES, ROLE_TAXONOMY } from './companyRole.ts';
 
 function input(over: Partial<ProspectReviewInput> = {}): ProspectReviewInput {
   return {
@@ -147,23 +144,47 @@ describe('filterProspects', () => {
     })
   );
 
+  const judgedC1 = {
+    company_id: 'c1',
+    archetype_id: 'plant_based_restaurant_cafe' as const,
+    archetype_name: 'Plant-based restaurant and cafe kitchens',
+    archetype_confidence: 0.85,
+    probabilities: {
+      plant_based_restaurant_cafe: 0.85,
+      modern_trade_specialty_retail: 0.05,
+      bakery_patisserie_brands: 0.05,
+      no_fit: 0.05,
+    },
+    role_support: 0.15,
+    role_support_confidence: 0.85,
+    judged_at: '2026-09-26T00:00:00.000Z',
+  };
+
   it('returns everything when no filter is applied', () => {
-    expect(filterProspects(report.fits, {})).toHaveLength(report.fits.length);
+    expect(filterProspects(report.candidates, {}, {})).toHaveLength(report.candidates.length);
   });
 
-  it('filters by search text', () => {
-    expect(filterProspects(report.fits, { query: 'sunny' })).toHaveLength(1);
+  it('filters by search text over name, industry and tags — never by keyword guess', () => {
+    expect(filterProspects(report.candidates, { query: 'sunny' }, {}).map((f) => f.company_id)).toEqual(['c2']);
+    expect(filterProspects(report.candidates, { query: 'bakery chain' }, {}).map((f) => f.company_id)).toEqual(['c2']);
   });
 
-  it('filters by archetype and returns nothing for a filter nobody matches', () => {
-    const first = report.fits[0].archetype_id;
-    expect(filterProspects(report.fits, { archetypeId: first }).every((f) => f.archetype_id === first)).toBe(true);
-    expect(filterProspects(report.fits, { archetypeId: 'no_such_archetype' })).toHaveLength(0);
+  it('searches the judged archetype name only when a judgment exists', () => {
+    expect(filterProspects(report.candidates, { query: 'cafe kitchens' }, {}).map((f) => f.company_id)).toEqual([]);
+    expect(filterProspects(report.candidates, { query: 'cafe kitchens' }, { c1: judgedC1 }).map((f) => f.company_id)).toEqual(['c1']);
+  });
+
+  it('filters by judgment state without touching the reachability filter', () => {
+    expect(filterProspects(report.candidates, { judgment: 'unjudged' }, {}).map((f) => f.company_id).sort()).toEqual(['c1', 'c2']);
+    expect(filterProspects(report.candidates, { judgment: 'unjudged' }, { c1: judgedC1 }).map((f) => f.company_id)).toEqual(['c2']);
+    expect(filterProspects(report.candidates, { judgment: 'judged' }, { c1: judgedC1 }).map((f) => f.company_id)).toEqual(['c1']);
+    // an empty judgment filter is no constraint at all
+    expect(filterProspects(report.candidates, { judgment: '' }, { c1: judgedC1 })).toHaveLength(report.candidates.length);
   });
 
   it('filters by reachability', () => {
-    expect(filterProspects(report.fits, { reachability: 'none' })).toHaveLength(report.fits.length);
-    expect(filterProspects(report.fits, { reachability: 'named_contact' })).toHaveLength(0);
+    expect(filterProspects(report.candidates, { reachability: 'none' }).map((f) => f.company_id).sort()).toEqual(['c1', 'c2']);
+    expect(filterProspects(report.candidates, { reachability: 'named_contact' })).toHaveLength(0);
   });
 });
 
@@ -175,23 +196,6 @@ describe('contactAvailability', () => {
       { company_id: 'c1', identity_quality: 'unknown', email: null, phone: null, line: null },
     ]);
     expect(map.get('c1')).toEqual({ named: 1, routeOnly: 1, none: 1, total: 3 });
-  });
-});
-
-describe('classificationFor', () => {
-  it('returns the same role the evaluator used, with evidence', () => {
-    const rows = buildProspectSourceRows(input());
-    const report = buildProspectReview(input());
-    const cls = classificationFor(report.fits[0], rows);
-    expect(cls).not.toBeNull();
-    expect(cls!.role).toBe(report.fits[0].role);
-    expect(cls!.evidence.length).toBeGreaterThan(0);
-  });
-
-  it('returns null for a company that is not in the row set', () => {
-    const rows = buildProspectSourceRows(input());
-    const report = buildProspectReview(input());
-    expect(classificationFor({ ...report.fits[0], company_id: 'not-there' }, rows)).toBeNull();
   });
 });
 
@@ -216,45 +220,37 @@ describe('readiness dimensions', () => {
   });
 });
 
-describe('segments (the scannable short form of a role)', () => {
-  it('derives every segment from the one taxonomy, never from a second classification', () => {
-    for (const role of COMPANY_ROLES) {
-      expect(segmentForRole(role)).toBe(ROLE_TAXONOMY[role].segment);
-      expect(segmentForRole(role).length).toBeGreaterThan(0);
-      // a segment is a shortening, not a new sentence
-      expect(segmentForRole(role).length).toBeLessThanOrEqual(16);
-    }
-  });
-
-  it('keeps unknown as its own segment instead of folding it into a nearby type', () => {
-    const segments = COMPANY_ROLES.map((r) => segmentForRole(r));
-    expect(segments).toContain('Unknown');
-    expect(segments.filter((s) => s === 'Unknown')).toHaveLength(1);
-    expect(segmentForRole('unknown')).not.toBe(segmentForRole('modern_trade_retail'));
-  });
-
-  it('offers only the segments present in the candidate set, with live counts', () => {
+describe('judgment options', () => {
+  it('offers only the judgment states actually present, with live counts', () => {
     const report = buildProspectReview(input());
-    const options = segmentOptions(report.fits);
-    const expected = new Map<string, number>();
-    for (const f of report.fits) {
-      const s = segmentForRole(f.role);
-      expected.set(s, (expected.get(s) ?? 0) + 1);
-    }
-    expect(new Set(options.map((o) => o.label))).toEqual(new Set(expected.keys()));
-    for (const o of options) expect(o.count).toBe(expected.get(o.label));
-    // a segment nobody carries is not offered as an empty option
-    expect(options.map((o) => o.label)).not.toContain('Hotel');
+    const empty = judgmentOptions(report.candidates, {});
+    expect(empty).toEqual([{ id: 'unjudged', label: 'Not judged yet', count: 1 }]);
+
+    const judged = {
+      c1: {
+        company_id: 'c1',
+        archetype_id: 'bakery_patisserie_brands' as const,
+        archetype_name: 'Bakery',
+        archetype_confidence: 0.8,
+        probabilities: {
+          plant_based_restaurant_cafe: 0.05,
+          modern_trade_specialty_retail: 0.05,
+          bakery_patisserie_brands: 0.8,
+          no_fit: 0.1,
+        },
+        role_support: 0.2,
+        role_support_confidence: 0.8,
+        judged_at: '2026-09-26T00:00:00.000Z',
+      },
+    };
+    const options = judgmentOptions(report.candidates, judged);
+    expect(options).toEqual([{ id: 'judged', label: 'Judged', count: 1 }]);
   });
 
-  it('filters by segment without touching the archetype or reachability filters', () => {
+  it('stays empty-count-free: no option is offered for a state nobody is in', () => {
     const report = buildProspectReview(input());
-    const target = segmentForRole(report.fits[0].role);
-    const filtered = filterProspects(report.fits, { segment: target });
-    expect(filtered.length).toBeGreaterThan(0);
-    expect(filtered.every((f) => segmentForRole(f.role) === target)).toBe(true);
-    expect(filterProspects(report.fits, { segment: 'no such segment' })).toHaveLength(0);
-    // an empty segment filter is no constraint at all
-    expect(filterProspects(report.fits, { segment: '' })).toHaveLength(report.fits.length);
+    for (const o of judgmentOptions(report.candidates, {})) {
+      expect(o.count).toBeGreaterThan(0);
+    }
   });
 });

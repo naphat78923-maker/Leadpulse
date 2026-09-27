@@ -4,6 +4,11 @@
 // It deliberately mirrors scripts/prospect-fit-report.ts (the CLI) row-for-row, so
 // the screen and the report cannot disagree about who is a candidate.
 //
+// Membership is deterministic (pre-gates in prospectFit.ts). Archetype fit is a
+// Laya judgment made on explicit press — these helpers only SPLIT, ORDER and
+// FILTER by that judgment; they never compute one, and they never rank by
+// keyword.
+//
 // Two rules this file exists to enforce:
 //   1. Nothing here hardcodes a count, a name, or a pilot finding. Everything is
 //      computed from live CRM rows handed in by the caller.
@@ -12,12 +17,12 @@
 //      dimensions (route quality, serviceability, relationship history, blockers)
 //      and those are NOT app data.
 
-import { classifyCompanyRole, ROLE_TAXONOMY, type RoleClassification } from './companyRole.ts';
 import { CAMPAIGN_ARCHETYPES_V1 } from './campaignArchetypes.ts';
 import {
   buildProspectFitReport,
   type ProspectFit,
   type ProspectFitReport,
+  type ProspectJudgment,
   type ProspectSourceRow,
 } from './prospectFit.ts';
 
@@ -150,52 +155,66 @@ export function buildProspectReview(input: ProspectReviewInput, opts?: { now?: D
   });
 }
 
-/** Human-readable label for a role, from the taxonomy itself (never a local copy). */
-export function roleLabel(role: ProspectFit['role']): string {
-  return ROLE_TAXONOMY[role]?.label ?? String(role);
-}
-
 /**
- * The short segment form of a role, taken from the same taxonomy entry as `roleLabel`.
- * This exists so a list row can say "Retail" without restating the whole role, and it
- * is deliberately derived rather than re-classified: one classifier, one taxonomy.
+ * One filter option: a stable id, the label to show, and the live count.
+ * (Named for the pre-migration segment control it replaces; the shape is what
+ * the page's filter needs.)
  */
-export function segmentForRole(role: ProspectFit['role']): string {
-  return ROLE_TAXONOMY[role]?.segment ?? String(role);
-}
-
 export interface SegmentOption {
-  /** the human label; the taxonomy has no separate id vocabulary for segments */
   id: string;
   label: string;
   count: number;
 }
 
 /**
- * The segments actually present in a candidate set, in taxonomy order.
- *
- * A segment that no candidate carries is not offered, because an empty filter option
- * reads as "these exist and match nothing" when the truth is "none were found".
+ * A candidate the model judged as fitting a published archetype, with the
+ * display facts the queue row and detail need. `archetype_name` is never null
+ * here: no_fit judgments drop out of the queue before this is built.
  */
-export function segmentOptions(fits: ProspectFit[]): SegmentOption[] {
-  const counts = new Map<string, number>();
+export interface JudgedCandidate extends ProspectFit {
+  judgment: ProspectJudgment;
+  archetype_name: string;
+}
+
+/** Split a candidate set by session judgment: judged (with names), not yet judged. */
+export function splitByJudgment(
+  fits: ProspectFit[],
+  judgments: Record<string, ProspectJudgment | undefined>
+): { judged: JudgedCandidate[]; unjudged: ProspectFit[] } {
+  const judged: JudgedCandidate[] = [];
+  const unjudged: ProspectFit[] = [];
   for (const f of fits) {
-    const label = segmentForRole(f.role);
-    counts.set(label, (counts.get(label) ?? 0) + 1);
+    const j = judgments[f.company_id];
+    if (j && j.archetype_id !== 'no_fit') {
+      judged.push({ ...f, judgment: j, archetype_name: j.archetype_name ?? j.archetype_id });
+    } else if (!j) {
+      unjudged.push(f);
+    }
+    // no_fit judgments are deliberately in neither list: they left the queue.
   }
-  const ordered: SegmentOption[] = [];
-  const seen = new Set<string>();
-  for (const role of Object.keys(ROLE_TAXONOMY) as (keyof typeof ROLE_TAXONOMY)[]) {
-    const label = ROLE_TAXONOMY[role].segment;
-    if (seen.has(label) || !counts.has(label)) continue;
-    seen.add(label);
-    ordered.push({ id: label, label, count: counts.get(label) ?? 0 });
+  return { judged, unjudged };
+}
+
+/**
+ * The judgment filter's options: one entry per state the queue can actually be
+ * in, with live counts. An option nobody is in is not offered, because it would
+ * read as "these exist and match nothing" when the truth is "none were found".
+ */
+export function judgmentOptions(
+  fits: ProspectFit[],
+  judgments: Record<string, ProspectJudgment | undefined>
+): SegmentOption[] {
+  const options: SegmentOption[] = [
+    { id: 'judged', label: 'Judged', count: 0 },
+    { id: 'unjudged', label: 'Not judged yet', count: 0 },
+  ];
+  for (const f of fits) {
+    const j = judgments[f.company_id];
+    if (!j) options[1].count += 1;
+    else if (j.archetype_id !== 'no_fit') options[0].count += 1;
+    // no_fit has left the queue, so it is not an option to filter the queue by.
   }
-  // A role outside the taxonomy would still be shown rather than silently hidden.
-  for (const [label, count] of counts) {
-    if (!seen.has(label)) ordered.push({ id: label, label, count });
-  }
-  return ordered;
+  return options.filter((o) => o.count > 0);
 }
 
 /** Every published archetype, for the filter control. Sourced, never hardcoded. */
@@ -203,34 +222,36 @@ export function archetypeOptions(): { id: string; name: string }[] {
   return CAMPAIGN_ARCHETYPES_V1.map((a) => ({ id: a.id, name: a.name }));
 }
 
-/**
- * The classifier's full explanation for one candidate. Recomputed here rather than
- * copied into the fit record, so the expandable view shows the SAME deterministic
- * classification the candidate list was built from.
- */
-export function classificationFor(fit: ProspectFit, rows: ProspectSourceRow[]): RoleClassification | null {
-  const row = rows.find((r) => r.company_id === fit.company_id);
-  if (!row) return null;
-  return classifyCompanyRole({ name: row.name, industry: row.industry, tags: row.tags });
-}
-
 export interface ProspectFilters {
   query?: string;
-  archetypeId?: string | null;
   reachability?: string | null;
-  /** short segment label (see `segmentForRole`); null/absent means no constraint */
-  segment?: string | null;
+  /** 'judged' | 'unjudged'; null/absent means no constraint */
+  judgment?: string | null;
 }
 
-/** Filter candidates. Empty/absent filters mean "no constraint", not "none". */
-export function filterProspects(fits: ProspectFit[], filters: ProspectFilters): ProspectFit[] {
+/**
+ * Filter candidates. Empty/absent filters mean "no constraint", not "none".
+ *
+ * `judgments` is passed in rather than stored: the helpers stay pure, and the
+ * search haystack can include the archetype the model actually chose (never a
+ * keyword guess). The judgment filter offers three states — everything, judged,
+ * not yet judged — because that is now the only categorical split the queue
+ * has before a human reviews it.
+ */
+export function filterProspects(
+  fits: ProspectFit[],
+  filters: ProspectFilters,
+  judgments: Record<string, ProspectJudgment | undefined> = {}
+): ProspectFit[] {
   const q = (filters.query ?? '').trim().toLowerCase();
   return fits.filter((f) => {
-    if (filters.archetypeId && f.archetype_id !== filters.archetypeId) return false;
     if (filters.reachability && f.reachability !== filters.reachability) return false;
-    if (filters.segment && segmentForRole(f.role) !== filters.segment) return false;
+    const judgment = judgments[f.company_id];
+    if (filters.judgment === 'judged' && !judgment) return false;
+    if (filters.judgment === 'unjudged' && judgment) return false;
     if (!q) return true;
-    const haystack = `${f.name} ${f.role} ${f.archetype_name} ${f.signal_hits.join(' ')}`.toLowerCase();
+    const archetypeName = judgment?.archetype_name ?? '';
+    const haystack = `${f.name} ${f.industry ?? ''} ${(f.tags ?? []).join(' ')} ${archetypeName}`.toLowerCase();
     return haystack.includes(q);
   });
 }

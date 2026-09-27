@@ -106,12 +106,13 @@ describe('Prospects review queue', () => {
     expect(screen.getAllByText(/no contact is verified/i).length).toBeGreaterThan(0);
   });
 
-  it('shows the live candidate count and unreviewed count in the heading summary', async () => {
+  it('shows the live candidate count, not-judged count and unreviewed count in the heading summary', async () => {
     setCrm({ companies: [candidate, bakery] });
     render(<ProspectsPage />);
 
     const summary = await screen.findByText(/candidates ·/);
     expect(summary.textContent).toContain('2 candidates');
+    expect(summary.textContent).toContain('2 not judged');
     expect(summary.textContent).toContain('2 unreviewed');
   });
 
@@ -139,34 +140,35 @@ describe('Prospects review queue', () => {
     expect(screen.getByRole('tab', { name: /^Unreviewed/ }).getAttribute('aria-selected')).toBe('true');
   });
 
-  it('lists a matching company as a compact row: segment and contact state, no bare score', () => {
+  it('lists a candidate as a compact row: judgment state and contact state, no bare score', () => {
     setCrm({ companies: [candidate] });
     render(<ProspectsPage />);
 
     const row = screen.getByRole('button', { name: /Green Bowl/ });
-    expect(row.textContent).toContain('Restaurant');
+    expect(row.textContent).toContain('not judged');
     expect(row.textContent).toContain('No route found');
-    // the row must not carry the campaign archetype name or a naked match score
+    // the row must not carry the campaign archetype name or any model number
     expect(row.textContent).not.toMatch(/Plant-based|Modern trade, specialty|Bakery, patisserie/);
     expect(row.textContent).not.toMatch(/\d+\s*\/\s*100/);
   });
 
-  it('expands a candidate to the full explanation, with the score labelled and explained', () => {
+  it('expands a candidate to the model judgment panel, with the input shown and nothing scored', () => {
     setCrm({ companies: [candidate] });
     render(<ProspectsPage />);
 
     fireEvent.click(screen.getByRole('button', { name: /Green Bowl/ }));
 
-    // classification detail
-    expect(screen.getByText(/Proposed role and how it was decided/i)).toBeTruthy();
-    expect(screen.getByText(/why it matched/i)).toBeTruthy();
-    // heuristic confidence is named as heuristic, not as a verified fact
-    expect(screen.getByText(/heuristic confidence, not a verified business fact/i)).toBeTruthy();
-    // the score is labelled "Match score" and carries its limits
-    expect(screen.getByText(/Match score \d+/)).toBeTruthy();
-    expect(screen.getByText(/not a qualification, not a delivery-coverage check, not an approval/i)).toBeTruthy();
-    // the archetype it matched is retained here, off the row
-    expect(screen.getByText(/Matched archetype/i)).toBeTruthy();
+    // the judgment panel replaces the old score + classification panels
+    expect(screen.getByText(/Laya fit judgment/i)).toBeTruthy();
+    expect(screen.getByText(/Not judged yet\. One press sends this account's name, industry and tags to the local Laya worker/i)).toBeTruthy();
+    // the exact state sentence that a judge press would send is shown upfront
+    expect(screen.getByText(/What Laya is asked/i)).toBeTruthy();
+    expect(screen.getByText(/Candidate account: name "Green Bowl"/i)).toBeTruthy();
+    // nothing about a match score or a regex classification may remain
+    expect(screen.queryByText(/Match score/i)).toBeNull();
+    expect(screen.queryByText(/Proposed role/i)).toBeNull();
+    // the judgment is advisory only — the old honest caption survives in new words
+    expect(screen.getByText(/advisory, not a qualification/i)).toBeTruthy();
     // source attribution is present
     expect(screen.getAllByText(/^source:/i).length).toBeGreaterThan(2);
   });
@@ -201,24 +203,19 @@ describe('Prospects review queue', () => {
     expect(screen.getByRole('button', { name: /Green Bowl/ })).toBeTruthy();
   });
 
-  it('filters by segment, offering only the segments the candidate set actually contains', () => {
+  it('filters by judgment state, offering only the states the queue is actually in', () => {
     setCrm({ companies: [candidate, bakery] });
     render(<ProspectsPage />);
 
-    const select = screen.getByLabelText(/filter by segment/i) as HTMLSelectElement;
+    const select = screen.getByLabelText(/filter by judgment/i) as HTMLSelectElement;
     const values = Array.from(select.options).map((o) => o.value);
     expect(values[0]).toBe('');
-    expect(values).toContain('Restaurant');
-    expect(values).toContain('Bakery');
-    expect(values).not.toContain('Hotel');
+    expect(values).toContain('unjudged');
+    expect(values).not.toContain('judged');
 
-    fireEvent.change(select, { target: { value: 'Bakery' } });
+    fireEvent.change(select, { target: { value: 'unjudged' } });
     expect(screen.getByRole('button', { name: /Second Rise Bakery/ })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /Green Bowl/ })).toBeNull();
-
-    fireEvent.change(select, { target: { value: 'Restaurant' } });
     expect(screen.getByRole('button', { name: /Green Bowl/ })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /Second Rise Bakery/ })).toBeNull();
   });
 
   it('filters by contact availability', () => {
@@ -321,9 +318,92 @@ describe('Prospects review queue', () => {
     expect(screen.getByText(/computed live by the shared evaluator/i)).toBeTruthy();
     // two separate reconciliations: the evaluator's own accounting, and the review counts
     expect(screen.getAllByText(/reconciliation OK/i).length).toBe(2);
-    expect(screen.getByText(/Candidates per archetype/i)).toBeTruthy();
+    expect(screen.getByText(/Judgments this session/i)).toBeTruthy();
     expect(screen.getByText(/Review counts/i)).toBeTruthy();
-    expect(screen.getByText(/highest match score first/i)).toBeTruthy();
+    // the ordering sentence describes the Laya queue, not the old arithmetic
+    expect(screen.getByText(/judged candidates first/i)).toBeTruthy();
+    expect(screen.getByText(/Institutional identity:\s*0/i)).toBeTruthy();
+  });
+
+  it('judges a candidate only on explicit press, then drops a no_fit out of the queue with a stated reason', async () => {
+    const fetchSpy = vi.fn(async (url: unknown, init: { body?: string }) => {
+      expect(String(url)).toContain('/score');
+      const body = JSON.parse(String(init.body));
+      expect(Object.keys(body)).toEqual(['state', 'questions']);
+      expect(Object.keys(body.questions)).toEqual(['archetype_select', 'role_support']);
+      expect(body.state).toContain('Green Bowl');
+      expect(body.state).toContain('Vegan restaurant');
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          question: 'archetype_select',
+          answers: {
+            archetype_select: {
+              choice: 'no_fit',
+              confidence: 0.85,
+              probabilities: {
+                plant_based_restaurant_cafe: 0.05,
+                modern_trade_specialty_retail: 0.05,
+                bakery_patisserie_brands: 0.05,
+                no_fit: 0.85,
+              },
+            },
+            role_support: { noul: 0.9, confidence: 0.9 },
+          },
+        }),
+      };
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+    setCrm({ companies: [candidate] });
+    render(<ProspectsPage />);
+
+    // nothing is scored by rendering or by expanding — only the judge press scores
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole('button', { name: /Green Bowl/ }));
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    fireEvent.click(await screen.findByRole('button', { name: /Judge fit with Laya/i }));
+    // a no_fit judgment drops the row out of the queue with a stated reason
+    await screen.findByText(/judged no_fit this session, dropped from the queue/i);
+    expect(screen.queryByRole('button', { name: /Green Bowl/ })).toBeNull();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders a judged archetype with its distribution and the support check', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          question: 'archetype_select',
+          answers: {
+            archetype_select: {
+              choice: 'plant_based_restaurant_cafe',
+              confidence: 0.75,
+              probabilities: {
+                plant_based_restaurant_cafe: 0.75,
+                modern_trade_specialty_retail: 0.1,
+                bakery_patisserie_brands: 0.1,
+                no_fit: 0.05,
+              },
+            },
+            role_support: { noul: 0.2, confidence: 0.8 },
+          },
+        }),
+      }))
+    );
+    setCrm({ companies: [candidate] });
+    render(<ProspectsPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Green Bowl/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Judge fit with Laya/i }));
+
+    expect(await screen.findByText(/Plant-based restaurant and cafe kitchens/i)).toBeTruthy();
+    expect(screen.getByText(/archetype confidence 0.75/i)).toBeTruthy();
+    expect(screen.getByText(/identity supports this/i)).toBeTruthy();
+    expect(screen.getByText('judged', { exact: true })).toBeTruthy();
   });
 
   it('opens the Laya terminal from a candidate row, prefills it, and never scores automatically', async () => {

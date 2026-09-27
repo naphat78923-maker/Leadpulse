@@ -1,22 +1,19 @@
-// LeadPulse Intelligence — Slice 2 tests: read-only prospect fit.
-//
-// Fixtures are synthetic. The invariants that matter: nothing is created, nobody
-// already buying is offered as a prospect, every account is either a candidate or
-// an explained exclusion, and a role with no published archetype is never smuggled
-// into a campaign.
+// LeadPulse Intelligence — Slice 2 tests: read-only prospect candidates (part 1).
+// (Part 1: membership and judgments. Part 2 below covers ordering + markdown.)
 
 import { describe, it, expect } from 'vitest';
 import {
   buildProspectFitReport,
+  judgmentFromAnswers,
+  orderCandidates,
   renderProspectFitMarkdown,
-  scoreFit,
   type ProspectSourceRow,
 } from './prospectFit';
-import { CAMPAIGN_ARCHETYPES_V1 } from './campaignArchetypes';
+import type { LayaFitAnswers } from './laya-buyer-response';
 
 const NOW = new Date('2026-09-11T00:00:00.000Z');
 
-function row(over: Partial<ProspectSourceRow> & { company_id: string }): ProspectSourceRow {
+export function row(over: Partial<ProspectSourceRow> & { company_id: string }): ProspectSourceRow {
   return {
     name: `Company ${over.company_id}`,
     status: 'prospect',
@@ -36,40 +33,21 @@ function row(over: Partial<ProspectSourceRow> & { company_id: string }): Prospec
   };
 }
 
-const restaurantArchetype = CAMPAIGN_ARCHETYPES_V1.find((a) => a.id === 'plant_based_restaurant_cafe')!;
-
-describe('scoreFit', () => {
-  it('awards the base for the role match and records it as a reason', () => {
-    const s = scoreFit(row({ company_id: 'a', industry: 'Vegan restaurant' }), restaurantArchetype, 'high');
-    expect(s.score).toBeGreaterThanOrEqual(40);
-    expect(s.reasons.join(' ')).toContain('covered by this archetype');
-    expect(s.reasons.join(' ')).toContain('high-confidence');
-  });
-
-  it('records criteria signal hits as TEXTUAL, and adds a gap when none match', () => {
-    const hit = scoreFit(row({ company_id: 'a', industry: 'Vegan cafe', tags: ['plant-based'] }), restaurantArchetype, 'high');
-    expect(hit.hits).toContain('plant-based or vegan concept');
-
-    const miss = scoreFit(row({ company_id: 'b', industry: 'Restaurant' }), restaurantArchetype, 'high');
-    expect(miss.hits).toEqual([]);
-    expect(miss.gaps.join(' ')).toContain('no archetype criterion signal matched');
-  });
-
-  it('ranks a named contact above a bare route, and both above nothing', () => {
-    const base = { industry: 'Vegan restaurant' };
-    const named = scoreFit(row({ company_id: 'a', ...base, contact_named: 1, contact_any_route: 1 }), restaurantArchetype, 'high');
-    const routed = scoreFit(row({ company_id: 'b', ...base, contact_any_route: 1 }), restaurantArchetype, 'high');
-    const none = scoreFit(row({ company_id: 'c', ...base }), restaurantArchetype, 'high');
-    expect(named.score).toBeGreaterThan(routed.score);
-    expect(routed.score).toBeGreaterThan(none.score);
-    expect(none.gaps.join(' ')).toContain('no contact route at all');
-  });
-
-  it('flags a low-confidence role rather than trusting it', () => {
-    const s = scoreFit(row({ company_id: 'a', industry: 'Food & Beverage', tags: ['vegan'] }), restaurantArchetype, 'low');
-    expect(s.gaps.join(' ')).toContain('low-confidence');
-  });
-});
+export function answers(choice: 'bakery_patisserie_brands' | 'no_fit', noul = 0.2): LayaFitAnswers {
+  return {
+    archetype_select: {
+      choice,
+      confidence: 0.8,
+      probabilities: {
+        plant_based_restaurant_cafe: 0.05,
+        modern_trade_specialty_retail: 0.05,
+        bakery_patisserie_brands: choice === 'bakery_patisserie_brands' ? 0.8 : 0.05,
+        no_fit: choice === 'no_fit' ? 0.85 : 0.1,
+      },
+    },
+    role_support: { noul, confidence: Math.max(noul, 1 - noul) },
+  };
+}
 
 describe('buildProspectFitReport', () => {
   it('never offers an account that already has buying evidence, and says why', () => {
@@ -82,72 +60,87 @@ describe('buildProspectFitReport', () => {
       { source: 'test', now: NOW }
     );
     expect(report.corpus.excluded_already_buying).toBe(2);
-    expect(report.fits.map((f) => f.company_id)).toEqual(['fresh']);
-    const reason = report.excluded.find((e) => e.company_id === 'buyer')!.reason;
-    expect(reason).toContain('already has buying evidence');
+    expect(report.corpus.candidates).toBe(1);
+    expect(report.candidates[0].company_id).toBe('fresh');
+    expect(report.excluded.find((e) => e.company_id === 'buyer')!.reason).toContain('already has buying evidence');
   });
 
-  it('excludes non-prospects and roles with no published archetype', () => {
+  it('excludes non-prospect statuses with the stated status', () => {
     const report = buildProspectFitReport(
       [
-        row({ company_id: 'customer', status: 'active_customer', industry: 'Vegan restaurant' }),
-        // hotels have no PUBLISHED archetype: their hypothesis is withheld
-        row({ company_id: 'hotel', industry: 'Luxury hotel / dining' }),
+        row({ company_id: 'lost', status: 'lost', industry: 'Vegan restaurant' }),
+        row({ company_id: 'ok', industry: 'Vegan restaurant' }),
       ],
       { source: 'test', now: NOW }
     );
     expect(report.corpus.excluded_not_a_prospect).toBe(1);
-    expect(report.corpus.excluded_no_archetype).toBe(1);
-    expect(report.fits).toEqual([]);
-    expect(report.excluded.find((e) => e.company_id === 'hotel')!.reason).toContain('no published archetype covers role "foodservice_hotel"');
+    expect(report.corpus.candidates).toBe(1);
+    expect(report.excluded.find((e) => e.company_id === 'lost')!.reason).toContain('status is "lost", not a prospect');
   });
 
-  it('accounts for every row: candidate or explained exclusion, never dropped', () => {
-    const rows = [
-      row({ company_id: 'a', industry: 'Vegan restaurant' }),
-      row({ company_id: 'b', industry: 'Bakery chain', tags: ['bakery', 'chain'] }),
-      row({ company_id: 'c', order_events: 2, industry: 'Vegan restaurant' }),
-      row({ company_id: 'd', status: 'lost', industry: 'Vegan restaurant' }),
-      row({ company_id: 'e', industry: 'Luxury hotel' }),
-    ];
-    const report = buildProspectFitReport(rows, { source: 'test', now: NOW });
+  it('pre-gates institutional identities so schools never spend an inference pass', () => {
+    const report = buildProspectFitReport(
+      [
+        row({ company_id: 'school', name: 'Pastry school', industry: 'Pastry school' }),
+        row({ company_id: 'attached', name: 'Bake School', industry: 'Bakery / baking school' }),
+        row({ company_id: 'catering', industry: 'International school catering' }),
+        row({ company_id: 'regular', industry: 'Vegan restaurant' }),
+      ],
+      { source: 'test', now: NOW }
+    );
+    expect(report.corpus.excluded_institutional).toBe(1);
+    expect(report.excluded.find((e) => e.company_id === 'school')!.reason).toContain('institutional identity');
+    expect(report.candidates.map((c) => c.company_id).sort()).toEqual(['attached', 'catering', 'regular']);
     expect(report.reconciliation.ok).toBe(true);
-    expect(report.reconciliation.problems).toEqual([]);
-    const { candidates, excluded_already_buying, excluded_not_a_prospect, excluded_no_archetype } = report.corpus;
-    expect(candidates + excluded_already_buying + excluded_not_a_prospect + excluded_no_archetype).toBe(rows.length);
-    expect(report.excluded.length).toBe(rows.length - candidates);
-  });
-
-  it('ranks candidates by score, highest first', () => {
-    const report = buildProspectFitReport(
-      [
-        row({ company_id: 'weak', industry: 'Vegan restaurant' }),
-        row({ company_id: 'strong', industry: 'Vegan cafe / bakery', tags: ['plant-based', 'patisserie'], contact_named: 1, contact_any_route: 1 }),
-      ],
-      { source: 'test', now: NOW }
-    );
-    expect(report.fits[0].company_id).toBe('strong');
-    expect(report.fits[0].fit_score).toBeGreaterThan(report.fits[1].fit_score);
-  });
-
-  it('summarises candidates per archetype with reachability and prior work', () => {
-    const report = buildProspectFitReport(
-      [
-        row({ company_id: 'a', industry: 'Vegan restaurant', contact_named: 1 }),
-        row({ company_id: 'b', industry: 'Vegan restaurant', meetings: 2 }),
-        row({ company_id: 'c', industry: 'Bakery chain', tags: ['bakery'] }),
-      ],
-      { source: 'test', now: NOW }
-    );
-    const resto = report.by_archetype.find((a) => a.archetype_id === 'plant_based_restaurant_cafe')!;
-    expect(resto.candidates).toBe(2);
-    expect(resto.with_named_contact).toBe(1);
-    expect(resto.untouched).toBe(1);
   });
 });
 
+
+describe('orderCandidates', () => {
+  const candidates = buildProspectFitReport(
+    [
+      row({ company_id: 'a', name: 'Alpha', industry: 'Retail' }),
+      row({ company_id: 'b', name: 'Beta', industry: 'Retail' }),
+      row({ company_id: 'c', name: 'Gamma', industry: 'Retail' }),
+    ],
+    { source: 'test', now: NOW }
+  ).candidates;
+
+  const judged = (company_id: string, confidence: number) => ({
+    company_id,
+    archetype_id: 'bakery_patisserie_brands' as const,
+    archetype_name: 'Bakery, patisserie and multi-line dessert brands',
+    archetype_confidence: confidence,
+    probabilities: {
+      plant_based_restaurant_cafe: 0.05,
+      modern_trade_specialty_retail: 0.05,
+      bakery_patisserie_brands: confidence,
+      no_fit: 1 - confidence - 0.1,
+    },
+    role_support: 0.1,
+    role_support_confidence: 0.9,
+    judged_at: '2026-09-11T00:00:00.000Z',
+  });
+
+  it('orders judged by archetype confidence first, then unjudged by name', () => {
+    const { queue, droppedNoFit } = orderCandidates(candidates, {
+      a: judged('a', 0.4),
+      c: judged('c', 0.9),
+    });
+    expect(droppedNoFit).toEqual([]);
+    expect(queue.map((c) => c.company_id)).toEqual(['c', 'a', 'b']);
+  });
+
+  it('drops judged no_fit rows with a stated list, never silently', () => {
+    const { queue, droppedNoFit } = orderCandidates(candidates, {
+      b: { ...judged('b', 0.9), archetype_id: 'no_fit', archetype_name: null },
+    });
+    expect(queue.map((c) => c.company_id)).toEqual(['a', 'c']);
+    expect(droppedNoFit.map((c) => c.company_id)).toEqual(['b']);
+  });
+
 describe('renderProspectFitMarkdown', () => {
-  it('states that it is read-only and that signals are unverified', () => {
+  it('states that it is read-only, carries no judgments, and drops the score language', () => {
     const md = renderProspectFitMarkdown(
       buildProspectFitReport([row({ company_id: 'a', name: 'Example Vegan Cafe', industry: 'Vegan cafe', contact_named: 1 })], {
         source: 'test',
@@ -158,7 +151,9 @@ describe('renderProspectFitMarkdown', () => {
     expect(md).toContain('candidate set, not an outbound queue');
     expect(md).toContain('no suppression list exists yet');
     expect(md).toContain('Example Vegan Cafe');
-    expect(md).toContain('criteria hits (textual, unverified)');
+    expect(md).toContain('judge them in the app for archetype and role support');
+    expect(md).not.toContain('by transparent score');
+    expect(md).not.toContain('criteria hits (textual, unverified)');
     expect(md).toContain('## Everything excluded, and why');
   });
 
@@ -168,4 +163,5 @@ describe('renderProspectFitMarkdown', () => {
     );
     expect(md).toContain('gap: no contact route at all');
   });
+});
 });

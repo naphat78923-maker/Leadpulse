@@ -326,6 +326,22 @@ function institutionHeadsIdentity(company: ClassifiableCompany): boolean {
 }
 
 /**
+ * Deterministic institutional PRE-GATE for the prospect pipeline: does this
+ * record's stated identity head a school, college or similar with no other
+ * trading business? True means "not a commercial account" — the fit pipeline
+ * excludes it BEFORE any model call, so a school never spends an inference pass
+ * and never has to be talked out of a bakery archetype.
+ *
+ * Thin wrapper over the classifier's own identity check so the pre-gate and the
+ * classifier can never disagree about what counts as institutional. Only the
+ * industry decides: a name like "X School" cannot override a real bakery
+ * industry, and a "Bakery / baking school" still reads as a bakery.
+ */
+export function isInstitutionalIndustry(company: ClassifiableCompany): boolean {
+  return institutionHeadsIdentity(company);
+}
+
+/**
  * Classify one company into taxonomy v1.
  *
  * Deterministic and idempotent: same input always yields the same role, evidence,

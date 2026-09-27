@@ -8,8 +8,9 @@
 // the section starts collapsed, "Open in terminal" only prefills the state
 // box, and nothing is scored until Run is pressed.
 //
-// Run sends both frozen questions — buyer_response (a choice) and deal_amount
-// (a score) — in one inference pass. The response pane maps over a
+// Run sends every frozen question — buyer_response (a choice), deal_amount
+// (a score), and the five buyer-detail additions (two nouls, two choices, a
+// score) — in one inference pass. The response pane maps over a
 // questionResults[] array with a per-type renderer, so the next entry in the
 // worker's ALLOWED_QUESTIONS is a data-wiring change, not a layout change.
 
@@ -32,7 +33,6 @@ const LABELS: Record<LayaBuyerResponseLevel, string> = {
   unclear: 'Unclear',
 };
 
-const RESPONSE_LEVELS = Object.keys(LABELS) as LayaBuyerResponseLevel[];
 const LOCAL_ENGINES = ['cpu_ne', 'cpu_gpu'] as const;
 
 function isLocalEngine(value: unknown): boolean {
@@ -58,10 +58,9 @@ export interface LayaTerminalPrefill {
 
 /**
  * One answered question in the Response pane. The union (and the per-type
- * renderer below) is the multi-question seam: /score answers 'choice' and
- * 'score' today, and the next ALLOWED_QUESTIONS entry maps to its own row
- * without layout changes. The score/noul shapes mirror the worker's follow-up
- * review answer shapes.
+ * renderer below) is the multi-question seam: /score answers 'choice', 'noul'
+ * and 'score', and every frozen question maps onto its own row without layout
+ * changes. The shapes mirror the worker's answer shapes.
  */
 type QuestionResult =
   | {
@@ -114,14 +113,120 @@ function bucketLabel(entry: string): string {
   return /^[0-9]/.test(entry) ? `฿${entry}` : entry;
 }
 
+/** Pretty option labels per choice question; unlisted keys render as-is. */
+const CHOICE_LABELS: Record<string, Record<string, string>> = {
+  buyer_response: LABELS,
+  sample_trial_report: {
+    not_established: 'Not established',
+    received: 'Received',
+    testing_planned: 'Testing planned',
+    positive_result: 'Positive result',
+    negative_result: 'Negative result',
+    mixed_result: 'Mixed result',
+  },
+  obstacle_kind: {
+    no_obstacle_stated: 'No obstacle stated',
+    application_technical: 'Application / technical',
+    price_terms: 'Price / terms',
+    delivery: 'Delivery',
+    internal_approval: 'Internal approval',
+    timing: 'Timing',
+    unclear: 'Unclear',
+  },
+};
+
+/** One frozen question, typed loosely so parsing dispatches per id. */
+interface FrozenQuestionDef {
+  type: 'choice' | 'noul' | 'score';
+  instructions: string;
+  criteria: Record<string, string> | readonly string[];
+}
+
+const FROZEN_QUESTIONS = LAYA_ALL_FROZEN_QUESTIONS as unknown as Record<string, FrozenQuestionDef>;
+
+// The worker enforces the same tolerance (REVIEW_PROBABILITY_TOLERANCE).
+const PROBABILITY_TOLERANCE = 0.002;
+
+/** Row label: the id, then the question's own opening sentence, lowercased. */
+function questionLabel(id: string, def: FrozenQuestionDef): string {
+  const questionMark = def.instructions.indexOf('?');
+  const opening = questionMark === -1 ? def.instructions : def.instructions.slice(0, questionMark + 1);
+  return `${id} — ${opening.charAt(0).toLowerCase()}${opening.slice(1)}`;
+}
+
 /**
- * Validate one deal_amount (score) answer: the legend dict keyed "0".."n-1",
- * probabilities under the same keys, a score equal to the distribution's
- * expected value — the same strictness the worker applies. Returns null on
- * anything malformed.
+ * Validate one choice answer against its frozen criteria: the choice inside
+ * the option set, probabilities keyed exactly like the criteria and totalling
+ * one, a unit-interval confidence — the same strictness the worker applies.
+ * Returns null on anything malformed.
  */
-function parseDealAmountAnswer(raw: unknown): QuestionResult | null {
+function parseChoiceAnswer(id: string, raw: unknown): QuestionResult | null {
   if (!raw || typeof raw !== 'object') return null;
+  const def = FROZEN_QUESTIONS[id];
+  if (!def || def.type !== 'choice') return null;
+  const a = raw as { type?: unknown; choice?: unknown; confidence?: unknown; probabilities?: unknown };
+  if (a.type !== undefined && a.type !== 'choice') return null;
+  const criteria = def.criteria as Record<string, string>;
+  const keys = Object.keys(criteria);
+  if (typeof a.choice !== 'string' || !keys.includes(a.choice)) return null;
+  if (!isProbability(a.confidence)) return null;
+  const probabilities = a.probabilities;
+  if (!probabilities || typeof probabilities !== 'object' || Array.isArray(probabilities)) return null;
+  const distribution = probabilities as Record<string, unknown>;
+  if (Object.keys(distribution).length !== keys.length) return null;
+  const labels = CHOICE_LABELS[id];
+  const bars: ProbabilityBar[] = [];
+  let total = 0;
+  for (const key of keys) {
+    const value = distribution[key];
+    if (!isProbability(value)) return null;
+    total += value;
+    bars.push({ key, label: labels?.[key] ?? key, value, winner: key === a.choice });
+  }
+  if (Math.abs(total - 1) > PROBABILITY_TOLERANCE) return null;
+  return {
+    id,
+    type: 'choice',
+    label: questionLabel(id, def),
+    winner: a.choice,
+    confidence: a.confidence,
+    bars,
+  };
+}
+
+/**
+ * Validate one noul answer: a unit-interval value whose confidence matches
+ * max(noul, 1 − noul), the worker's own pairing. The row shows the raw value
+ * and both sides — the terminal never turns it into a decision.
+ */
+function parseNoulAnswer(id: string, raw: unknown): QuestionResult | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const def = FROZEN_QUESTIONS[id];
+  if (!def || def.type !== 'noul') return null;
+  const a = raw as { type?: unknown; noul?: unknown; confidence?: unknown };
+  if (a.type !== undefined && a.type !== 'noul') return null;
+  if (typeof a.noul !== 'number' || !Number.isFinite(a.noul) || a.noul < 0 || a.noul > 1) return null;
+  if (!isProbability(a.confidence)) return null;
+  if (Math.abs(a.confidence - Math.max(a.noul, 1 - a.noul)) > PROBABILITY_TOLERANCE) return null;
+  return {
+    id,
+    type: 'noul',
+    label: questionLabel(id, def),
+    value: `noul ${a.noul.toFixed(4)} · true ${Math.round(a.noul * 100)}% / false ${Math.round((1 - a.noul) * 100)}%`,
+    confidence: a.confidence,
+  };
+}
+
+/**
+ * Validate one score answer: the legend dict keyed "0".."n-1" matching the
+ * frozen criteria's length, probabilities under the same keys, a score equal
+ * to the distribution's expected value — the same strictness the worker
+ * applies. Returns null on anything malformed.
+ */
+function parseScoreAnswer(id: string, raw: unknown): QuestionResult | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const def = FROZEN_QUESTIONS[id];
+  if (!def || def.type !== 'score') return null;
   const a = raw as { type?: unknown; score?: unknown; confidence?: unknown; legend?: unknown; probabilities?: unknown };
   if (a.type !== undefined && a.type !== 'score') return null;
   if (typeof a.score !== 'number' || !Number.isFinite(a.score)) return null;
@@ -131,7 +236,8 @@ function parseDealAmountAnswer(raw: unknown): QuestionResult | null {
   if (!a.probabilities || typeof a.probabilities !== 'object' || Array.isArray(a.probabilities)) return null;
   const distribution = a.probabilities as Record<string, unknown>;
   const bucketCount = Object.keys(legendMap).length;
-  if (bucketCount === 0 || Object.keys(distribution).length !== bucketCount) return null;
+  if (bucketCount !== (def.criteria as readonly string[]).length) return null;
+  if (Object.keys(distribution).length !== bucketCount) return null;
 
   const legend: string[] = [];
   const bars: ProbabilityBar[] = [];
@@ -146,13 +252,13 @@ function parseDealAmountAnswer(raw: unknown): QuestionResult | null {
   }
   if (a.score < 0 || a.score > bucketCount - 1) return null;
   const expected = bars.reduce((sum, bar, index) => sum + index * bar.value, 0);
-  if (Math.abs(a.score - expected) > 0.002) return null; // the worker enforces the same tolerance
+  if (Math.abs(a.score - expected) > PROBABILITY_TOLERANCE) return null;
   bars[winnerIndex].winner = true;
 
   return {
-    id: 'deal_amount',
+    id,
     type: 'score',
-    label: 'deal_amount — how much is this deal in Thai baht (THB)?',
+    label: questionLabel(id, def),
     score: a.score,
     confidence: a.confidence,
     winner: bars[winnerIndex].label,
@@ -161,12 +267,21 @@ function parseDealAmountAnswer(raw: unknown): QuestionResult | null {
   };
 }
 
+/** Dispatch one raw answer onto its frozen question's parser. */
+function parseAnswer(id: string, raw: unknown): QuestionResult | null {
+  const def = FROZEN_QUESTIONS[id];
+  if (!def) return null;
+  if (def.type === 'choice') return parseChoiceAnswer(id, raw);
+  if (def.type === 'noul') return parseNoulAnswer(id, raw);
+  return parseScoreAnswer(id, raw);
+}
+
 /**
  * Validate a /score payload and map it onto questionResults. A combined run
- * carries every answer under `answers`; a buyer-only run keeps the legacy
- * top-level fields. buyer_response (a 'choice') is always required;
- * deal_amount renders only when present. Anything malformed returns null —
- * an invalid payload never renders.
+ * carries every answer under `answers`, keyed exactly like the questions in
+ * the trace; a buyer-only run keeps the legacy top-level fields. Every id
+ * must be a frozen question and every answer must parse — anything malformed
+ * returns null: an invalid payload never renders.
  */
 function parseScorePayload(payload: unknown): ScoreRun | null {
   if (!payload || typeof payload !== 'object') return null;
@@ -185,16 +300,6 @@ function parseScorePayload(payload: unknown): ScoreRun | null {
   };
   const answers = p.answers !== null && p.answers !== undefined ? p.answers : null;
   if (answers === null && p.question !== 'buyer_response') return null; // future legacy shapes wire in here
-  const buyer = (answers
-    ? (answers as Record<string, unknown>)['buyer_response']
-    : { choice: p.recommendation, confidence: p.confidence, probabilities: p.probabilities }) as
-    | { choice?: unknown; confidence?: unknown; probabilities?: unknown }
-    | undefined;
-  if (!buyer || typeof buyer.choice !== 'string' || !Object.prototype.hasOwnProperty.call(LABELS, buyer.choice)) return null;
-  if (!isProbability(buyer.confidence)) return null;
-  const probabilities = buyer.probabilities as Record<string, unknown> | null;
-  if (!probabilities || typeof probabilities !== 'object') return null;
-  if (!RESPONSE_LEVELS.every((level) => isProbability(probabilities[level]))) return null;
   const trace = p.trace;
   if (!trace?.scored_input || typeof trace.scored_input.state !== 'string' || !trace.scored_input.questions) return null;
   if (
@@ -207,31 +312,33 @@ function parseScorePayload(payload: unknown): ScoreRun | null {
   }
   if (typeof trace.scored_at !== 'string' || !Number.isFinite(Date.parse(trace.scored_at))) return null;
 
-  const questionResults: QuestionResult[] = [
-    {
-      id: 'buyer_response',
-      type: 'choice',
-      label: "buyer_response — which option best describes the buyer's latest message?",
-      winner: buyer.choice,
-      confidence: buyer.confidence,
-      bars: RESPONSE_LEVELS.map((level) => ({
-        key: level,
-        label: LABELS[level],
-        value: probabilities[level] as number,
-        winner: level === buyer.choice,
-      })),
-    },
-  ];
-
-  // deal_amount: only a combined run carries it. Absent (legacy buyer-only
-  // payload) renders just the choice row; present but malformed rejects all.
-  if (answers && typeof answers === 'object') {
-    const raw = (answers as Record<string, unknown>)['deal_amount'];
-    if (raw !== undefined) {
-      const dealAmount = parseDealAmountAnswer(raw);
-      if (!dealAmount) return null;
-      questionResults.push(dealAmount);
+  const questionResults: QuestionResult[] = [];
+  if (answers !== null) {
+    // A combined run: answers must key exactly like the trace's questions,
+    // each parsed by its own frozen parser. A missing, extra, unknown, or
+    // malformed answer rejects the whole payload — nothing partial renders.
+    if (typeof answers !== 'object' || Array.isArray(answers)) return null;
+    const entries = answers as Record<string, unknown>;
+    const ids = Object.keys(trace.scored_input.questions as Record<string, unknown>);
+    if (ids.length === 0) return null;
+    const answerIds = Object.keys(entries);
+    if (answerIds.length !== ids.length || !ids.every((id) => Object.prototype.hasOwnProperty.call(entries, id))) {
+      return null;
     }
+    for (const id of ids) {
+      const row = parseAnswer(id, entries[id]);
+      if (!row) return null;
+      questionResults.push(row);
+    }
+  } else {
+    // Legacy buyer-only payload: the same frozen parser over top-level fields.
+    const row = parseAnswer('buyer_response', {
+      choice: p.recommendation,
+      confidence: p.confidence,
+      probabilities: p.probabilities,
+    });
+    if (!row) return null;
+    questionResults.push(row);
   }
 
   return {
@@ -645,21 +752,18 @@ function ProbabilityBars({ bars }: { bars: ProbabilityBar[] }) {
 }
 
 /**
- * Per-type renderer for one answered question. 'choice' and 'score' are the
- * shapes /score produces today; 'noul' mirrors the worker's follow-up review
- * answer shapes so a future question only needs payload wiring.
+ * Per-type renderer for one answered question. 'choice', 'noul' and 'score'
+ * are the shapes /score produces; the next frozen question only needs payload
+ * wiring.
  */
 function QuestionResultCard({ result }: { result: QuestionResult }) {
   if (result.type === 'choice') {
+    const winnerLabel = result.bars.find((bar) => bar.winner)?.label ?? result.winner;
     return (
       <div data-testid={`laya-terminal-result-${result.id}`}>
         <p className="text-[10px] uppercase tracking-wide text-clay-muted">{result.label}</p>
         <p className="mt-1 text-sm">
-          <span className="font-semibold text-clay-ink">
-            {Object.prototype.hasOwnProperty.call(LABELS, result.winner)
-              ? LABELS[result.winner as LayaBuyerResponseLevel]
-              : result.winner}
-          </span>
+          <span className="font-semibold text-clay-ink">{winnerLabel}</span>
           <span className="text-clay-muted"> · confidence {Math.round(result.confidence * 100)}%</span>
         </p>
         <ProbabilityBars bars={result.bars} />

@@ -12,6 +12,7 @@ import {
   buildLayaBuyerResponseInput,
   LAYA_ALL_FROZEN_QUESTIONS,
   LAYA_BUYER_FROZEN_QUESTIONS,
+  LAYA_FIT_FROZEN_QUESTIONS,
 } from './laya-buyer-response';
 
 const RULES_PATH = join(__dirname, 'laya-buyer-response.ts');
@@ -26,6 +27,22 @@ const rulesDef = rulesSource.slice(rulesSource.indexOf('const BUYER_RESPONSE_QUE
 const workerDef = workerSource.slice(workerSource.indexOf('BUYER_RESPONSE_QUESTION = '));
 const rulesDealDef = rulesSource.slice(rulesSource.indexOf('const DEAL_AMOUNT_QUESTION'));
 const workerDealDef = workerSource.slice(workerSource.indexOf('DEAL_AMOUNT_QUESTION = '));
+const rulesFitDef = rulesSource.slice(rulesSource.indexOf('const ARCHETYPE_SELECT_QUESTION'));
+const workerFitDef = workerSource.slice(workerSource.indexOf('ARCHETYPE_SELECT_QUESTION = '));
+
+// The buyer-detail additions: one slice per question, from its definition to
+// the end of each source — `field`/`criteriaPairs` read the first match.
+const DETAIL_DEFS: Array<{ key: string; tsConst: string; pyConst: string }> = [
+  { key: 'next_step_commitment', tsConst: 'const NEXT_STEP_COMMITMENT_QUESTION', pyConst: 'NEXT_STEP_COMMITMENT_QUESTION = ' },
+  { key: 'sample_trial_report', tsConst: 'const SAMPLE_TRIAL_REPORT_QUESTION', pyConst: 'SAMPLE_TRIAL_REPORT_QUESTION = ' },
+  { key: 'commercial_info_request', tsConst: 'const COMMERCIAL_INFO_REQUEST_QUESTION', pyConst: 'COMMERCIAL_INFO_REQUEST_QUESTION = ' },
+  { key: 'obstacle_kind', tsConst: 'const OBSTACLE_KIND_QUESTION', pyConst: 'OBSTACLE_KIND_QUESTION = ' },
+  { key: 'obstacle_strength', tsConst: 'const OBSTACLE_STRENGTH_QUESTION', pyConst: 'OBSTACLE_STRENGTH_QUESTION = ' },
+];
+const detailSlice = (defs: Array<{ tsConst: string; pyConst: string }>, index: number) => ({
+  rules: rulesSource.slice(rulesSource.indexOf(defs[index].tsConst)),
+  worker: workerSource.slice(workerSource.indexOf(defs[index].pyConst)),
+});
 
 const PAIR = (key: string) =>
   new RegExp(`"?${key}"?\\s*:\\s*(?:"((?:[^"\\\\]|\\\\.)*)"|'((?:[^'\\\\]|\\\\.)*)')`);
@@ -91,12 +108,15 @@ describe('TS ↔ Python worker prompt parity', () => {
       .toEqual(Object.entries(built.questions.buyer_response.criteria));
   });
 
-  it('the worker only accepts the buyer-only or combined frozen question set', () => {
+  it('the worker accepts the buyer, combined-deal and fit frozen question sets', () => {
     expect(workerSource).toContain(
-      'ALLOWED_QUESTIONS = (BUYER_RESPONSE_QUESTION, ALL_FROZEN_QUESTIONS)',
+      'ALLOWED_QUESTIONS = (BUYER_RESPONSE_QUESTION, ALL_FROZEN_QUESTIONS, FIT_FROZEN_QUESTIONS)',
     );
     expect(workerSource).toContain(
-      'ALL_FROZEN_QUESTIONS = {**BUYER_RESPONSE_QUESTION, **DEAL_AMOUNT_QUESTION}',
+      'ALL_FROZEN_QUESTIONS = {**BUYER_RESPONSE_QUESTION, **DEAL_AMOUNT_QUESTION, **NEXT_STEP_COMMITMENT_QUESTION, **SAMPLE_TRIAL_REPORT_QUESTION, **COMMERCIAL_INFO_REQUEST_QUESTION, **OBSTACLE_KIND_QUESTION, **OBSTACLE_STRENGTH_QUESTION}',
+    );
+    expect(workerSource).toContain(
+      'FIT_FROZEN_QUESTIONS = {**ARCHETYPE_SELECT_QUESTION, **ROLE_SUPPORT_QUESTION}',
     );
   });
 });
@@ -116,11 +136,108 @@ describe('deal_amount question parity', () => {
     }
   });
 
-  it('the exported combined payload is buyer_response + deal_amount, in worker order', () => {
-    expect(Object.keys(LAYA_ALL_FROZEN_QUESTIONS)).toEqual(['buyer_response', 'deal_amount']);
+  it('the exported combined payload is every frozen question, in worker order', () => {
+    expect(Object.keys(LAYA_ALL_FROZEN_QUESTIONS)).toEqual([
+      'buyer_response',
+      'deal_amount',
+      'next_step_commitment',
+      'sample_trial_report',
+      'commercial_info_request',
+      'obstacle_kind',
+      'obstacle_strength',
+    ]);
     expect(LAYA_ALL_FROZEN_QUESTIONS.buyer_response).toBe(LAYA_BUYER_FROZEN_QUESTIONS.buyer_response);
     expect(criteriaList(rulesDealDef)).toEqual(
       Object.values(LAYA_ALL_FROZEN_QUESTIONS.deal_amount.criteria),
+    );
+  });
+});
+
+describe('fit questions parity', () => {
+  it('archetype criteria keys and texts are byte-identical in TypeScript and Python', () => {
+    expect(criteriaPairs(rulesFitDef).map(([key]) => key)).toEqual([
+      'plant_based_restaurant_cafe',
+      'modern_trade_specialty_retail',
+      'bakery_patisserie_brands',
+      'no_fit',
+    ]);
+    expect(criteriaPairs(rulesFitDef)).toEqual(criteriaPairs(workerFitDef));
+  });
+
+  it('choice type and instructions match the worker on both fit questions', () => {
+    expect(field(rulesFitDef, 'type')).toBe('choice');
+    for (const key of ['type', 'instructions']) {
+      expect(field(rulesFitDef, key), key).toBe(field(workerFitDef, key));
+    }
+    const rulesSupportDef = rulesSource.slice(rulesSource.indexOf('const ROLE_SUPPORT_QUESTION'));
+    const workerSupportDef = workerSource.slice(workerSource.indexOf('ROLE_SUPPORT_QUESTION = '));
+    expect(field(rulesSupportDef, 'type')).toBe('noul');
+    for (const key of ['type', 'instructions']) {
+      expect(field(rulesSupportDef, key), key).toBe(field(workerSupportDef, key));
+    }
+    expect(criteriaPairs(rulesSupportDef)).toEqual(criteriaPairs(workerSupportDef));
+  });
+
+  it('the exported fit payload is archetype_select + role_support, in worker order', () => {
+    expect(Object.keys(LAYA_FIT_FROZEN_QUESTIONS)).toEqual(['archetype_select', 'role_support']);
+    expect(criteriaPairs(rulesFitDef)).toEqual(
+      Object.entries(LAYA_FIT_FROZEN_QUESTIONS.archetype_select.criteria),
+    );
+  });
+});
+
+describe('buyer-detail questions parity', () => {
+  const EXPECTED_KEYS: Record<string, string[]> = {
+    next_step_commitment: ['false', 'true'],
+    sample_trial_report: [
+      'not_established', 'received', 'testing_planned', 'positive_result', 'negative_result', 'mixed_result',
+    ],
+    commercial_info_request: ['false', 'true'],
+    obstacle_kind: [
+      'no_obstacle_stated', 'application_technical', 'price_terms', 'delivery',
+      'internal_approval', 'timing', 'unclear',
+    ],
+  };
+  const EXPECTED_TYPES: Record<string, string> = {
+    next_step_commitment: 'noul',
+    sample_trial_report: 'choice',
+    commercial_info_request: 'noul',
+    obstacle_kind: 'choice',
+    obstacle_strength: 'score',
+  };
+
+  it('every buyer-detail question has identical type, instructions and criteria in TypeScript and Python', () => {
+    DETAIL_DEFS.forEach((def, index) => {
+      const { rules, worker } = detailSlice(DETAIL_DEFS, index);
+      expect(field(rules, 'type'), def.key).toBe(EXPECTED_TYPES[def.key]);
+      for (const name of ['type', 'instructions']) {
+        expect(field(rules, name), `${def.key}.${name}`).toBe(field(worker, name));
+      }
+      if (def.key === 'obstacle_strength') {
+        expect(criteriaList(rules), def.key).toEqual(criteriaList(worker));
+        expect(criteriaList(rules), def.key).toEqual([
+          'No obstacle stated: nothing in the supplied text blocks progress.',
+          'Minor friction: a question or concern exists, but progress can continue.',
+          'Material obstacle: progress needs this addressed before moving on.',
+          'Explicit blocker: the buyer states progress cannot continue until this is resolved.',
+        ]);
+      } else {
+        expect(criteriaPairs(rules), def.key).toEqual(criteriaPairs(worker));
+        expect(criteriaPairs(rules).map(([key]) => key), def.key).toEqual(EXPECTED_KEYS[def.key]);
+      }
+    });
+  });
+
+  it('the frozen criteria texts of the new choice questions match the exported payload', () => {
+    const detail = LAYA_ALL_FROZEN_QUESTIONS;
+    expect(Object.entries(detail.sample_trial_report.criteria)).toEqual(
+      criteriaPairs(detailSlice(DETAIL_DEFS, 1).rules),
+    );
+    expect(Object.entries(detail.obstacle_kind.criteria)).toEqual(
+      criteriaPairs(detailSlice(DETAIL_DEFS, 3).rules),
+    );
+    expect([...detail.obstacle_strength.criteria]).toEqual(
+      criteriaList(detailSlice(DETAIL_DEFS, 4).rules),
     );
   });
 });
