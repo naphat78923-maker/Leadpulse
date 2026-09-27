@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { AlertCircle, Check, Edit2, Loader2, Undo2, X, Trash2, MessageCircle } from 'lucide-react';
 import clsx from 'clsx';
-import { Deal, DealStage, DealWorkflowAction, SampleStatus } from '@/types/crm';
+import { Deal, DealWorkflowAction, SampleStatus } from '@/types/crm';
 import { useToast } from '@/components/ToastProvider';
 import { useCrm } from '@/components/CrmProvider';
 import { dealClientName } from '@/utils/dealLabel';
@@ -33,6 +33,7 @@ import {
 import { buildCloseUpdate } from '@/utils/deal-close';
 import { outreachLanguageLabel, outreachLanguageBadgeColor, outreachLanguageBasisLabel } from '@/utils/contact-identity';
 import LogInteractionModal from '@/components/LogInteractionModal';
+import CompanyLogo from '@/components/CompanyLogo';
 import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
 import NudgeLadderRail from '@/components/NudgeLadderRail';
 import StakeholderMiniMap from '@/components/StakeholderMiniMap';
@@ -398,9 +399,9 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
   const isClosed = deal.stage === 'closed_won' || deal.stage === 'closed_lost';
 
   return (
-    <div className="fixed inset-0 flex items-end md:items-center justify-center z-50 p-0 md:p-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center p-0 md:items-stretch md:justify-end" role="dialog" aria-modal="true" aria-label="Deal details">
       <motion.div
-        className="absolute inset-0 bg-black/50"
+        className="absolute inset-0 bg-black/35"
         variants={overlayVariants}
         initial="initial"
         animate="animate"
@@ -409,7 +410,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
         onClick={onClose}
       />
       <motion.div
-        className={clsx('relative bg-white dark:bg-clay-card w-full md:max-w-md md:rounded-2xl rounded-t-2xl p-6 max-h-[86vh] overflow-y-auto', saving ? 'opacity-80' : saved ? 'ring-2 ring-clay-success/40' : '')}
+        className={clsx('relative w-full rounded-t-2xl bg-white p-6 dark:bg-clay-card md:h-dvh md:max-h-dvh md:max-w-[480px] md:rounded-none md:border-l md:border-clay-hairline max-h-[86vh] overflow-y-auto', saving ? 'opacity-80' : saved ? 'ring-2 ring-clay-success/40' : '')}
         variants={panelVariants}
         initial="initial"
         animate="animate"
@@ -418,10 +419,13 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
         onClick={event => event.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-3 mb-4">
-          <div className="min-w-0">
-            <p className="text-[10px] text-clay-muted font-medium tracking-wider">DEAL</p>
-            <h2 className="text-lg font-semibold text-clay-ink truncate">{dealClientName(deal, companies, contacts)}</h2>
-            {headerFacts && <p className="mt-0.5 text-xs text-clay-muted truncate">{headerFacts}</p>}
+          <div className="flex min-w-0 items-center gap-2.5">
+            <CompanyLogo src={dealCompany?.logo_url} name={dealClientName(deal, companies, contacts)} id={deal.company_id} size={36} />
+            <div className="min-w-0">
+              <p className="text-[10px] text-clay-muted font-medium tracking-wider">DEAL</p>
+              <h2 className="text-lg font-semibold text-clay-ink truncate">{dealClientName(deal, companies, contacts)}</h2>
+              {headerFacts && <p className="mt-0.5 text-xs text-clay-muted truncate">{headerFacts}</p>}
+            </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             {editing && (
@@ -506,7 +510,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
               </>
             ) : (
               <div className="flex items-start gap-3">
-                <span className="text-2xl">{workflow.icon}</span>
+                <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-clay-teal" aria-hidden="true" />
                 <div>
                   <p className="font-semibold text-clay-ink">{workflow.label}</p>
                   <p className="text-xs text-clay-muted mt-0.5">{workflow.description}</p>
@@ -598,16 +602,20 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
             </div>
           )}
 
-          <LayaScoreCard deal={deal} company={dealCompany} />
-
-          {dealCompany && (
-            <StakeholderMiniMap
-              company={dealCompany}
-              companyName={dealCompany.name}
-              productHint={deal.product}
-              onUpdated={onSaved}
-            />
-          )}
+          <details className="rounded-xl border border-clay-hairline bg-clay-surface">
+            <summary className="cursor-pointer px-3 py-3 text-sm font-medium text-clay-body">Account context &amp; buyer map</summary>
+            <div className="space-y-3 border-t border-clay-hairline p-3">
+              <LayaScoreCard deal={deal} company={dealCompany} />
+              {dealCompany && (
+                <StakeholderMiniMap
+                  company={dealCompany}
+                  companyName={dealCompany.name}
+                  productHint={deal.product}
+                  onUpdated={onSaved}
+                />
+              )}
+            </div>
+          </details>
 
           {!isClosed && currentWorkflow !== 'parked' && (
             <section className="rounded-xl border border-clay-hairline bg-white dark:bg-clay-card p-3">

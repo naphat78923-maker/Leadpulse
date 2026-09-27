@@ -28,6 +28,8 @@ export type EntityAvatarProps = {
   className?: string;
   /** Soft hover/press; default true. */
   interactive?: boolean;
+  /** Reserved company marks: neutral initials tile rather than a random accent. */
+  neutral?: boolean;
 };
 
 const BREATHE_MIN_PX = 40;
@@ -45,6 +47,7 @@ export default function EntityAvatar({
   initials: initialsProp,
   className,
   interactive = true,
+  neutral = false,
 }: EntityAvatarProps) {
   const [failed, setFailed] = useState(false);
   const reduceMotion = usePrefersReducedMotion();
@@ -63,9 +66,9 @@ export default function EntityAvatar({
     width: size,
     height: size,
     borderRadius: radius,
-    backgroundColor: showImg ? 'var(--color-clay-surface)' : palette.bg,
-    color: palette.fg,
-    boxShadow: showImg
+    backgroundColor: showImg || neutral ? 'var(--color-clay-surface)' : palette.bg,
+    color: neutral ? 'var(--color-clay-ink)' : palette.fg,
+    boxShadow: showImg || neutral
       ? 'inset 0 0 0 1px var(--color-clay-hairline)'
       : `inset 0 0 0 1px color-mix(in srgb, ${palette.ring} 35%, transparent)`,
   };
@@ -88,7 +91,7 @@ export default function EntityAvatar({
       width={size}
       height={size}
       onError={() => setFailed(true)}
-      className="h-full w-full object-cover"
+      className={clsx('h-full w-full', kind === 'org' ? 'object-contain p-1' : 'object-cover')}
       style={{ borderRadius: radius }}
       draggable={false}
     />

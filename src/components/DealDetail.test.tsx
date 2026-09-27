@@ -93,6 +93,16 @@ describe('DealDetail journey modal', () => {
     expect(screen.getByText(/does not change deal priority, stage, or workflow/i)).toBeTruthy();
   });
 
+  it('keeps account intelligence available but collapsed beneath the operational fields', () => {
+    render(<DealDetail deal={deal} onClose={vi.fn()} onSaved={vi.fn()} />);
+    const summary = screen.getByText('Account context & buyer map');
+    const details = summary.closest('details');
+    expect(details?.open).toBe(false);
+    expect(screen.getByRole('button', { name: /Log touch/i })).toBeTruthy();
+    fireEvent.click(summary);
+    expect(details?.open).toBe(true);
+  });
+
   it('does not expand drafting brief by default', () => {
     render(<DealDetail deal={deal} onClose={vi.fn()} onSaved={vi.fn()} />);
     const summary = screen.getByText('Ebimaru drafting brief');

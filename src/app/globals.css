@@ -144,6 +144,13 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-clay-muted-soft);
 }
+/* Swipe rows (tabs, chips) scroll without a visible track. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
 
 /* Line clamp */
 .line-clamp-1 {

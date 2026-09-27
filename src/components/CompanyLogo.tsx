@@ -20,6 +20,8 @@ export default function CompanyLogo({ src, name, id, size = 40, className }: Com
       src={src}
       size={size}
       className={className}
+      neutral
+      interactive={false}
     />
   );
 }

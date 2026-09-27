@@ -10,6 +10,7 @@ import ProspectsTab from '@/components/ProspectsTab';
 import DealDetail from '@/components/DealDetail';
 import DealCardPrimaryAction from '@/components/DealCardPrimaryAction';
 import DealCardContent from '@/components/DealCardContent';
+import CompanyLogo from '@/components/CompanyLogo';
 import LaneGateModal, { LaneGatePayload } from '@/components/LaneGateModal';
 import ReviewFixModal, { ReviewFixPayload } from '@/components/ReviewFixModal';
 import { useToast } from '@/components/ToastProvider';
@@ -27,12 +28,12 @@ import {
   DragStartEvent,
   DragEndEvent,
 } from '@dnd-kit/core';
-import { Plus, TrendingUp, AlertCircle, Loader2, CalendarDays, ArrowRight, Search, X } from 'lucide-react';
+import { Plus, AlertCircle, Loader2, ArrowRight, Search, X } from 'lucide-react';
 import clsx from 'clsx';
 import { PRIORITY_CLASSES, PRIORITY_LABELS } from '@/utils/deal-card';
 import { formatBaht, sumLaneValues } from '@/utils/format';
 import { calculateWeightedForecast, calculateSourcePerformance } from '@/utils/analytics-metrics';
-import { WORKFLOW_LANES, WORKFLOW_BY_ID, getWorkflowAction, isOnJourneyBoard, isJourneyLane, deriveNudge, formatDerivedNudgeBadge, outboundSendCountForDeal, nudgeLabel } from '@/utils/deal-workflow';
+import { WORKFLOW_LANES, WORKFLOW_BY_ID, getWorkflowAction, isOnJourneyBoard, isJourneyLane, deriveNudge, formatDerivedNudgeBadge, outboundSendCountForDeal } from '@/utils/deal-workflow';
 import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import { BoardAttentionFilter, dealNeedsReview, reviewReasons, REVIEW_LABEL, buildReviewReport, buildReviewFix, filterAndSortBoardDeals, findDealsMatchingSearch, getDoNowCounts, localDateKey } from '@/utils/deal-board';
@@ -104,7 +105,7 @@ function DealsBoard() {
   const [reviewFix, setReviewFix] = useState<{ deal: Deal; reasons: ReturnType<typeof reviewReasons> } | null>(null);
   const [celebrate, setCelebrate] = useState<{ dealId: string; laneId: DealWorkflowAction } | null>(null);
   const [pickerDeal, setPickerDeal] = useState<Deal | null>(null);
-  const [attentionFilter, setAttentionFilter] = useState<BoardAttentionFilter>('overdue');
+  const [attentionFilter, setAttentionFilter] = useState<BoardAttentionFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [productFilter, setProductFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<Deal['priority'] | 'all'>('all');
@@ -406,16 +407,11 @@ function DealsBoard() {
         <motion.button
           type="button"
           onClick={() => setSelectedDeal(deal.id)}
-          whileHover={skipMotion ? undefined : { y: -2, scale: 1.01 }}
           whileTap={skipMotion ? undefined : { scale: pressScale }}
           transition={springPress}
           className={clsx(
-            'w-full text-left bg-white dark:bg-clay-card rounded-xl border touch-manipulation',
-            isCompact ? 'p-2.5' : 'p-3',
-            'border-clay-hairline',
-            deal.priority === 'high' && 'border-l-[3px] border-l-clay-error',
-            deal.priority === 'medium' && 'border-l-[3px] border-l-clay-ochre',
-            deal.priority === 'low' && 'border-l-[3px] border-l-clay-muted-soft',
+            'w-full text-left bg-white dark:bg-clay-card rounded-lg border border-clay-hairline touch-manipulation transition-[border-color,box-shadow] hover:border-clay-muted/40 hover:shadow-sm focus-visible:outline-2 focus-visible:outline-clay-teal',
+            isCompact ? 'p-3' : 'p-3.5',
           )}
         >
           <DealCardContent
@@ -431,52 +427,51 @@ function DealsBoard() {
           <p className="sr-only">Open {deal.client} in {lane.label}</p>
         </motion.button>
         {/* Sibling of the card button, never nested: one contextual action that opens the form. */}
-        <div className="flex items-center gap-2">
-          <DealCardPrimaryAction deal={deal} onSelect={handleCardPrimaryAction} />
-        </div>
+        <DealCardPrimaryAction deal={deal} onSelect={handleCardPrimaryAction} />
       </div>
     );
   };
 
   return (
     <PageTransition className="p-4 md:px-4 md:py-6 pb-20 lg:pb-6 min-h-full">
-      <div className="flex items-start justify-between gap-3 mb-4">
-        <div className="flex items-start gap-3 min-w-0">
-          <Blob state="idle" size={44} className="shrink-0 mt-0.5 hidden sm:block" aria-label="Deal Action Board" />
-          <div className="min-w-0">
-          <p className="zams-eyebrow mb-1">Pipeline · Action board</p>
-          <h1 className="zams-display text-2xl md:text-[28px] leading-tight">Deal Action Board</h1>
-          <details className="mt-1">
-            <summary className="cursor-pointer text-xs text-clay-muted underline decoration-dotted md:text-sm">How this board works</summary>
-            <p className="mt-1 max-w-prose text-xs text-clay-muted md:text-sm">Journey only — Won / Lost / Park are exits, not columns. Nudges track your sends: 4 max, then park.</p>
-          </details>
-          </div>
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="min-w-0">
+          <p className="zams-eyebrow mb-1">Deals / VG Saveur</p>
+          <h1 className="zams-display text-2xl md:text-[28px] leading-tight">Pipeline</h1>
+          <p className="mt-1 text-xs text-clay-muted">
+            <strong className="font-semibold text-clay-ink">{stats.active}</strong> active
+            <span className="mx-2">·</span>
+            <button onClick={() => focusAttention('today')} className="font-semibold text-clay-warning-strong underline-offset-2 hover:underline">{stats.dueToday} due today</button>
+            <span className="mx-2">·</span>
+            <strong className="font-semibold text-clay-ink">{stats.won}</strong> won
+          </p>
         </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="clay-btn-primary shrink-0 motion-press"
-        >
+        <button onClick={() => setIsModalOpen(true)} className="clay-btn-primary shrink-0 motion-press">
           <Plus className="w-4 h-4" /> <span className="hidden sm:inline">New deal</span>
         </button>
       </div>
 
 
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
-        <button onClick={() => setView('board')} className="bg-white dark:bg-clay-card border border-clay-hairline rounded-xl p-3 text-left active:scale-[0.98]"><p className="zams-eyebrow">Active</p><p className="text-xl font-semibold text-clay-ink">{stats.active}</p></button>
-        <button onClick={() => focusAttention('today')} className="bg-clay-ochre/10 border border-clay-ochre/20 rounded-xl p-3 text-left active:scale-[0.98] transition-transform"><p className="zams-eyebrow text-clay-ochre">Due today</p><p className="text-xl font-semibold text-clay-ochre">{stats.dueToday}</p></button>
-        <button onClick={() => setView('parked')} className="bg-clay-card border border-clay-hairline rounded-xl p-3 text-left active:scale-[0.98]"><p className="zams-eyebrow">Parked</p><p className="text-xl font-semibold text-clay-ink">{stats.parked}</p></button>
-        <button onClick={() => setView('won')} className="bg-clay-mint/20 border border-clay-mint/30 rounded-xl p-3 text-left active:scale-[0.98]"><p className="zams-eyebrow text-clay-teal">Won</p><p className="text-xl font-semibold text-clay-teal">{stats.won}</p></button>
-      </div>
-
-      <div className="flex bg-clay-card rounded-lg p-0.5 mb-4 overflow-x-auto">
-        <button onClick={() => setView('prospects')} className={clsx('flex-1 px-3 py-2 text-xs font-medium rounded-md whitespace-nowrap', view === 'prospects' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>Prospects</button>
-        <button onClick={() => setView('board')} className={clsx('flex-1 px-3 py-2 text-xs font-medium rounded-md whitespace-nowrap', view === 'board' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>Journey</button>
-        <button onClick={() => setView('parked')} className={clsx('flex-1 px-3 py-2 text-xs font-medium rounded-md whitespace-nowrap', view === 'parked' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>Parked</button>
-        <button onClick={() => setView('won')} className={clsx('flex-1 px-3 py-2 text-xs font-medium rounded-md whitespace-nowrap', view === 'won' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>Won</button>
-        <button onClick={() => setView('lost')} className={clsx('flex-1 px-3 py-2 text-xs font-medium rounded-md whitespace-nowrap', view === 'lost' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>Lost</button>
-        <button onClick={() => setView('table')} className={clsx('flex-1 px-3 py-2 text-xs font-medium rounded-md whitespace-nowrap', view === 'table' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>Table</button>
-      </div>
+      <nav className="mb-3 flex gap-1 overflow-x-auto no-scrollbar border-b border-clay-hairline" aria-label="Deal views">
+        {([
+          ['prospects', 'Prospects', null],
+          ['board', 'Journey', stats.active],
+          ['parked', 'Parked', stats.parked],
+          ['won', 'Won', stats.won],
+          ['lost', 'Lost', lostDeals.length],
+          ['table', 'Table', deals.length],
+        ] as const).map(([mode, label, count]) => (
+          <button
+            key={mode}
+            onClick={() => setView(mode)}
+            aria-current={view === mode ? 'page' : undefined}
+            className={clsx('shrink-0 border-b-2 px-3 py-2 text-xs font-medium transition-colors', view === mode ? 'border-clay-ink text-clay-ink' : 'border-transparent text-clay-muted hover:text-clay-ink')}
+          >
+            {label}{count !== null && <span className="ml-1 font-normal text-clay-muted">{count}</span>}
+          </button>
+        ))}
+      </nav>
 
       {view === 'prospects' && (
         <ProspectsTab
@@ -489,23 +484,21 @@ function DealsBoard() {
 
       {view === 'board' && (
         <>
-          <section className="mb-3 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-3 py-2.5 md:px-4" aria-label="Do now filters">
-            <div className="flex items-center justify-between gap-3 mb-2.5">
-              <div className="flex items-baseline gap-2 min-w-0">
-                <p className="zams-eyebrow">Do now</p>
-                <p className="text-xs text-clay-muted truncate">Showing {visibleActionBoardDeals.length} of {actionBoardDeals.length}</p>
-              </div>
-              {filtersActive && (
-                <button
-                  onClick={clearDoNowFilters}
-                  className="inline-flex items-center gap-1.5 min-h-[44px] rounded-lg border border-clay-hairline px-2.5 text-xs font-medium text-clay-muted active:bg-clay-surface"
-                >
-                  <X className="w-3.5 h-3.5" /> Clear
-                </button>
-              )}
-            </div>
+          {/* One toolbar: search, quick filters, product and priority, then a live count. */}
+          <section className="mb-2 flex flex-wrap items-center gap-2" aria-label="Do now filters">
+            <label className="relative w-full sm:w-60">
+              <span className="sr-only">Search by client or deal name</span>
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-clay-muted" />
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={event => setSearchQuery(event.target.value)}
+                placeholder="Search deals"
+                className="h-9 w-full rounded-lg border border-clay-hairline bg-white pl-8 pr-3 text-base text-clay-ink placeholder:text-clay-muted focus:outline-none focus:ring-2 focus:ring-clay-lavender/40 dark:bg-clay-card md:text-sm"
+              />
+            </label>
 
-            <div className="-mx-3 px-3 md:mx-0 md:px-0 flex gap-2 overflow-x-auto pb-2" role="group" aria-label="Attention filter">
+            <div className="-mx-4 flex gap-1.5 overflow-x-auto no-scrollbar px-4 sm:mx-0 sm:px-0" role="group" aria-label="Attention filter">
               {([
                 ['all', 'All', doNowCounts.all],
                 ['overdue', 'Overdue', doNowCounts.overdue],
@@ -517,82 +510,79 @@ function DealsBoard() {
                   onClick={() => setAttentionFilter(value)}
                   aria-pressed={attentionFilter === value}
                   className={clsx(
-                    'shrink-0 min-h-[44px] rounded-xl border px-3 text-sm font-medium transition-colors',
+                    'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors',
                     attentionFilter === value
-                      ? value === 'overdue'
-                        ? 'border-clay-error bg-clay-error/20 text-clay-error-strong dark:bg-clay-error/10 dark:text-clay-error'
-                        : value === 'today'
-                          ? 'border-clay-ochre bg-clay-ochre/20 text-clay-warning-strong dark:bg-clay-ochre/10 dark:text-clay-ochre'
-                          : 'border-clay-lavender bg-clay-lavender/20 text-clay-ink'
-                      : 'border-clay-hairline bg-clay-card text-clay-muted'
+                      ? 'border-clay-lavender/60 bg-clay-lavender/20 text-clay-ink'
+                      : 'border-clay-hairline text-clay-body hover:border-clay-ink/30 hover:text-clay-ink',
                   )}
                 >
-                  {label} <span className="ml-1 font-mono text-[11px] opacity-75">{count}</span>
+                  {label}
+                  <span className={clsx('text-xs', value === 'overdue' && count > 0 ? 'font-semibold text-clay-error' : 'text-clay-muted')}>{count}</span>
                 </button>
               ))}
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-[minmax(240px,1fr)_180px_150px] gap-2 mt-1">
-              <label className="relative col-span-2 md:col-span-1">
-                <span className="sr-only">Search by client or deal name</span>
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-clay-muted pointer-events-none" />
-                <input
-                  type="search"
-                  value={searchQuery}
-                  onChange={event => setSearchQuery(event.target.value)}
-                  placeholder="Search client or deal"
-                  className="w-full min-h-[44px] rounded-lg border border-clay-hairline bg-white dark:bg-clay-card pl-9 pr-3 text-base md:text-sm text-clay-ink placeholder:text-clay-muted-soft focus:outline-none focus:ring-2 focus:ring-clay-lavender"
-                />
-              </label>
+            <label>
+              <span className="sr-only">Filter by product</span>
+              <select
+                value={productFilter}
+                onChange={event => setProductFilter(event.target.value)}
+                className="h-9 rounded-lg border border-clay-hairline bg-white px-2.5 text-base text-clay-body focus:outline-none focus:ring-2 focus:ring-clay-lavender/40 dark:bg-clay-card md:text-sm"
+              >
+                <option value="all">All products</option>
+                {productOptions.map(product => <option key={product} value={product}>{product}</option>)}
+              </select>
+            </label>
 
-              <label>
-                <span className="sr-only">Filter by product</span>
-                <select
-                  value={productFilter}
-                  onChange={event => setProductFilter(event.target.value)}
-                  className="w-full min-h-[44px] rounded-lg border border-clay-hairline bg-white dark:bg-clay-card px-3 text-base md:text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-clay-lavender"
-                >
-                  <option value="all">All products</option>
-                  {productOptions.map(product => <option key={product} value={product}>{product}</option>)}
-                </select>
-              </label>
+            <label>
+              <span className="sr-only">Filter by priority</span>
+              <select
+                value={priorityFilter}
+                onChange={event => setPriorityFilter(event.target.value as Deal['priority'] | 'all')}
+                className="h-9 rounded-lg border border-clay-hairline bg-white px-2.5 text-base text-clay-body focus:outline-none focus:ring-2 focus:ring-clay-lavender/40 dark:bg-clay-card md:text-sm"
+              >
+                <option value="all">Any priority</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </label>
 
-              <label>
-                <span className="sr-only">Filter by priority</span>
-                <select
-                  value={priorityFilter}
-                  onChange={event => setPriorityFilter(event.target.value as Deal['priority'] | 'all')}
-                  className="w-full min-h-[44px] rounded-lg border border-clay-hairline bg-white dark:bg-clay-card px-3 text-base md:text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-clay-lavender"
-                >
-                  <option value="all">All priorities</option>
-                  <option value="high">High priority</option>
-                  <option value="medium">Medium priority</option>
-                  <option value="low">Low priority</option>
-                </select>
-              </label>
-            </div>
+            {filtersActive && (
+              <button
+                onClick={clearDoNowFilters}
+                className="inline-flex h-9 items-center gap-1 rounded-lg px-2 text-sm text-clay-muted hover:bg-clay-surface hover:text-clay-ink"
+              >
+                <X className="h-3.5 w-3.5" /> Clear
+              </button>
+            )}
           </section>
 
-          <div className="mb-3 rounded-xl border border-clay-ochre/30 bg-clay-ochre/5 px-4 py-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 min-w-0">
-                <TrendingUp className="w-4 h-4 text-clay-ochre shrink-0" />
-                <span className="text-sm font-medium text-clay-ink truncate">Open pipeline</span>
+          {/* One quiet line: what the board holds, how it works, and card density. */}
+          <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-clay-muted">
+            <span>{visibleActionBoardDeals.length} of {actionBoardDeals.length} deals</span>
+            <details className="open:basis-full" aria-label="Pipeline insights">
+              <summary className="cursor-pointer list-none marker:hidden hover:text-clay-ink">
+                Open pipeline <span className="font-semibold text-clay-ink">{formatBaht(openPipelineValue)}</span> <span aria-hidden="true">⌄</span>
+              </summary>
+              <div className="mt-2 space-y-1">
+                <p>Weighted forecast · <span className="font-semibold text-clay-ink">{formatBaht(weightedForecast)}</span></p>
+                {sourceRows.length > 0 && (
+                  <div className="flex flex-wrap gap-x-4 gap-y-1">
+                    {sourceRows.map(s => (
+                      <span key={s.source}><span className="font-medium text-clay-body">{s.source}</span> {s.won}/{s.total} won · {s.rate.toFixed(0)}%</span>
+                    ))}
+                  </div>
+                )}
               </div>
-              <div className="flex items-baseline gap-3 shrink-0">
-                <span className="text-[11px] text-clay-muted">weighted <span className="zams-mono font-semibold text-clay-body">{formatBaht(weightedForecast)}</span></span>
-                <span className="zams-mono text-base font-bold text-clay-ochre">{formatBaht(openPipelineValue)}</span>
-              </div>
-            </div>
-            {sourceRows.length > 0 && (
-              <div className="mt-2 pt-2 border-t border-clay-ochre/20 flex flex-wrap gap-x-4 gap-y-1">
-                {sourceRows.map(s => (
-                  <span key={s.source} className="text-[11px] text-clay-muted">
-                    <span className="font-medium text-clay-body">{s.source}</span> {s.won}/{s.total} won · {s.rate.toFixed(0)}%
-                  </span>
-                ))}
-              </div>
-            )}
+            </details>
+            <details className="open:basis-full">
+              <summary className="cursor-pointer list-none marker:hidden hover:text-clay-ink">How this board works <span aria-hidden="true">⌄</span></summary>
+              <p className="mt-1 max-w-xl leading-relaxed">Drag along the five journey stages. Waiting on reply requires logged outreach; Sample requires an address and send intent; Testing needs delivery and a date; Follow-up needs a date. Won / Lost / Park are exits, never columns. Four outbound nudges maximum, then park.</p>
+            </details>
+            <button onClick={() => setCompact(!compact)} className="ml-auto rounded-md px-2 py-1 hover:bg-clay-surface hover:text-clay-ink">
+              {compact ? 'Show more detail' : 'Compact cards'}
+            </button>
           </div>
 
           {attentionFilter === 'needs-review' && (
@@ -636,22 +626,6 @@ function DealsBoard() {
               </ul>
             </section>
           )}
-
-          <div className="mb-3 rounded-xl border border-clay-hairline bg-clay-surface px-3 py-2 flex items-center justify-between gap-3">
-            <div className="flex items-start gap-2 text-xs text-clay-muted min-w-0">
-              <CalendarDays className="w-4 h-4 mt-0.5 text-clay-lavender shrink-0" />
-              <span>Drag along the journey only. Won / Lost / Park are exits from the card menu — never columns.</span>
-            </div>
-            <button
-              onClick={() => setCompact(!compact)}
-              className={clsx(
-                'shrink-0 zams-mono text-[10px] uppercase tracking-[0.16px] min-h-[44px] px-2.5 py-1.5 rounded-lg border transition-colors',
-                compact ? 'border-clay-lavender bg-clay-lavender/20 text-clay-lavender' : 'border-clay-hairline text-clay-muted hover:border-clay-muted-soft'
-              )}
-            >
-              {compact ? 'Full cards' : 'Compact'}
-            </button>
-          </div>
 
           {actionBoardDeals.length === 0 && (
             <div className="mb-4 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-6 py-8 flex flex-col sm:flex-row items-center justify-center gap-5 text-center sm:text-left">
@@ -713,7 +687,7 @@ function DealsBoard() {
           )}
           {/* Phone: one readable lane at a time. Desktop: full board. */}
           <div className="md:hidden">
-            <div className="-mx-4 px-4 flex gap-2 overflow-x-auto pb-3 snap-x">
+            <div className="-mx-4 px-4 flex gap-2 overflow-x-auto no-scrollbar pb-3 snap-x">
               {WORKFLOW_LANES.map(lane => (
                 <button
                   key={lane.id}
@@ -733,16 +707,11 @@ function DealsBoard() {
               const lane = WORKFLOW_LANES.find(item => item.id === mobileLane)!;
               const laneDeals = dealsByAction[mobileLane];
               return (
-                <section data-lane-id={lane.id} className={clsx('rounded-2xl border p-3', lane.className)}>
-                  <div data-lane-header className="mb-2 space-y-1">
-                    <div data-lane-title className="flex min-w-0 items-center gap-2">
-                      <Blob state={LANE_BLOB_STATE[lane.id]} size={26} aria-label={lane.label} />
-                      <h2 className="min-w-0 flex-1 text-base font-semibold text-clay-ink">{lane.label}</h2>
-                    </div>
-                    <p className="line-clamp-1 min-h-[1.25rem] text-[11px] text-clay-muted">{lane.description}</p>
-                    <div className="flex justify-end">
-                      <span data-lane-stats className="whitespace-nowrap text-sm text-clay-muted bg-white/70 dark:bg-clay-card px-2 py-1 rounded-full">{laneDeals.length} · {formatBaht(laneValues[lane.id])}</span>
-                    </div>
+                <section data-lane-id={lane.id} className="rounded-xl border border-clay-hairline bg-clay-surface p-3">
+                  <div data-lane-header className="mb-2 flex flex-wrap items-center gap-2">
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-clay-teal" aria-hidden="true" />
+                    <h2 data-lane-title className="min-w-0 flex-1 text-base font-semibold text-clay-ink">{lane.shortLabel}</h2>
+                    <span data-lane-stats className="whitespace-nowrap text-xs text-clay-muted">{laneDeals.length} · {formatBaht(laneValues[lane.id])}</span>
                   </div>
                   <StaggerList stagger={0.04} className="space-y-2">
                     {laneDeals.map(d => (
@@ -774,17 +743,11 @@ function DealsBoard() {
             <div className="hidden md:block relative">
               <div ref={boardRef} className="flex gap-2.5 items-stretch overflow-x-auto pb-3 pl-0.5 pr-8 scroll-smooth snap-x snap-mandatory [scrollbar-gutter:stable]">
                 {WORKFLOW_LANES.map(lane => (
-                  <DroppableLane key={lane.id} laneId={lane.id} className={lane.className} reduceMotion={reduceMotion}>
-                    <div data-lane-header className="mb-2 shrink-0 space-y-1">
-                      <div data-lane-title className="flex min-w-0 items-center gap-2">
-                        <Blob state={LANE_BLOB_STATE[lane.id]} size={24} aria-label={lane.shortLabel} />
-                        <h2 className="min-w-0 flex-1 text-sm font-semibold text-clay-ink">{lane.shortLabel}</h2>
-                      </div>
-                      <p className="line-clamp-1 min-h-[1.25rem] text-[11px] leading-snug text-clay-muted">{lane.description}</p>
-                      <div className="flex min-w-0 items-center justify-between gap-2">
-                        <p className="zams-mono min-w-0 truncate text-[9px] uppercase tracking-[0.14px] text-clay-muted-soft">{LANE_CRITERIA[lane.id]}</p>
-                        <span data-lane-stats className="shrink-0 whitespace-nowrap text-xs text-clay-muted bg-white/70 dark:bg-clay-card px-2 py-0.5 rounded-full">{dealsByAction[lane.id].length} · {formatBaht(laneValues[lane.id])}</span>
-                      </div>
+                  <DroppableLane key={lane.id} laneId={lane.id} reduceMotion={reduceMotion}>
+                    <div data-lane-header className="mb-3 shrink-0 flex flex-wrap items-center gap-1.5">
+                      <span className="h-2 w-2 shrink-0 rounded-full bg-clay-teal" aria-hidden="true" />
+                      <h2 data-lane-title title={LANE_CRITERIA[lane.id]} className="min-w-0 flex-1 text-[13px] font-semibold text-clay-ink">{lane.shortLabel}</h2>
+                      <span data-lane-stats className="shrink-0 whitespace-nowrap text-[11px] text-clay-muted">{dealsByAction[lane.id].length} · {formatBaht(laneValues[lane.id])}</span>
                     </div>
                     <StaggerList stagger={0.04} className="space-y-2 flex-1 pr-0.5">
                       {dealsByAction[lane.id].map(deal => (
@@ -925,10 +888,11 @@ function DealsBoard() {
             <tbody>
               {tableDeals.map(deal => {
                 const lane = WORKFLOW_BY_ID[getWorkflowAction(deal)];
+                const identity = buildDealCardPresentation(deal, contacts, companies, dueStateFor(deal, todayStr));
                 const derived = deriveNudge(deal, todayStr, {
-      sendCount: outboundSendCountForDeal(dbMeetings || [], deal.id),
-    });
-                return <tr key={deal.id} onClick={() => setSelectedDeal(deal.id)} className="border-b border-clay-hairline active:bg-clay-surface cursor-pointer transition-colors"><td className="px-3 py-3"><p className="font-medium text-clay-ink">{deal.client}</p><p className="text-[10px] text-clay-muted truncate max-w-40">{deal.title}</p></td><td className="px-3 py-3"><span className="text-xs text-clay-body whitespace-nowrap">{lane.icon} {lane.shortLabel}</span>{derived && <p className="text-[10px] text-clay-muted mt-0.5">{formatDerivedNudgeBadge(derived)}</p>}</td><td className="hidden sm:table-cell px-3 py-3"><span className="text-[10px] font-medium bg-clay-card px-1.5 py-0.5 rounded text-clay-muted">{STAGE_LABELS[deal.stage]}</span></td><td className="hidden sm:table-cell px-3 py-3 text-xs text-clay-muted">{compactDate(deal.followup_date) || '—'}</td><td className="px-3 py-3"><span className={clsx('text-[10px] font-semibold px-2 py-0.5 rounded', PRIORITY_CLASSES[deal.priority])}>{PRIORITY_LABELS[deal.priority]}</span></td></tr>;
+                  sendCount: outboundSendCountForDeal(dbMeetings || [], deal.id),
+                });
+                return <tr key={deal.id} onClick={() => setSelectedDeal(deal.id)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedDeal(deal.id); } }} tabIndex={0} className="border-b border-clay-hairline active:bg-clay-surface cursor-pointer transition-colors focus-visible:outline-2 focus-visible:outline-clay-teal"><td className="px-3 py-3"><div className="flex min-w-0 items-center gap-2.5"><CompanyLogo src={identity.companyLogoUrl} name={identity.companyName} id={deal.company_id} size={28} /><div className="min-w-0"><p className="font-medium text-clay-ink">{identity.companyName}</p><p className="text-[10px] text-clay-muted truncate max-w-40">{deal.title}</p></div></div></td><td className="px-3 py-3"><span className="text-xs text-clay-body whitespace-nowrap">{lane.icon} {lane.shortLabel}</span>{derived && <p className="text-[10px] text-clay-muted mt-0.5">{formatDerivedNudgeBadge(derived)}</p>}</td><td className="hidden sm:table-cell px-3 py-3"><span className="text-[10px] font-medium bg-clay-card px-1.5 py-0.5 rounded text-clay-muted">{STAGE_LABELS[deal.stage]}</span></td><td className="hidden sm:table-cell px-3 py-3 text-xs text-clay-muted">{compactDate(deal.followup_date) || '—'}</td><td className="px-3 py-3"><span className={clsx('text-[10px] font-semibold px-2 py-0.5 rounded', PRIORITY_CLASSES[deal.priority])}>{PRIORITY_LABELS[deal.priority]}</span></td></tr>;
               })}
             </tbody>
           </table>
@@ -1143,7 +1107,7 @@ function DroppableLane({
       ref={setNodeRef}
       data-lane-id={laneId}
       className={clsx(
-        'flex-1 min-w-[11.5rem] max-w-[18rem] snap-start rounded-2xl border p-2.5 flex flex-col transition-colors 2xl:min-w-[150px]',
+        'flex-1 min-w-[12rem] max-w-[18rem] snap-start rounded-xl border border-clay-hairline bg-clay-surface/70 p-2.5 flex flex-col transition-colors 2xl:min-w-[150px]',
         className,
         isOver && 'border-[#7451f2] bg-[rgba(116,81,242,0.04)]'
       )}

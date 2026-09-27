@@ -29,10 +29,8 @@ export default function DealCardPrimaryAction({ deal, onSelect, className }: Dea
         onSelect(deal, action);
       }}
       className={clsx(
-        'inline-flex min-h-[32px] items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition-colors',
-        action.opensLogForm
-          ? 'border-clay-mint/50 bg-clay-mint/15 text-clay-teal active:opacity-80'
-          : 'border-clay-hairline bg-clay-surface text-clay-body active:opacity-80',
+        'inline-flex min-h-[28px] items-center gap-1 rounded-md px-1.5 text-[11px] font-medium transition-colors hover:bg-clay-surface',
+        action.opensLogForm ? 'text-clay-teal dark:text-clay-mint' : 'text-clay-muted hover:text-clay-ink',
         className
       )}
     >
