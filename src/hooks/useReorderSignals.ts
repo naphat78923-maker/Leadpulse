@@ -1,7 +1,7 @@
 'use client';
 
-// LeadPulse — shared reorder-signal state for BOTH surfaces that show signals:
-// the Home teaser (ReorderSignalsCard, CRM-linked only) and /signals (full list).
+// LeadPulse — shared reorder-signal state for both surfaces that show signals:
+// This week's check-ins (CRM-linked only) and /signals (full list).
 //
 // Before this hook both components duplicated the same four effects (rows fetch,
 // dismissal fetch, SSR-safe guards, legacy-key migration) — and the legacy

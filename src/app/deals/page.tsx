@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Deal, DealWorkflowAction, PRODUCT_OPTIONS, STAGE_LABELS } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
+import { useQuerySelection } from '@/hooks/useQuerySelection';
 import CreateModal from '@/components/CreateModal';
 import DealDetail from '@/components/DealDetail';
 import DealCardPrimaryAction from '@/components/DealCardPrimaryAction';
@@ -81,10 +82,19 @@ function whyNow(deal: Deal, due: 'overdue' | 'today' | null): string | null {
   return due === 'overdue' ? 'Follow-up is overdue' : 'Follow-up is due today';
 }
 
+// Suspense boundary for useSearchParams (via useQuerySelection) — see its docs.
 export default function DealsPage() {
+  return (
+    <Suspense>
+      <DealsBoard />
+    </Suspense>
+  );
+}
+
+function DealsBoard() {
   const [view, setView] = useState<ViewMode>('board');
   const [mobileLane, setMobileLane] = useState<DealWorkflowAction>('outreach');
-  const [selectedDeal, setSelectedDeal] = useState<string | null>(null);
+  const [selectedDeal, setSelectedDeal] = useQuerySelection('deal');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [gate, setGate] = useState<{ deal: Deal; target: DealWorkflowAction } | null>(null);

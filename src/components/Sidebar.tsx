@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
-import { CalendarCheck, Users, Building2, Kanban, Calendar, Activity, Zap, Menu, X, HeartPulse, Radar, Target, ChevronRight } from 'lucide-react';
+import { CalendarCheck, Building2, Kanban, Activity, Zap, Menu, X, HeartPulse, Radar, Target, ChevronRight } from 'lucide-react';
 import clsx from 'clsx';
 import { useTheme } from '@/components/ThemeProvider';
 import { drawerVariants, overlayVariants, tweenBase, tweenFast } from '@/lib/motion';
@@ -17,10 +17,8 @@ const navItems = [
 
 // Pages being folded into the three above; reachable here until they are.
 const moreItems = [
-  { href: '/contacts', label: 'Contacts', icon: Users },
   { href: '/prospects', label: 'Prospects', icon: Target },
   { href: '/activity', label: 'Activity', icon: Activity },
-  { href: '/meetings', label: 'Meetings', icon: Calendar },
   { href: '/retention', label: 'Retention', icon: HeartPulse },
   { href: '/signals', label: 'Signals', icon: Radar },
 ];

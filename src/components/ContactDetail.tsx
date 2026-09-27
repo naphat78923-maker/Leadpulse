@@ -370,7 +370,6 @@ export default function ContactDetail({ contact, onClose, onSaved, companies }: 
                 </button>
               </div>
               <InteractionThread
-                contact={contact}
                 meetings={contactInteractions}
                 allContacts={contacts}
                 deals={deals}

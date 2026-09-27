@@ -60,7 +60,6 @@ function relativeDate(value: string): string {
 }
 
 interface InteractionThreadProps {
-  contact: Contact;
   meetings: Meeting[];
   allContacts?: Contact[];
   deals?: Deal[];
@@ -68,7 +67,6 @@ interface InteractionThreadProps {
 }
 
 export default function InteractionThread({
-  contact,
   meetings,
   allContacts = [],
   deals = [],

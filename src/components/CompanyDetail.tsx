@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useMemo, useState, useRef } from 'react';
 import { Company, COMPANY_STATUS_LABELS, CompanyStatus, Contact } from '@/types/crm';
-import { Building2, Tag, X, Edit2, Loader2, Check, UserPlus, Trash2, Gift, ShoppingCart } from 'lucide-react';
+import { Building2, X, Edit2, Loader2, Check, UserPlus, Trash2, Gift, ShoppingCart, ChevronRight, Plus } from 'lucide-react';
 import clsx from 'clsx';
 import { useToast } from '@/components/ToastProvider';
 import { useCrm } from '@/components/CrmProvider';
@@ -11,6 +11,9 @@ import { resizeImageToSquare, validateLogoFile } from '@/lib/image';
 import CompanyLogo from '@/components/CompanyLogo';
 import StakeholderMiniMap from '@/components/StakeholderMiniMap';
 import LayaBuyerSignalsSection from '@/components/LayaBuyerSignalsSection';
+import ContactDetail from '@/components/ContactDetail';
+import InteractionThread from '@/components/InteractionThread';
+import LogInteractionModal from '@/components/LogInteractionModal';
 import { motion } from 'framer-motion';
 import { overlayVariants, panelVariants, tweenBase, tweenSlow } from '@/lib/motion';
 
@@ -26,7 +29,19 @@ interface CompanyDetailProps {
 
 export default function CompanyDetail({ company, onClose, onSaved, contacts, companyContacts }: CompanyDetailProps) {
   const { addToast } = useToast();
-  const { createContact, refresh, deleteEntity, meetings, deals = [] } = useCrm();
+  const { createContact, refresh, deleteEntity, meetings, deals = [], companies = [], addMeeting } = useCrm();
+  const [openContactId, setOpenContactId] = useState<string | null>(null);
+  const [logOpen, setLogOpen] = useState(false);
+  const openContact = companyContacts.find((c) => c.id === openContactId) ?? null;
+
+  // Everything logged against this account or any of its people, newest first.
+  const accountInteractions = useMemo(() => {
+    const contactIds = new Set(companyContacts.map((c) => c.id));
+    return meetings
+      .filter((m) => m.company_id === company.id || (m.contact_ids || []).some((id) => contactIds.has(id)))
+      .slice()
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  }, [meetings, company.id, companyContacts]);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -163,6 +178,7 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
   };
 
   return (
+    <>
     <div className="fixed inset-0 flex items-end md:items-center justify-center z-50 p-0 md:p-4">
       <motion.div
         className="absolute inset-0 bg-black/50"
@@ -581,21 +597,45 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
             {companyContacts.length > 0 ? (
               <div className="space-y-2">
                 {companyContacts.map((contact: Contact) => (
-                  <div key={contact.id} className="bg-clay-surface rounded-lg p-3 text-sm text-clay-body">
-                    <p className="font-medium text-clay-ink">{contact.name}</p>
-                    <p className="text-xs text-clay-muted">{contact.job_title || contact.email || '—'}</p>
-                    {contact.phone && (
-                      <p className="text-xs text-clay-muted-soft">📱 {contact.phone}</p>
-                    )}
-                    {contact.phone_second && (
-                      <p className="text-xs text-clay-ochre">📱 {contact.phone_second}</p>
-                    )}
-                  </div>
+                  <button
+                    key={contact.id}
+                    type="button"
+                    onClick={() => setOpenContactId(contact.id)}
+                    aria-label={`Open contact: ${contact.name}`}
+                    className="flex w-full items-center gap-2 bg-clay-surface rounded-lg p-3 text-left text-sm text-clay-body hover:bg-clay-card transition-colors"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-medium text-clay-ink">{contact.name}</span>
+                      <span className="block text-xs text-clay-muted">{contact.job_title || contact.email || '—'}</span>
+                      {contact.phone && (
+                        <span className="block text-xs text-clay-muted-soft">📱 {contact.phone}</span>
+                      )}
+                      {contact.phone_second && (
+                        <span className="block text-xs text-clay-ochre">📱 {contact.phone_second}</span>
+                      )}
+                    </span>
+                    <ChevronRight className="w-4 h-4 shrink-0 text-clay-muted-soft" />
+                  </button>
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-clay-muted-soft">No contacts linked yet. Add one above or create a contact and select this company.</p>
+              <p className="text-xs text-clay-muted-soft">No contacts linked yet. Add one above.</p>
             )}
+          </div>
+
+          {/* Activity — every interaction with this account or its people */}
+          <div className="mt-4 pt-4 border-t border-clay-hairline">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-clay-ink">Activity ({accountInteractions.length})</h3>
+              <button
+                type="button"
+                onClick={() => setLogOpen(true)}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-clay-ink text-clay-canvas text-xs font-medium active:opacity-85 transition-opacity min-h-[36px]"
+              >
+                <Plus className="w-3.5 h-3.5" /> Log interaction
+              </button>
+            </div>
+            <InteractionThread meetings={accountInteractions} allContacts={contacts} deals={deals} companies={companies} />
           </div>
           {confirmArchive && (
             <div className="mt-4 rounded-xl border border-clay-hairline bg-clay-surface p-4">
@@ -606,5 +646,24 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
         </div>
       </motion.div>
     </div>
+
+    {openContact && (
+      <ContactDetail
+        contact={openContact}
+        onClose={() => setOpenContactId(null)}
+        onSaved={onSaved}
+        companies={companies}
+      />
+    )}
+    <LogInteractionModal
+      isOpen={logOpen}
+      onClose={() => setLogOpen(false)}
+      onSave={async (meeting) => { await addMeeting(meeting); }}
+      deals={deals}
+      contacts={contacts}
+      companies={companies}
+      initialCompanyId={company.id}
+    />
+    </>
   );
 }
