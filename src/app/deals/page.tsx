@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Deal, DealWorkflowAction, PRODUCT_OPTIONS, STAGE_LABELS } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
+import { useQuerySelection } from '@/hooks/useQuerySelection';
 import CreateModal from '@/components/CreateModal';
+import ProspectsTab from '@/components/ProspectsTab';
 import DealDetail from '@/components/DealDetail';
 import DealCardPrimaryAction from '@/components/DealCardPrimaryAction';
 import DealCardContent from '@/components/DealCardContent';
@@ -43,7 +45,7 @@ import { Blob } from '@/components/blob';
 import { LANE_BLOB_STATE } from '@/utils/lane-blob';
 import { EASE_OUT, pressScale, springPress, tweenBase } from '@/lib/motion';
 
-type ViewMode = 'board' | 'parked' | 'won' | 'lost' | 'table';
+type ViewMode = 'prospects' | 'board' | 'parked' | 'won' | 'lost' | 'table';
 
 const LANE_CRITERIA: Record<string, string> = {
   outreach: 'No gate',
@@ -81,11 +83,22 @@ function whyNow(deal: Deal, due: 'overdue' | 'today' | null): string | null {
   return due === 'overdue' ? 'Follow-up is overdue' : 'Follow-up is due today';
 }
 
+// Suspense boundary for useSearchParams (via useQuerySelection) — see its docs.
 export default function DealsPage() {
+  return (
+    <Suspense>
+      <DealsBoard />
+    </Suspense>
+  );
+}
+
+function DealsBoard() {
   const [view, setView] = useState<ViewMode>('board');
   const [mobileLane, setMobileLane] = useState<DealWorkflowAction>('outreach');
-  const [selectedDeal, setSelectedDeal] = useState<string | null>(null);
+  const [selectedDeal, setSelectedDeal] = useQuerySelection('deal');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  // Set by a prospect's "Start a deal"; kept in state so the form sees a stable object.
+  const [dealPrefill, setDealPrefill] = useState<{ company_id: string } | undefined>();
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [gate, setGate] = useState<{ deal: Deal; target: DealWorkflowAction } | null>(null);
   const [reviewFix, setReviewFix] = useState<{ deal: Deal; reasons: ReturnType<typeof reviewReasons> } | null>(null);
@@ -457,12 +470,22 @@ export default function DealsPage() {
       </div>
 
       <div className="flex bg-clay-card rounded-lg p-0.5 mb-4 overflow-x-auto">
+        <button onClick={() => setView('prospects')} className={clsx('flex-1 px-3 py-2 text-xs font-medium rounded-md whitespace-nowrap', view === 'prospects' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>Prospects</button>
         <button onClick={() => setView('board')} className={clsx('flex-1 px-3 py-2 text-xs font-medium rounded-md whitespace-nowrap', view === 'board' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>Journey</button>
         <button onClick={() => setView('parked')} className={clsx('flex-1 px-3 py-2 text-xs font-medium rounded-md whitespace-nowrap', view === 'parked' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>Parked</button>
         <button onClick={() => setView('won')} className={clsx('flex-1 px-3 py-2 text-xs font-medium rounded-md whitespace-nowrap', view === 'won' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>Won</button>
         <button onClick={() => setView('lost')} className={clsx('flex-1 px-3 py-2 text-xs font-medium rounded-md whitespace-nowrap', view === 'lost' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>Lost</button>
         <button onClick={() => setView('table')} className={clsx('flex-1 px-3 py-2 text-xs font-medium rounded-md whitespace-nowrap', view === 'table' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>Table</button>
       </div>
+
+      {view === 'prospects' && (
+        <ProspectsTab
+          onStartDeal={(companyId) => {
+            setDealPrefill({ company_id: companyId });
+            setIsModalOpen(true);
+          }}
+        />
+      )}
 
       {view === 'board' && (
         <>
@@ -1051,7 +1074,15 @@ export default function DealsPage() {
         />
       )}
 
-      <CreateModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={handleCreate} type="deal" companies={companies} contacts={contacts} />
+      <CreateModal
+        isOpen={isModalOpen}
+        onClose={() => { setIsModalOpen(false); setDealPrefill(undefined); }}
+        onSave={handleCreate}
+        type="deal"
+        companies={companies}
+        contacts={contacts}
+        initialValues={dealPrefill}
+      />
     </PageTransition>
   );
 }

@@ -1,6 +1,6 @@
 // ─── Deterministic deal scoring (no model involved) ───
 // Pure arithmetic over CRM fields → 0–100 → tier S/A/B/C/D. Nothing in this file
-// calls Laya or any model: the tier chips on /companies, /contacts, /prospects
+// calls Laya or any model: the tier chips on /companies and /lab
 // and /meetings are computed from here alone, so they render identically on
 // Vercel, on a phone, or on the Mac.
 //

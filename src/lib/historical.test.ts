@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { rankSignals, getReorderSignals, type ReorderSignalRow } from './historical';
+import { rankSignals, type ReorderSignalRow } from './historical';
 import type { Deal, Meeting } from '@/types/crm';
 
 // This module is pure — no DB is touched — but importing it pulls in the
@@ -103,14 +103,5 @@ describe('rankSignals', () => {
       row({ customer_id: 'big', severity_days: 40, median_value: 9000 }),
     ];
     expect(rankSignals(rows, [], [], {}).map((s) => s.customerId)).toEqual(['big', 'small']);
-  });
-
-  it('getReorderSignals still caps Home at 5 and keeps the CRM gate', () => {
-    const rows = Array.from({ length: 8 }, (_, i) =>
-      row({ customer_id: `c${i}`, crm_company_id: i === 0 ? null : 'company-1' }),
-    );
-    const teaser = getReorderSignals(rows, [], [], {});
-    expect(teaser).toHaveLength(5);
-    expect(teaser.every((s) => s.inCrm)).toBe(true);
   });
 });

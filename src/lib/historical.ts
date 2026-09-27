@@ -82,22 +82,7 @@ function isSuppressed(
 }
 
 /**
- * Filter + map the raw view rows into display-ready signals.
- * @param dismissed map of customerId -> epoch ms until which it's hidden
- *                  (Number.MAX_SAFE_INTEGER = permanent dismiss).
- */
-export function getReorderSignals(
-  rows: ReorderSignalRow[],
-  meetings: Meeting[],
-  deals: Deal[],
-  dismissed: Record<string, number>,
-): ReorderSignal[] {
-  return rankSignals(rows, meetings, deals, dismissed).slice(0, 5); // hard cap — never overwhelm
-}
-
-/**
  * Filter + map the raw view rows into display-ready signals, UNCAPPED.
- * Capping is the caller's job (Home teaser caps at 5; /signals shows all).
  * @param dismissed map of customerId -> epoch ms until which it's hidden
  *                  (Number.MAX_SAFE_INTEGER = permanent dismiss).
  * @param options.includeUnlinked — Home keeps the CRM-link gate (its comment

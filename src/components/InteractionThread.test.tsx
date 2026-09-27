@@ -37,12 +37,12 @@ const meeting: Meeting = {
 
 describe('InteractionThread', () => {
   it('shows an empty state when there are no meetings', () => {
-    render(<InteractionThread contact={contact} meetings={[]} allContacts={[contact]} deals={[]} companies={[]} />);
+    render(<InteractionThread meetings={[]} allContacts={[contact]} deals={[]} companies={[]} />);
     expect(screen.getByText('No interactions yet')).toBeTruthy();
   });
 
   it('renders a meeting row with type, counterparty, and outcome', () => {
-    render(<InteractionThread contact={contact} meetings={[meeting]} allContacts={[contact]} deals={[]} companies={[]} />);
+    render(<InteractionThread meetings={[meeting]} allContacts={[contact]} deals={[]} companies={[]} />);
     expect(screen.getByText(/Call/)).toBeTruthy();
     expect(screen.getByText(/Head Chef/)).toBeTruthy();
     expect(screen.getByText('Positive')).toBeTruthy();

@@ -1,6 +1,10 @@
 'use client';
 
-// ─── LeadPulse Intelligence — Prospects: the review queue ───
+// ─── LeadPulse Intelligence — Laya lab: prospect fit judgments ───
+//
+// Not in the nav. Everyday prospect review lives on Pipeline → Prospects
+// (components/ProspectsTab); this page keeps the Laya fit judging, the terminal
+// and the evaluator diagnostics for experiments.
 //
 // A candidate list you work through, not a dashboard explaining how the list was built.
 // Membership is deterministic: three pre-gates (buying evidence, status, institutional
@@ -736,7 +740,7 @@ export default function ProspectsPage() {
         {/* Header: the heading, one live summary line, one caution */}
         <div className="flex items-center gap-2">
           <Target className="w-5 h-5 shrink-0 text-clay-lavender" />
-          <h1 className="font-serif text-2xl text-clay-ink">Prospects</h1>
+          <h1 className="font-serif text-2xl text-clay-ink">Laya lab</h1>
         </div>
         {!loading && !error && report ? (
           <p className="mt-1 text-sm text-clay-body">
