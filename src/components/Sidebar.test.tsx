@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, within } from '@testing-library/react';
+import { cleanup, render, within } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 
 const nav = vi.hoisted(() => ({ pathname: '/' }));
@@ -17,28 +17,13 @@ afterEach(() => cleanup());
 const desktopNav = () => within(document.querySelector('aside') as HTMLElement);
 
 describe('Sidebar', () => {
-  it('shows the three main pages and keeps the rest collapsed under More', () => {
-    nav.pathname = '/';
+  it('shows exactly the three pages', () => {
+    nav.pathname = '/deals';
     render(<Sidebar />);
 
-    const links = desktopNav().getAllByRole('link').map((a) => a.textContent);
-    expect(links).toEqual(['This week', 'Pipeline', 'Accounts']);
-    const more = desktopNav().getByRole('button', { name: 'More' });
-    expect(more.getAttribute('aria-expanded')).toBe('false');
-
-    fireEvent.click(more);
-    expect(desktopNav().getByRole('link', { name: 'Signals' }).getAttribute('href')).toBe('/signals');
-  });
-
-  it('opens More when landing on one of its pages, and can still collapse it', () => {
-    nav.pathname = '/retention';
-    render(<Sidebar />);
-
-    const more = desktopNav().getByRole('button', { name: 'More' });
-    expect(more.getAttribute('aria-expanded')).toBe('true');
-    expect(desktopNav().getByRole('link', { name: 'Retention' })).toBeTruthy();
-
-    fireEvent.click(more);
-    expect(desktopNav().queryByRole('link', { name: 'Retention' })).toBeNull();
+    const links = desktopNav().getAllByRole('link');
+    expect(links.map((a) => a.textContent)).toEqual(['This week', 'Pipeline', 'Accounts']);
+    expect(links.map((a) => a.getAttribute('href'))).toEqual(['/', '/deals', '/companies']);
+    expect(desktopNav().queryByRole('button', { name: 'More' })).toBeNull();
   });
 });

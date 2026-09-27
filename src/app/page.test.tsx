@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import type { Company, Contact, Deal } from '@/types/crm';
 import { addDaysToDateKey } from '@/utils/deal-workflow';
@@ -14,9 +14,21 @@ vi.mock('next/link', () => ({
 vi.mock('@/components/blob', () => ({ Blob: () => null }));
 vi.mock('@/components/CreateModal', () => ({ default: () => null }));
 vi.mock('@/components/LogInteractionModal', () => ({
-  default: ({ isOpen, selectedDealId, initialCompanyId }: { isOpen: boolean; selectedDealId?: string; initialCompanyId?: string }) =>
-    isOpen ? <div data-testid="log-modal">Logging {selectedDealId ?? initialCompanyId ?? 'new interaction'}</div> : null,
+  default: ({ isOpen, selectedDealId, initialCompanyId, onSave }: {
+    isOpen: boolean;
+    selectedDealId?: string;
+    initialCompanyId?: string;
+    onSave: (meeting: { deal_id: string | null }) => Promise<void>;
+  }) =>
+    isOpen ? (
+      <div data-testid="log-modal">
+        Logging {selectedDealId ?? initialCompanyId ?? 'new interaction'}
+        <button onClick={() => void onSave({ deal_id: null })}>Save log</button>
+      </div>
+    ) : null,
 }));
+const crmApi = vi.hoisted(() => ({ updateCompany: vi.fn(async () => ({})) }));
+vi.mock('@/lib/crm', () => crmApi);
 const reorder = vi.hoisted(() => ({ signals: [] as unknown[] }));
 vi.mock('@/hooks/useReorderSignals', () => ({ useReorderSignals: () => ({ signals: reorder.signals }) }));
 
@@ -154,6 +166,22 @@ describe('This week page', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Log interaction for Synthetic Bakery' }));
     expect(screen.getByTestId('log-modal').textContent).toContain('synthetic-company-1');
+  });
+
+  it('moves the account\'s saved check-in date after logging a check-in', async () => {
+    const refresh = vi.fn(async () => {});
+    setCrm({ companies: [makeCompany()], refresh });
+    render(<TodayPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Log interaction for Synthetic Bakery' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save log' }));
+
+    await waitFor(() => expect(crmApi.updateCompany).toHaveBeenCalledOnce());
+    const [companyId, patch] = crmApi.updateCompany.mock.calls[0] as unknown as [string, { last_human_touch: string; next_touch_due: string }];
+    expect(companyId).toBe('synthetic-company-1');
+    expect(patch.last_human_touch).toBe(today());
+    expect(patch.next_touch_due > today()).toBe(true);
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
   });
 
   it('merges a CRM-linked reorder signal into the check-in list', () => {
