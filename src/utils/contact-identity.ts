@@ -48,6 +48,14 @@ export function contactNameFieldCopy(identityQuality: ContactIdentityQuality) {
   return NAME_FIELD_COPY[identityQuality];
 }
 
+/**
+ * A company route (general LINE, info@ email, front-desk phone) is a way to reach an
+ * account, not a person. Lists of people and "the contact" on a deal skip these.
+ */
+export function isCompanyRoute(contact: { identity_quality?: ContactIdentityQuality | null }): boolean {
+  return contact.identity_quality === 'company_route';
+}
+
 export function contactIdentityLabel(identityQuality?: ContactIdentityQuality | null) {
   return CONTACT_IDENTITY_OPTIONS.find(option => option.value === (identityQuality ?? 'unknown'))?.label ?? 'Unknown';
 }
