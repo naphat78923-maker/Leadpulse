@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { AlertCircle, Check, Edit2, Loader2, Undo2, X, Trash2, MessageCircle } from 'lucide-react';
+import { AlertCircle, Check, Edit2, Loader2, Undo2, X, MessageCircle, MoreHorizontal, ChevronRight } from 'lucide-react';
 import clsx from 'clsx';
 import { Deal, DealWorkflowAction, SampleStatus } from '@/types/crm';
 import { useToast } from '@/components/ToastProvider';
@@ -16,7 +16,6 @@ import {
   deriveNudge,
   formatDerivedNudgeBadge,
   outboundSendCountForDeal,
-  SEND_LADDER_RUNGS,
   nudgeColorClass,
 } from '@/utils/deal-workflow';
 import { localDateKey } from '@/utils/deal-board';
@@ -31,11 +30,13 @@ import {
   type DealEditField,
 } from '@/utils/deal-edit-draft';
 import { buildCloseUpdate } from '@/utils/deal-close';
+import { formatBaht } from '@/utils/format';
+import { nudgeChipLabel } from '@/utils/deal-card';
+import { formatScheduleDate } from '@/utils/deal-schedule';
 import { outreachLanguageLabel, outreachLanguageBadgeColor, outreachLanguageBasisLabel } from '@/utils/contact-identity';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import CompanyLogo from '@/components/CompanyLogo';
 import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
-import NudgeLadderRail from '@/components/NudgeLadderRail';
 import StakeholderMiniMap from '@/components/StakeholderMiniMap';
 import LayaScoreCard from '@/components/LayaScoreCard';
 import type { OutreachLanguage } from '@/types/crm';
@@ -61,10 +62,11 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
   const derived = deriveNudge(deal, today, { sendCount });
   const dealCompany = useMemo(() => (deal.company_id ? companies.find(c => c.id === deal.company_id) : undefined), [deal.company_id, companies]);
   // Facts that used to hide behind "Commercial details": visible at a glance under the title.
+  // Priority only earns a place in the header when it's high.
   const headerFacts = [
     deal.product,
-    deal.value != null ? `${Number(deal.value).toLocaleString('en-US')} THB` : null,
-    deal.priority ? deal.priority.charAt(0).toUpperCase() + deal.priority.slice(1) : null,
+    deal.value != null ? formatBaht(Number(deal.value)) : null,
+    deal.priority === 'high' ? 'High' : null,
   ].filter(Boolean).join(' · ');
 
   const [editing, setEditing] = useState(false);
@@ -75,6 +77,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
   const [draftLanguage, setDraftLanguage] = useState<OutreachLanguage>('autodetect');
   const [inboundContextOpen, setInboundContextOpen] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [exitKind, setExitKind] = useState<'won' | 'lost' | 'park' | null>(null);
 
@@ -418,29 +421,46 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
         transition={tweenSlow}
         onClick={event => event.stopPropagation()}
       >
-        <div className="flex items-center justify-between gap-3 mb-4">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <CompanyLogo src={dealCompany?.logo_url} name={dealClientName(deal, companies, contacts)} id={deal.company_id} size={36} />
-            <div className="min-w-0">
-              <p className="text-[10px] text-clay-muted font-medium tracking-wider">DEAL</p>
-              <h2 className="text-lg font-semibold text-clay-ink truncate">{dealClientName(deal, companies, contacts)}</h2>
-              {headerFacts && <p className="mt-0.5 text-xs text-clay-muted truncate">{headerFacts}</p>}
-            </div>
+        <div className="mb-4 flex items-center gap-3">
+          <CompanyLogo src={dealCompany?.logo_url} name={dealClientName(deal, companies, contacts)} id={deal.company_id} size={36} />
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-lg font-semibold text-clay-ink">{dealClientName(deal, companies, contacts)}</h2>
+            {headerFacts && <p className="truncate text-xs text-clay-muted">{headerFacts}</p>}
           </div>
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="relative flex shrink-0 items-center">
             {editing && (
-              <button onClick={persistSave} disabled={saving} className="p-2 text-clay-success active:opacity-70 disabled:opacity-50" aria-label="Save deal">
-                {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
+              <button onClick={persistSave} disabled={saving} className="rounded-lg p-2 text-clay-success hover:bg-clay-surface disabled:opacity-50" aria-label="Save deal">
+                {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
               </button>
             )}
-            <button onClick={toggleEditing} className="p-2 text-clay-muted active:opacity-70" aria-label="Edit deal">
-              <Edit2 className="w-5 h-5" />
+            <button onClick={toggleEditing} className="rounded-lg p-2 text-clay-muted hover:bg-clay-surface hover:text-clay-ink" aria-label="Edit deal">
+              <Edit2 className="h-4 w-4" />
             </button>
-            <button onClick={() => setConfirmArchive(true)} className="p-2 text-clay-muted-soft active:opacity-70 hover:text-clay-error transition-colors" aria-label="Archive deal">
-              <Trash2 className="w-5 h-5" />
+            <button
+              onClick={() => setMenuOpen(open => !open)}
+              aria-label="More actions"
+              aria-expanded={menuOpen}
+              className="rounded-lg p-2 text-clay-muted hover:bg-clay-surface hover:text-clay-ink"
+            >
+              <MoreHorizontal className="h-4 w-4" />
             </button>
-            <button onClick={onClose} className="p-2 text-clay-muted active:opacity-70" aria-label="Close">
-              <X className="w-5 h-5" />
+            {menuOpen && (
+              // Tapping anywhere else closes the menu.
+              <div className="fixed inset-0 z-10" aria-hidden="true" onClick={() => setMenuOpen(false)} />
+            )}
+            {menuOpen && (
+              <div className="absolute right-8 top-10 z-20 min-w-40 rounded-lg border border-clay-hairline bg-white py-1 shadow-lg dark:bg-clay-card">
+                <button
+                  onClick={() => { setMenuOpen(false); setConfirmArchive(true); }}
+                  className="w-full px-3 py-2 text-left text-sm text-clay-error hover:bg-clay-surface"
+                  aria-label="Archive deal"
+                >
+                  Archive deal
+                </button>
+              </div>
+            )}
+            <button onClick={onClose} className="rounded-lg p-2 text-clay-muted hover:bg-clay-surface hover:text-clay-ink" aria-label="Close">
+              <X className="h-5 w-5" />
             </button>
           </div>
         </div>
@@ -472,9 +492,8 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
         )}
 
         <div className="space-y-4 text-sm">
-          {/* FIRST SCREEN: lane · next action · follow-up · Log touch */}
-          <section className="rounded-xl border border-clay-hairline bg-clay-surface p-3" data-deal-primary>
-            <p className="text-[10px] font-semibold tracking-wider text-clay-muted mb-2">ACTION LANE</p>
+          {/* Status: stage, nudge, sample milestone, last touch — one line. */}
+          <section data-deal-primary>
             {editing ? (
               <>
                 <select
@@ -509,48 +528,32 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
                 )}
               </>
             ) : (
-              <div className="flex items-start gap-3">
-                <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-clay-teal" aria-hidden="true" />
-                <div>
-                  <p className="font-semibold text-clay-ink">{workflow.label}</p>
-                  <p className="text-xs text-clay-muted mt-0.5">{workflow.description}</p>
-                  {deal.sample_status && (
-                    <p className="text-xs text-clay-ochre mt-1">
-                      Confirmed milestone: {deal.sample_status === 'sent' ? 'Sent to client' : 'Received by client'}
-                    </p>
-                  )}
-                  {derived && (
-                    <div className="mt-2 space-y-2">
-                      <p className={clsx('inline-flex max-w-full text-[11px] font-semibold px-2 py-0.5 rounded-full border', nudgeColorClass(derived.stage))}>
-                        {formatDerivedNudgeBadge(derived)}
-                      </p>
-                      <NudgeLadderRail stage={derived.stage} rungs={SEND_LADDER_RUNGS} variant="full" />
-                    </div>
-                  )}
-                </div>
+              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                <span className="inline-flex items-center gap-1.5 rounded-md bg-clay-lavender/20 px-2 py-1 font-medium text-clay-ink" title={workflow.description}>
+                  <span className="h-1.5 w-1.5 rounded-full bg-clay-teal" aria-hidden="true" />
+                  {workflow.label}
+                </span>
+                {derived && (
+                  <span className={clsx('rounded-md border px-2 py-0.5 font-semibold', nudgeColorClass(derived.stage))}>
+                    {nudgeChipLabel(formatDerivedNudgeBadge(derived))}
+                  </span>
+                )}
+                {deal.sample_status && (
+                  <span className="rounded-md bg-clay-ochre/15 px-2 py-1 text-clay-ochre">
+                    {deal.sample_status === 'sent' ? 'Sample sent' : 'Received by client'}
+                  </span>
+                )}
+                {lastTouch && (
+                  <span className="ml-auto text-clay-muted">
+                    Last touch · {lastTouch.type === 'dm' ? 'DM' : lastTouch.type.charAt(0).toUpperCase() + lastTouch.type.slice(1)} · {formatScheduleDate(lastTouch.date).replace(/ \d{4}$/, '')}
+                  </span>
+                )}
               </div>
-            )}
-            {!isClosed && (
-              <button
-                type="button"
-                onClick={() => setLogOpen(true)}
-                className="clay-btn-primary mt-3 w-full flex items-center justify-center gap-2 h-auto py-3.5 text-[15px] shadow-sm"
-              >
-                <MessageCircle className="w-4 h-4" />
-                Log touch
-              </button>
-            )}
-            {lastTouch && (
-              <p className="mt-2 text-[11px] text-clay-muted">
-                Last touch: <span className="font-medium text-clay-body">{lastTouch.type.toUpperCase()}</span>
-                {` · ${lastTouch.date}`}
-                {lastTouch.type === 'dm' ? ' (LINE/IG/WhatsApp)' : ''}
-              </p>
             )}
           </section>
 
           <section>
-            <p className="text-[10px] font-semibold tracking-wider text-clay-muted">NEXT ACTION</p>
+            <p className="text-xs text-clay-muted">Next action</p>
             {editing ? (
               <label className="block">
                 <span className="sr-only">Next action</span>
@@ -559,11 +562,13 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
                   value={editData.next_action}
                   onChange={event => setField('next_action', event.target.value)}
                   placeholder="Start with a verb: follow up, ask, send, confirm…"
-                  className="w-full mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card"
+                  className="mt-1 w-full rounded-lg border border-clay-hairline bg-transparent px-3 py-2 text-base"
                 />
               </label>
             ) : (
-              <p className="mt-1 rounded-lg bg-clay-surface p-3 text-xs text-clay-body">{deal.next_action || '—'}</p>
+              <p className={clsx('mt-0.5 text-[15px] leading-snug', deal.next_action ? 'text-clay-ink' : 'italic text-clay-muted')}>
+                {deal.next_action || 'No next action set yet'}
+              </p>
             )}
             {isPassiveNextAction(visibleNextAction) && (
               <p role="alert" className="mt-1.5 flex items-start gap-2 rounded-lg border border-clay-ochre/40 bg-clay-ochre/15 px-2.5 py-2 text-xs font-medium text-clay-ochre">
@@ -573,71 +578,72 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
             )}
           </section>
 
-          <label className="block text-clay-body">
-            {editing && editData.workflow_action === 'testing' ? 'Testing date' : 'Follow-up date'}
+          <section>
             {editing ? (
-              <input
-                type="date"
-                value={editData.followup_date}
-                onChange={event => setField('followup_date', event.target.value)}
-                className="block mt-1 px-3 py-2 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card"
-              />
-            ) : (
-              <p className={clsx('mt-1', isOverdue ? 'text-clay-error font-medium' : 'text-clay-ink')}>{deal.followup_date || '—'}</p>
-            )}
-          </label>
-          {!editing && !isClosed && (
-            <div className="mt-1.5 flex flex-wrap gap-2">
-              {[{ days: 1, label: '+1d' }, { days: 3, label: '+3d' }, { days: 7, label: 'Next week' }].map(chip => (
-                <button
-                  key={chip.days}
-                  type="button"
-                  onClick={() => void snoozeFollowup(chip.days)}
-                  disabled={saving}
-                  className="rounded-full border border-clay-hairline bg-white dark:bg-clay-card px-3 py-1.5 text-xs font-medium text-clay-muted hover:text-clay-ink hover:border-clay-muted active:scale-[0.97] disabled:opacity-50"
-                >
-                  {chip.label}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <details className="rounded-xl border border-clay-hairline bg-clay-surface">
-            <summary className="cursor-pointer px-3 py-3 text-sm font-medium text-clay-body">Account context &amp; buyer map</summary>
-            <div className="space-y-3 border-t border-clay-hairline p-3">
-              <LayaScoreCard deal={deal} company={dealCompany} />
-              {dealCompany && (
-                <StakeholderMiniMap
-                  company={dealCompany}
-                  companyName={dealCompany.name}
-                  productHint={deal.product}
-                  onUpdated={onSaved}
+              <label className="block text-xs text-clay-muted">
+                {editData.workflow_action === 'testing' ? 'Testing date' : 'Follow-up date'}
+                <input
+                  type="date"
+                  value={editData.followup_date}
+                  onChange={event => setField('followup_date', event.target.value)}
+                  className="mt-1 block rounded-lg border border-clay-hairline bg-transparent px-3 py-2 text-base text-clay-ink"
                 />
-              )}
-            </div>
-          </details>
-
-          {!isClosed && currentWorkflow !== 'parked' && (
-            <section className="rounded-xl border border-clay-hairline bg-white dark:bg-clay-card p-3">
-              <p className="text-[10px] font-semibold tracking-wider text-clay-muted mb-2">Close deal</p>
-              <div className="grid grid-cols-3 gap-2">
-                <button type="button" onClick={() => setExitKind('won')} className="px-2 py-2.5 rounded-lg border border-clay-mint/40 bg-clay-mint/10 text-xs font-medium text-clay-teal">
-                  🎉 Won
-                </button>
-                <button type="button" onClick={() => setExitKind('lost')} className="px-2 py-2.5 rounded-lg border border-clay-error/30 bg-clay-error/10 text-xs font-medium text-clay-error">
-                  📉 Lost
-                </button>
-                <button type="button" onClick={() => setExitKind('park')} className="px-2 py-2.5 rounded-lg border border-clay-hairline bg-clay-surface text-xs font-medium text-clay-body">
-                  ⏸ Park
-                </button>
+              </label>
+            ) : (
+              <p className="text-xs text-clay-muted">
+                Follow-up ·{' '}
+                <span className={clsx(isOverdue ? 'font-medium text-clay-error' : 'text-clay-ink')}>
+                  {deal.followup_date
+                    ? `${deal.followup_date === today ? 'today, ' : ''}${formatScheduleDate(deal.followup_date).replace(/ \d{4}$/, '')}`
+                    : 'not set'}
+                </span>
+              </p>
+            )}
+            {!editing && !isClosed && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {[{ days: 1, label: '+1 day' }, { days: 3, label: '+3 days' }, { days: 7, label: 'Next week' }].map(chip => (
+                  <button
+                    key={chip.days}
+                    type="button"
+                    onClick={() => void snoozeFollowup(chip.days)}
+                    disabled={saving}
+                    className="h-8 rounded-lg border border-clay-hairline px-3 text-xs text-clay-body hover:border-clay-ink/30 hover:text-clay-ink disabled:opacity-50"
+                  >
+                    {chip.label}
+                  </button>
+                ))}
               </div>
-            </section>
+            )}
+          </section>
+
+          {!isClosed && (
+            <button
+              type="button"
+              onClick={() => setLogOpen(true)}
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-clay-ink text-sm font-medium text-clay-canvas hover:opacity-90"
+            >
+              <MessageCircle className="h-4 w-4" />
+              Log touch
+            </button>
           )}
 
-          {/* Drafting brief — collapsed by default; don't expand every open */}
-          <details className="rounded-xl border border-clay-lavender/30 bg-clay-lavender/10">
-            <summary className="cursor-pointer px-3 py-3 text-sm font-medium text-clay-body">Ebimaru drafting brief</summary>
-            <div className="border-t border-clay-lavender/20 px-3 py-3 space-y-3">
+          {/* Everything else, one quiet list. Editing opens the sections so every field is reachable. */}
+          <div className="border-t border-clay-hairline">
+            <PanelSection title="Account and buyer map" open={editing}>
+              <div className="space-y-3">
+                <LayaScoreCard deal={deal} company={dealCompany} />
+                {dealCompany && (
+                  <StakeholderMiniMap
+                    company={dealCompany}
+                    companyName={dealCompany.name}
+                    productHint={deal.product}
+                    onUpdated={onSaved}
+                  />
+                )}
+              </div>
+            </PanelSection>
+            <PanelSection title="Drafting brief" open={editing}>
+            <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-[10px] font-semibold tracking-wider text-clay-muted">PRIMARY CLIENT ASK</p>
                 <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] border ${outreachLanguageBadgeColor(outreachLanguage)}`}>
@@ -708,11 +714,9 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
                 </div>
               )}
             </div>
-          </details>
-
-          <details className="rounded-xl border border-clay-hairline bg-clay-surface">
-            <summary className="cursor-pointer px-3 py-3 text-sm font-medium text-clay-body">Commercial details</summary>
-            <div className="grid grid-cols-1 gap-3 border-t border-clay-hairline px-3 py-3 sm:grid-cols-3">
+            </PanelSection>
+            <PanelSection title="Commercial details" open={editing}>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <label className="text-clay-body">
                 Product
                 {editing ? (
@@ -742,13 +746,10 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
                 )}
               </label>
             </div>
-          </details>
-
-          {/* Hidden until there is an outcome (or the editor is open) — fresh deals stay lean. */}
-          {(editing || deal.last_outcome || deal.buyer_reply) && (
-          <section>
-            <p className="text-clay-body">Outcome history</p>
-            <label className="mt-2 block text-xs text-clay-body">
+            </PanelSection>
+            {(editing || deal.last_outcome || deal.buyer_reply) && (
+              <PanelSection title="History" open={editing}>
+            <label className="block text-xs text-clay-body">
               Latest buyer reply (verbatim)
               {editing ? (
                 <textarea
@@ -791,7 +792,17 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
                 </p>
               )}
             </div>
-          </section>
+              </PanelSection>
+            )}
+          </div>
+
+          {!isClosed && currentWorkflow !== 'parked' && (
+            <div className="flex flex-wrap items-center gap-x-1 text-xs text-clay-muted">
+              <span className="mr-1">Close deal</span>
+              <button type="button" onClick={() => setExitKind('won')} className="rounded-md px-2 py-1 font-medium text-clay-teal hover:bg-clay-surface dark:text-clay-mint">Won</button>
+              <button type="button" onClick={() => setExitKind('lost')} className="rounded-md px-2 py-1 font-medium text-clay-error hover:bg-clay-surface">Lost</button>
+              <button type="button" onClick={() => setExitKind('park')} className="rounded-md px-2 py-1 font-medium text-clay-body hover:bg-clay-surface">Park</button>
+            </div>
           )}
 
           {undoSnapshot && (
@@ -861,5 +872,18 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
         <ExitDealModal deal={deal} kind={exitKind} onCancel={() => setExitKind(null)} onConfirm={handleExitConfirm} />
       )}
     </div>
+  );
+}
+
+/** A quiet disclosure row. `open` forces it open (while editing, so every field is reachable). */
+function PanelSection({ title, open, children }: { title: string; open?: boolean; children: React.ReactNode }) {
+  return (
+    <details className="group border-b border-clay-hairline" open={open || undefined}>
+      <summary className="flex cursor-pointer list-none items-center justify-between py-3 text-sm text-clay-ink marker:hidden">
+        {title}
+        <ChevronRight className="h-4 w-4 text-clay-muted transition-transform group-open:rotate-90" aria-hidden="true" />
+      </summary>
+      <div className="pb-4 text-sm">{children}</div>
+    </details>
   );
 }

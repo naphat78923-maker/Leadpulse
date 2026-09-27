@@ -63,7 +63,7 @@ describe('LogInteractionModal save recovery', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /More/ }));
+    fireEvent.click(screen.getByRole('button', { name: /More: move lane/ }));
     expect(screen.getByRole('radio', { name: /Keep current/i }).getAttribute('aria-checked')).toBe('true');
     fireEvent.change(screen.getByLabelText('What happened'), {
       target: { value: 'Sent outbound email, no reply yet' },
@@ -126,7 +126,7 @@ describe('LogInteractionModal save recovery', () => {
     fireEvent.change(screen.getByLabelText('What happened'), {
       target: { value: 'Alice asked for pricing' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /More/ }));
+    fireEvent.click(screen.getByRole('button', { name: /More: move lane/ }));
     fireEvent.click(screen.getByRole('radio', { name: /Log outreach and wait for reply/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
@@ -167,7 +167,7 @@ describe('LogInteractionModal save recovery', () => {
     fireEvent.change(screen.getByLabelText('What happened'), {
       target: { value: 'Sent follow-up email, no reply yet' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /More/ }));
+    fireEvent.click(screen.getByRole('button', { name: /More: move lane/ }));
     fireEvent.click(screen.getByRole('radio', { name: /Log outreach and wait for reply/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
@@ -224,7 +224,7 @@ describe('LogInteractionModal save recovery', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /More/ }));
+    fireEvent.click(screen.getByRole('button', { name: /More: move lane/ }));
     expect(screen.queryByRole('group', { name: 'Outcome' })).toBeNull();
     fireEvent.click(screen.getByRole('radio', { name: /They replied/i }));
     expect(screen.queryByRole('group', { name: 'Outcome' })).toBeNull();
@@ -320,7 +320,7 @@ describe('LogInteractionModal save recovery', () => {
       fireEvent.change(screen.getByLabelText('What happened'), {
         target: { value: 'Sent follow-up email, no reply yet' },
       });
-      fireEvent.click(screen.getByRole('button', { name: /More/ }));
+      fireEvent.click(screen.getByRole('button', { name: /More: move lane/ }));
     fireEvent.click(screen.getByRole('radio', { name: /Log outreach and wait for reply/i }));
       fireEvent.click(screen.getByRole('radio', { name: 'Pick date' }));
       fireEvent.change(screen.getByLabelText(/Next follow-up date/i), { target: { value: '2099-09-22' } });
@@ -461,7 +461,7 @@ describe('LogInteractionModal next action continuation', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /More/ }));
+    fireEvent.click(screen.getByRole('button', { name: /More: move lane/ }));
     expect(screen.getByPlaceholderText('Keep: Send intro email')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('What happened'), {
       target: { value: 'Called, chef asked for pricing' },
@@ -499,7 +499,7 @@ describe('LogInteractionModal next action continuation', () => {
     fireEvent.change(screen.getByLabelText('What happened'), {
       target: { value: 'Called, no answer' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /More/ }));
+    fireEvent.click(screen.getByRole('button', { name: /More: move lane/ }));
     // Same text as the current next action, just padded — a no-op, not a write.
     fireEvent.change(screen.getByLabelText('Next action on this deal'), {
       target: { value: '  Send intro email  ' },
