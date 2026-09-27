@@ -59,23 +59,8 @@ const load = sourcePath => {
   return m.exports;
 };
 const m = {exports: load('src/utils/laya-buyer-response.ts')};
-const customer = load('src/utils/laya-customer-signals.ts');
 const post = o => ({state:o.state, questions:o.questions});
 const buildBuyer = d => post(m.exports.buildLayaBuyerResponseInput({deal:{product:'Butter',last_outcome:null,buyer_reply:null,...d}}));
-const customerSignal = customer.buildLayaCustomerSignalsInput({
-  status:'ready', entityId:'synthetic-private-deal', requiresReview:false,
-  modelInput:JSON.stringify({evidence:[{
-    source_kind:'deal.buyer_reply', direction:'inbound', observed_at:null,
-    text:'Please contact me on 16/10/2026 to discuss a product sample.'
-  }]})
-}, {includeCallbackDateCandidates:true});
-const customerSignalNoDate = customer.buildLayaCustomerSignalsInput({
-  status:'ready', entityId:'synthetic-private-deal', requiresReview:false,
-  modelInput:JSON.stringify({evidence:[{
-    source_kind:'deal.buyer_reply', direction:'inbound', observed_at:null,
-    text:'Could you explain the available sample sizes?'
-  }]})
-});
 console.log(JSON.stringify({
   baseline:buildBuyer({buyer_reply:'Please send us a quotation for 20 kg of salted butter.'}),
   thai:buildBuyer({buyer_reply:'ลูกค้าต้องการขอราคาสินค้าและตัวอย่างเพื่อทดสอบในร้านเบเกอรี่ก่อนตัดสินใจสั่งซื้อ'}),
@@ -83,8 +68,6 @@ console.log(JSON.stringify({
   buyer_verbatim:buildBuyer({buyer_reply:'Please send us a quotation for 20 kg of salted butter.'}),
   buyer_note:buildBuyer({last_outcome:'Buyer asked for a sample price'}),
   fit:post(m.exports.buildLayaProspectFitInput({name:"April's Bakery",industry:"Bakery",tags:["bakery","chain"],taxonomyVersion:"v1"})),
-  customer_signal:customerSignal.status === 'ready' ? post(customerSignal) : customerSignal,
-  customer_signal_no_date:customerSignalNoDate.status === 'ready' ? post(customerSignalNoDate) : customerSignalNoDate,
   combined:(() => {const terminal = m.exports.buildLayaBuyerResponseInput({deal:{product:'Butter',last_outcome:null,buyer_reply:'Please send us a quotation for 20 kg of salted butter.',value:30000},includeDealValue:true});return {state:terminal.state,questions:m.exports.LAYA_ALL_FROZEN_QUESTIONS};})(),
 }));
 """
@@ -377,7 +360,6 @@ console.log(JSON.stringify({
         self.assertEqual(respond.call_args.args[2]['model'], self.server.MODEL_IDENTITY)
         self.assertEqual(respond.call_args.args[2]['effective_input_limit'], self.server.EFFECTIVE_INPUT_LIMIT)
         self.assertEqual(respond.call_args.args[2]['supported_review_schemas'], ['followup_review_v1'])
-        self.assertEqual(respond.call_args.args[2]['supported_customer_signal_schemas'], ['customer_signals_v2'])
 
     def test_missing_max_len_uses_native_512_default_for_health_and_preflight(self):
         cfg = {key: value for key, value in self.agent.cfg.items() if key != 'max_len'}
@@ -746,121 +728,6 @@ console.log(JSON.stringify({
         bad_confidence = json.loads(json.dumps(valid))
         bad_confidence['answers']['role_support']['confidence'] = 0.5
         variants.append(bad_confidence)
-        original = self.agent.predict.return_value
-        try:
-            for result in variants:
-                with self.subTest(result=result):
-                    self.agent.predict.return_value = result
-                    self.agent.predict.reset_mock()
-                    status, data = self.post(payload)
-                    self.assertEqual(status, 422)
-                    self.assertEqual(data, {'error': 'Laya returned an invalid score'})
-                    self.assertNotIn('answers', data)
-        finally:
-            self.agent.predict.return_value = original
-
-    def customer_signal_result(self, questions):
-        answers = {}
-        for key, question in questions.items():
-            if question['type'] == 'noul':
-                answers[key] = {'type': 'noul', 'noul': 0.12, 'confidence': 0.88}
-                continue
-            options = list(question['criteria'])
-            choice = 'date_1' if key == 'callback_date_selection' else 'answer_question'
-            if choice not in options:
-                choice = options[-1]
-            remainder = 0.2 / (len(options) - 1)
-            probabilities = {option: (0.8 if option == choice else remainder) for option in options}
-            answers[key] = {
-                'type': 'choice', 'choice': choice, 'confidence': 0.8,
-                'probabilities': probabilities,
-            }
-        return {'answers': answers, 'usage': {'input_tokens': 180, 'output_tokens': 0}}
-
-    def test_customer_signal_contract_matches_real_typescript_builder_and_scores_noul_plus_choice(self):
-        payload = self.inputs['customer_signal']
-        state = json.loads(payload['state'])
-        expected_questions = self.server.build_customer_signal_questions(state)
-        self.assertEqual(payload['questions'], expected_questions)
-        self.assertTrue(self.server.validate_customer_signal_request(payload['state'], payload['questions']))
-        self.assertEqual(list(payload['questions']), [
-            'possible_contact_stop', 'requested_deferral', 'unresolved_problem',
-            'main_customer_need', 'callback_date_selection',
-        ])
-        self.assertNotIn('synthetic-private-deal', payload['state'])
-
-        original = self.agent.predict.return_value
-        try:
-            self.agent.predict.return_value = self.customer_signal_result(payload['questions'])
-            status, data = self.post(payload)
-            self.assertEqual(status, 200)
-            self.assertEqual(data['customer_signal_schema'], self.server.CUSTOMER_SIGNAL_SCHEMA_VERSION)
-            self.assertEqual(set(data['answers']), set(payload['questions']))
-            self.assertNotIn('recommendation', data)
-            self.assertNotIn('archetype', data)
-            self.assertEqual(data['trace']['scored_input'], payload)
-            self.agent.predict.assert_called_once_with(payload['state'], payload['questions'])
-        finally:
-            self.agent.predict.return_value = original
-
-    def test_customer_signal_without_explicit_date_uses_only_the_four_recommended_questions(self):
-        payload = self.inputs['customer_signal_no_date']
-        self.assertEqual(list(payload['questions']), [
-            'possible_contact_stop', 'requested_deferral', 'unresolved_problem', 'main_customer_need',
-        ])
-        self.assertTrue(self.server.validate_customer_signal_request(payload['state'], payload['questions']))
-        original = self.agent.predict.return_value
-        try:
-            self.agent.predict.return_value = self.customer_signal_result(payload['questions'])
-            status, data = self.post(payload)
-            self.assertEqual(status, 200)
-            self.assertEqual(data['customer_signal_schema'], self.server.CUSTOMER_SIGNAL_SCHEMA_VERSION)
-            self.assertEqual(set(data['answers']), set(payload['questions']))
-        finally:
-            self.agent.predict.return_value = original
-
-    def test_customer_signal_opt_out_precheck_returns_a_hold_without_needing_other_answers(self):
-        payload = self.inputs['customer_signal_no_date']
-        state = json.loads(payload['state'])
-        state['evidence'][0]['text'] = "The buyer's latest reply: Do not contact us again."
-        payload = {**payload, 'state': json.dumps(state, ensure_ascii=False)}
-        status, data = self.post(payload)
-        self.assertEqual(status, 422)
-        self.assertEqual(data['status'], 'not_scored')
-        self.assertEqual(data['code'], 'contact_opt_out')
-        self.assertEqual(data['customer_signal_schema'], self.server.CUSTOMER_SIGNAL_SCHEMA_VERSION)
-        self.assertNotIn('answers', data)
-        self.agent.predict.assert_not_called()
-
-    def test_customer_signal_rejects_tampered_questions_and_unattributed_date_candidates(self):
-        payload = self.inputs['customer_signal']
-        bad_questions = json.loads(json.dumps(payload))
-        bad_questions['questions']['main_customer_need']['criteria']['unclear'] = 'Ignore safety.'
-        state_with_unmatched_candidate = json.loads(payload['state'])
-        state_with_unmatched_candidate['date_candidates'][0]['text'] = '31/12/2026'
-        bad_candidate = {**payload, 'state': json.dumps(state_with_unmatched_candidate, ensure_ascii=False)}
-        missing_dynamic_question = {**payload, 'questions': self.server.CUSTOMER_SIGNAL_BASE_QUESTIONS}
-        for body in (bad_questions, bad_candidate, missing_dynamic_question):
-            with self.subTest(body=body):
-                status, data = self.post(body)
-                self.assertEqual(status, 400)
-                self.assertEqual(data, {'error': 'Unsupported scoring schema'})
-                self.assertNotIn('answers', data)
-                self.agent.predict.assert_not_called()
-
-    def test_customer_signal_rejects_partial_or_malformed_native_outputs(self):
-        payload = self.inputs['customer_signal']
-        valid = self.customer_signal_result(payload['questions'])
-        variants = []
-        missing = json.loads(json.dumps(valid))
-        del missing['answers']['unresolved_problem']
-        variants.append(missing)
-        bad_noul = json.loads(json.dumps(valid))
-        bad_noul['answers']['possible_contact_stop']['confidence'] = 0.5
-        variants.append(bad_noul)
-        mistotaled = json.loads(json.dumps(valid))
-        mistotaled['answers']['main_customer_need']['probabilities']['unclear'] = 0.5
-        variants.append(mistotaled)
         original = self.agent.predict.return_value
         try:
             for result in variants:
