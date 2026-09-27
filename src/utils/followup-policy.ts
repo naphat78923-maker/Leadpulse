@@ -50,6 +50,8 @@ export interface AttentionCandidate {
   companyName: string | null;
   dealId: string | null;
   dealTitle: string | null;
+  /** The deal's saved next action, verbatim; absent for account-level items. */
+  nextAction?: string | null;
   priority: 'high' | 'medium' | 'low';
   holds: ContactHold[];
 }
@@ -237,6 +239,7 @@ function dealCandidate(params: {
     companyName: params.companyName,
     dealId: params.deal.id,
     dealTitle: params.deal.title || null,
+    nextAction: currentDealSchedule(params.deal).next_action || null,
     priority: priorityOf(params.deal.priority),
     holds,
   };

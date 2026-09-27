@@ -1,21 +1,20 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import Link from 'next/link';
-import { ChevronRight, MessageCircle, Plus } from 'lucide-react';
+import { MessageCircle, Plus } from 'lucide-react';
 import { Blob } from '@/components/blob';
 import { useCrm } from '@/components/CrmProvider';
 import CreateModal from '@/components/CreateModal';
 import LogInteractionModal from '@/components/LogInteractionModal';
-import TodayFollowupQueue from '@/components/TodayFollowupQueue';
+import ThisWeekQueue from '@/components/ThisWeekQueue';
 import { PageTransition } from '@/components/motion';
-import type { CustomerEvidenceFolder } from '@/utils/customer-evidence';
-import { buildCustomerEvidenceFolder, CUSTOMER_EVIDENCE_MAX_INPUT_BYTES } from '@/utils/customer-evidence';
+import { useReorderSignals } from '@/hooks/useReorderSignals';
 import {
   buildFollowupActions,
   deriveRetentionDueSignals,
   existingRetentionReferenceDate,
 } from '@/utils/followup-policy';
+import { buildThisWeekQueue } from '@/utils/this-week-queue';
 import { useBusinessDateKey } from '@/utils/useBusinessDateKey';
 import { formatBangkokWeekdayDate } from '@/utils/format';
 
@@ -23,6 +22,7 @@ export default function TodayPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isLogOpen, setIsLogOpen] = useState(false);
   const [logDealId, setLogDealId] = useState<string | undefined>();
+  const [logCompanyId, setLogCompanyId] = useState<string | undefined>();
   const {
     deals,
     contacts,
@@ -66,28 +66,14 @@ export default function TodayPage() {
     retentionDue: retentionSignals,
   }), [todayKey, deals, companies, contacts, retentionSignals]);
 
-  const inspectEvidence = (dealId: string): CustomerEvidenceFolder => {
-    const deal = deals.find((item) => item.id === dealId) ?? null;
-    const primarySources = loading ? 'loading' : error ? 'unavailable' : 'loaded';
-    const accountEventSource = loading
-      ? 'loading'
-      : error || accountEventsUnavailable
-        ? 'unavailable'
-        : 'loaded';
-
-    return buildCustomerEvidenceFolder({
-      entityId: dealId,
-      deal,
-      meetings,
-      accountEvents,
-      sourceAvailability: {
-        deal: primarySources,
-        meetings: primarySources,
-        accountEvents: accountEventSource,
-      },
-      maxInputBytes: CUSTOMER_EVIDENCE_MAX_INPUT_BYTES,
-    });
-  };
+  // CRM-linked reorder signals only; unlinked historical buyers stay on /signals.
+  const { signals } = useReorderSignals();
+  const queue = useMemo(() => buildThisWeekQueue({
+    candidates: actions,
+    retentionDue: retentionSignals,
+    signals,
+    today: todayKey,
+  }), [actions, retentionSignals, signals, todayKey]);
 
   const handleCreate = async (data: Parameters<typeof createDeal>[0]) => {
     await createDeal(data);
@@ -98,6 +84,11 @@ export default function TodayPage() {
     setIsLogOpen(true);
   };
 
+  const openCompanyLog = (companyId: string) => {
+    setLogCompanyId(companyId);
+    setIsLogOpen(true);
+  };
+
   return (
     <PageTransition className="p-4 md:p-6 max-w-6xl pb-20 lg:pb-6">
       <div className="mb-5 md:mb-6 flex flex-wrap items-start justify-between gap-3">
@@ -105,7 +96,7 @@ export default function TodayPage() {
           <Blob state="idle" size={48} follow aria-label="Butter mascot" />
           <div className="min-w-0">
             <p className="zams-eyebrow mb-1">{headerDate} · Bangkok</p>
-            <h1 className="zams-display text-3xl md:text-[34px] leading-none">Today</h1>
+            <h1 className="zams-display text-3xl md:text-[34px] leading-none">This week</h1>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -128,36 +119,16 @@ export default function TodayPage() {
         </div>
       </div>
 
-      <p className="mb-4 max-w-3xl text-sm leading-relaxed text-clay-muted">
-        Saved deal schedules and the existing active-customer retention policy, together. Review each source; nothing is rescheduled automatically.
-      </p>
-
-      <TodayFollowupQueue
-        candidates={actions}
+      <ThisWeekQueue
+        queue={queue}
         today={todayKey}
         loading={loading}
         sourceError={Boolean(error)}
         accountEventsUnavailable={accountEventsUnavailable}
-        signalsEnabled={false}
         onRetry={() => { void refresh(); }}
         onLogDeal={openDealLog}
-        onInspectEvidence={inspectEvidence}
+        onLogCompany={openCompanyLog}
       />
-
-      <div className="mb-2 flex flex-col gap-2 sm:flex-row">
-        <Link
-          href="/signals"
-          className="flex-1 flex items-center justify-between gap-2 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-4 py-3 text-sm text-clay-muted hover:text-clay-ink hover:border-clay-lavender/40 transition-colors"
-        >
-          Buying signals <ChevronRight className="h-4 w-4 text-clay-muted-soft" />
-        </Link>
-        <Link
-          href="/meetings"
-          className="flex-1 flex items-center justify-between gap-2 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-4 py-3 text-sm text-clay-muted hover:text-clay-ink hover:border-clay-lavender/40 transition-colors"
-        >
-          Recent activity <ChevronRight className="h-4 w-4 text-clay-muted-soft" />
-        </Link>
-      </div>
 
       <CreateModal
         isOpen={isCreateOpen}
@@ -172,6 +143,7 @@ export default function TodayPage() {
         onClose={() => {
           setIsLogOpen(false);
           setLogDealId(undefined);
+          setLogCompanyId(undefined);
         }}
         onSave={async (meeting) => {
           await addMeeting(meeting);
@@ -180,6 +152,7 @@ export default function TodayPage() {
         contacts={contacts}
         companies={companies}
         selectedDealId={logDealId}
+        initialCompanyId={logCompanyId}
       />
     </PageTransition>
   );
