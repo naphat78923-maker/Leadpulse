@@ -13,6 +13,7 @@ import type {
   OrderRecordOrigin,
 } from '@/utils/customer-evidence';
 import type { AttentionCandidate } from '@/utils/followup-policy';
+import LayaCustomerSignalsPanel from './LayaCustomerSignalsPanel';
 
 interface TodayFollowupQueueProps {
   candidates: readonly AttentionCandidate[];
@@ -175,7 +176,10 @@ function CustomerEvidenceDisclosure({ buildFolder }: { buildFolder: () => Custom
       </button>
       {open && (
         <div id={panelId} className="mt-2 space-y-3 rounded-lg border border-clay-hairline bg-clay-surface/60 p-3">
-          <p>This local preview is not sent to Laya; no model judgment was requested.</p>
+          <p>
+            This local preview stays on this machine; nothing is sent to Laya unless you press
+            “Run experimental local check” below.
+          </p>
           {!packet ? (
             <p>No evidence packet is available for this deal.</p>
           ) : (
@@ -201,7 +205,7 @@ function CustomerEvidenceDisclosure({ buildFolder }: { buildFolder: () => Custom
                   </p>
                   <p className="mt-1 font-medium">
                     {item.eligibleForCustomerJudgment
-                      ? 'Buyer-attributed source; no model was called.'
+                      ? 'Buyer-attributed source; the experimental check below reads this text only when you press its button.'
                       : `Excluded from customer judgments: ${item.exclusionReason ?? 'source is not verified verbatim buyer text'}.`}
                   </p>
                   <blockquote className="mt-1 whitespace-pre-wrap break-words border-l-2 border-clay-lavender/50 pl-2 text-clay-body">
@@ -209,6 +213,7 @@ function CustomerEvidenceDisclosure({ buildFolder }: { buildFolder: () => Custom
                   </blockquote>
                 </article>
               ))}
+              {folder && <LayaCustomerSignalsPanel folder={folder} />}
             </>
           )}
         </div>
@@ -330,7 +335,10 @@ export default function TodayFollowupQueue({
 
       {!signalsEnabled && (
         <p className="mb-3 rounded-lg border border-clay-lavender/30 bg-clay-lavender/5 px-3 py-2 text-xs leading-relaxed text-clay-muted">
-          Local customer-message judgments are not enabled in this build. No mock AI results are shown; saved schedules remain deterministic.
+          Local customer-message judgments are not enabled automatically in this build. The
+          per-deal “Run experimental local check” inside each evidence panel is manual,
+          unverified, and display-only. No mock AI results are shown; saved schedules remain
+          deterministic.
         </p>
       )}
 

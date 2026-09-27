@@ -1,0 +1,227 @@
+{
+  "schema": "customer_signals_eval_result_v1",
+  "fixture_schema": "customer_signals_eval_v1",
+  "fixture_version": "1.0.0",
+  "partition": "heldout",
+  "fixture_path": "scripts/fixtures/laya_customer_signals_v1.heldout.json",
+  "fixture_sha256": "8a77aa389e777eb7cce9ff7a9670e654fb8044e1f643c61422888e350e0a1f81",
+  "fixture_labeling": "Synthetic labels authored for this bounded evaluation; not independently reviewed.",
+  "model": {
+    "repository": "aac6fef/laya-multilingual-coreml",
+    "source_revision": "052592a15d198d9ad47da779604259b10b47b7aa",
+    "package_sha256": "64e84856a07620d2085f91ce9a0d1a48ccbe9dc824d1a34bed8c104bff1db383",
+    "engine": "cpu_gpu",
+    "effective_input_limit": 1024
+  },
+  "schema_version": "customer_signals_v1",
+  "question_keys": [
+    "possible_contact_stop",
+    "requested_deferral",
+    "unresolved_problem",
+    "main_customer_need"
+  ],
+  "decision_threshold": 0.5,
+  "threshold_provenance": "Existing provisional application threshold; not tuned on this partition.",
+  "started_at": "2026-09-26T15:56:03.488680+00:00",
+  "results_path": "scripts/eval_results/laya_customer_signals_v1.heldout.jsonl",
+  "case_rows": 15,
+  "summary": {
+    "partition": "heldout",
+    "scoreable_count": 15,
+    "inference_error_ids": [],
+    "language_counts": {
+      "en": 5,
+      "th": 5,
+      "mixed": 5
+    },
+    "unknown_timestamp_evidence_items": 14,
+    "per_judgment": {
+      "possible_contact_stop": {
+        "correct": 14,
+        "total": 15,
+        "accuracy": 0.9333,
+        "true_positive": 2,
+        "false_positive": 0,
+        "true_negative": 12,
+        "false_negative": 1,
+        "false_hold_case_ids": [],
+        "miss_case_ids": [
+          "hold_th_explicit_optout"
+        ],
+        "near_threshold_case_ids": [
+          "hold_en_explicit_optout",
+          "hold_th_deferral",
+          "hold_mixed_late_message_optout"
+        ]
+      },
+      "requested_deferral": {
+        "correct": 11,
+        "total": 15,
+        "accuracy": 0.7333,
+        "true_positive": 1,
+        "false_positive": 3,
+        "true_negative": 10,
+        "false_negative": 1,
+        "false_hold_case_ids": [
+          "hold_en_explicit_optout",
+          "hold_en_offer_decline",
+          "hold_mixed_late_message_optout"
+        ],
+        "miss_case_ids": [
+          "hold_en_temporary_deferral"
+        ],
+        "near_threshold_case_ids": [
+          "hold_en_temporary_deferral",
+          "hold_en_offer_decline",
+          "hold_en_product_question",
+          "hold_mixed_multiple_concerns",
+          "hold_mixed_resolved_quoted_problem",
+          "hold_mixed_answer_question"
+        ]
+      },
+      "unresolved_problem": {
+        "correct": 12,
+        "total": 15,
+        "accuracy": 0.8,
+        "true_positive": 0,
+        "false_positive": 1,
+        "true_negative": 12,
+        "false_negative": 2,
+        "false_hold_case_ids": [
+          "hold_mixed_late_message_optout"
+        ],
+        "miss_case_ids": [
+          "hold_en_current_problem",
+          "hold_mixed_multiple_concerns"
+        ],
+        "near_threshold_case_ids": [
+          "hold_en_offer_decline",
+          "hold_th_deferral",
+          "hold_mixed_late_message_optout"
+        ]
+      }
+    },
+    "main_customer_need": {
+      "correct": 5,
+      "total": 15,
+      "accuracy": 0.3333,
+      "confusion_matrix_expected_rows": {
+        "answer_question": {
+          "answer_question": 0,
+          "arrange_sample": 0,
+          "order_request": 0,
+          "reconnect_later": 0,
+          "resolve_problem": 0,
+          "unclear": 2
+        },
+        "arrange_sample": {
+          "answer_question": 0,
+          "arrange_sample": 0,
+          "order_request": 1,
+          "reconnect_later": 0,
+          "resolve_problem": 0,
+          "unclear": 0
+        },
+        "order_request": {
+          "answer_question": 0,
+          "arrange_sample": 0,
+          "order_request": 1,
+          "reconnect_later": 0,
+          "resolve_problem": 0,
+          "unclear": 0
+        },
+        "reconnect_later": {
+          "answer_question": 0,
+          "arrange_sample": 0,
+          "order_request": 0,
+          "reconnect_later": 2,
+          "resolve_problem": 0,
+          "unclear": 0
+        },
+        "resolve_problem": {
+          "answer_question": 0,
+          "arrange_sample": 0,
+          "order_request": 0,
+          "reconnect_later": 0,
+          "resolve_problem": 0,
+          "unclear": 1
+        },
+        "unclear": {
+          "answer_question": 0,
+          "arrange_sample": 0,
+          "order_request": 0,
+          "reconnect_later": 4,
+          "resolve_problem": 2,
+          "unclear": 2
+        }
+      },
+      "uncertain_or_flat_distribution_case_ids": []
+    },
+    "contact_hold": {
+      "explicit_stop_cases": 3,
+      "system_holds": 3,
+      "miss_case_ids": [],
+      "false_hold_count": 0,
+      "false_hold_case_ids": [],
+      "heldout_safety_acceptance_pass": true
+    },
+    "unclear_or_conflicting_cases": 8,
+    "unclear_or_conflicting_outreach_clearance_case_ids": [],
+    "outreach_clearance_count": 0,
+    "controls": {
+      "passed": true,
+      "total": 2,
+      "rows": [
+        {
+          "id": "hold_missing_evidence",
+          "status": "not_assessed",
+          "expected_handling": "not_assessed",
+          "passed": true,
+          "model_called": false,
+          "outreach_authorization": "not_established",
+          "rationale": "An empty evidence packet must not generate negative judgments or contact permission.",
+          "model": {
+            "repository": "aac6fef/laya-multilingual-coreml",
+            "source_revision": "052592a15d198d9ad47da779604259b10b47b7aa",
+            "package_sha256": "64e84856a07620d2085f91ce9a0d1a48ccbe9dc824d1a34bed8c104bff1db383",
+            "engine": "cpu_gpu",
+            "effective_input_limit": 1024
+          }
+        },
+        {
+          "id": "hold_over_budget_evidence",
+          "status": "not_assessed_input_too_long",
+          "expected_handling": "not_assessed_input_too_long",
+          "passed": true,
+          "model_called": false,
+          "input_tokens": 1629,
+          "token_limit": 1024,
+          "preflight_code": "input_too_long",
+          "outreach_authorization": "not_established",
+          "rationale": "The full input must be refused when it exceeds the installed tokenizer limit, without shortening it or making a judgment.",
+          "model": {
+            "repository": "aac6fef/laya-multilingual-coreml",
+            "source_revision": "052592a15d198d9ad47da779604259b10b47b7aa",
+            "package_sha256": "64e84856a07620d2085f91ce9a0d1a48ccbe9dc824d1a34bed8c104bff1db383",
+            "engine": "cpu_gpu",
+            "effective_input_limit": 1024
+          }
+        }
+      ]
+    },
+    "latency_ms": {
+      "min": 1586.45,
+      "p50": 1703.81,
+      "p95": 2229.49,
+      "max": 2229.49
+    },
+    "uncertainty_diagnostics": {
+      "noul_near_threshold_band": [
+        0.45,
+        0.55
+      ],
+      "main_need_thin_margin_cutoff": 0.1,
+      "note": "Descriptive bands only, not calibrated confidence or decision policy."
+    }
+  }
+}

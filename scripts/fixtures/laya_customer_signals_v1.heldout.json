@@ -1,0 +1,165 @@
+{
+  "schema": "customer_signals_eval_v1",
+  "partition": "heldout",
+  "version": "1.0.0",
+  "description": "Synthetic-only held-out evaluation for customer_signals_v1. Do not tune wording or thresholds against these cases and continue to call this held-out.",
+  "scoreable": [
+    {
+      "id": "hold_en_explicit_optout",
+      "language": "en",
+      "families": ["explicit_stop_contact", "safety_case"],
+      "evidence": [{"observed_at": null, "text": "Do not contact us again about these products. Please remove our number from sales follow-up."}],
+      "expected": {"possible_contact_stop": true, "requested_deferral": false, "unresolved_problem": false, "main_customer_need": "unclear"},
+      "allowed_alternatives": {},
+      "rationale": "An explicit, unambiguous request to stop all product-related contact; the deterministic English gate should hold it."
+    },
+    {
+      "id": "hold_en_temporary_deferral",
+      "language": "en",
+      "families": ["temporary_deferral", "undated_text"],
+      "evidence": [{"observed_at": null, "text": "Please put this conversation on hold while we finish our budget review, then come back to me afterwards."}],
+      "expected": {"possible_contact_stop": false, "requested_deferral": true, "unresolved_problem": false, "main_customer_need": "reconnect_later"},
+      "allowed_alternatives": {},
+      "rationale": "A temporary pause with an explicit invitation to reconnect later is not a permanent opt-out."
+    },
+    {
+      "id": "hold_en_offer_decline",
+      "language": "en",
+      "families": ["offer_decline_without_opt_out"],
+      "evidence": [{"observed_at": null, "text": "We will not purchase this range, but you may keep us on the general product newsletter."}],
+      "expected": {"possible_contact_stop": false, "requested_deferral": false, "unresolved_problem": false, "main_customer_need": "unclear"},
+      "allowed_alternatives": {},
+      "rationale": "The buyer rejects this range, not all contact; a negative contact-stop judgment still grants no outreach permission."
+    },
+    {
+      "id": "hold_en_product_question",
+      "language": "en",
+      "families": ["product_question", "pricing_question"],
+      "evidence": [{"observed_at": null, "text": "Does the 500 g block come in salted and unsalted versions, and what is the unit price?"}],
+      "expected": {"possible_contact_stop": false, "requested_deferral": false, "unresolved_problem": false, "main_customer_need": "answer_question"},
+      "allowed_alternatives": {},
+      "rationale": "A direct request for product and price information, with no stated intent to order."
+    },
+    {
+      "id": "hold_en_current_problem",
+      "language": "en",
+      "families": ["current_complaint"],
+      "evidence": [{"observed_at": null, "text": "The replacement shipment is still missing, so we cannot use the product for the scheduled bake."}],
+      "expected": {"possible_contact_stop": false, "requested_deferral": false, "unresolved_problem": true, "main_customer_need": "resolve_problem"},
+      "allowed_alternatives": {},
+      "rationale": "The replacement delivery is still missing and the stated operational problem remains active."
+    },
+    {
+      "id": "hold_th_explicit_optout",
+      "language": "th",
+      "families": ["explicit_stop_contact", "safety_case"],
+      "evidence": [{"observed_at": null, "text": "กรุณาอย่าติดต่อเราเพื่อเสนอสินค้าอีก และลบชื่อร้านออกจากรายชื่อผู้รับข่าวสารด้วยค่ะ"}],
+      "expected": {"possible_contact_stop": true, "requested_deferral": false, "unresolved_problem": false, "main_customer_need": "unclear"},
+      "allowed_alternatives": {},
+      "rationale": "คำขอชัดเจนให้หยุดการติดต่อเพื่อการขายและนำชื่อออกจากรายชื่อ โดย deterministic Thai gate ควรตั้ง hold"
+    },
+    {
+      "id": "hold_th_deferral",
+      "language": "th",
+      "families": ["temporary_deferral", "undated_text"],
+      "evidence": [{"observed_at": null, "text": "เรื่องนี้ขอพักไว้ก่อนนะคะ กลับมาคุยกันใหม่หลังทีมตรวจสต็อกเสร็จ"}],
+      "expected": {"possible_contact_stop": false, "requested_deferral": true, "unresolved_problem": false, "main_customer_need": "reconnect_later"},
+      "allowed_alternatives": {},
+      "rationale": "ขอพักชั่วคราวและระบุให้กลับมาคุยใหม่ ไม่ใช่คำขอให้หยุดติดต่อถาวร"
+    },
+    {
+      "id": "hold_th_order_request",
+      "language": "th",
+      "families": ["order_request", "pricing_question"],
+      "evidence": [{"observed_at": null, "text": "ขอสั่งเนยจืด 8 กิโล รบกวนส่งใบเสนอราคาเพื่อยืนยันคำสั่งซื้อค่ะ"}],
+      "expected": {"possible_contact_stop": false, "requested_deferral": false, "unresolved_problem": false, "main_customer_need": "order_request"},
+      "allowed_alternatives": {},
+      "rationale": "ระบุคำสั่งซื้อและขอใบเสนอราคาเพื่อยืนยันรายการ"
+    },
+    {
+      "id": "hold_th_sample_request",
+      "language": "th",
+      "families": ["sample_request"],
+      "evidence": [{"observed_at": null, "text": "ขอรับตัวอย่างเนยสำหรับให้ทีมเชฟทดลองทำขนมได้ไหมคะ"}],
+      "expected": {"possible_contact_stop": false, "requested_deferral": false, "unresolved_problem": false, "main_customer_need": "arrange_sample"},
+      "allowed_alternatives": {},
+      "rationale": "ขอตัวอย่างเพื่อให้ทีมเชฟทดลองสินค้า"
+    },
+    {
+      "id": "hold_th_quoted_resolved_complaint",
+      "language": "th",
+      "families": ["quoted_historical_complaint", "resolved_complaint"],
+      "evidence": [{"observed_at": null, "text": "ครั้งก่อนที่แจ้งว่าได้รับของไม่ครบ ตอนนี้ส่งส่วนที่ขาดมาแล้วครบถ้วนค่ะ ขอบคุณนะคะ"}],
+      "expected": {"possible_contact_stop": false, "requested_deferral": false, "unresolved_problem": false, "main_customer_need": "unclear"},
+      "allowed_alternatives": {},
+      "rationale": "ปัญหาของไม่ครบถูกแก้ไขแล้ว และไม่มีคำขอใหม่"
+    },
+    {
+      "id": "hold_mixed_late_message_optout",
+      "language": "mixed",
+      "families": ["late_message_negation", "explicit_stop_contact", "safety_case"],
+      "evidence": [
+        {"observed_at": "2026-03-01T09:00:00+07:00", "text": "Could you send us the price list for the new range?"},
+        {"observed_at": "2026-03-04T09:00:00+07:00", "text": "No more sales messages, please. ขอไม่รับข่าวสารทางการค้าอีกต่อไปค่ะ"}
+      ],
+      "expected": {"possible_contact_stop": true, "requested_deferral": false, "unresolved_problem": false, "main_customer_need": "unclear"},
+      "allowed_alternatives": {},
+      "rationale": "The later buyer message explicitly withdraws from further commercial messages; it supersedes the earlier information request."
+    },
+    {
+      "id": "hold_mixed_multiple_concerns",
+      "language": "mixed",
+      "families": ["multiple_concerns", "conflicting_evidence", "current_complaint"],
+      "evidence": [{"observed_at": null, "text": "The last delivery was short by two cartons and is still unresolved. We also want a sample price, but the team has not decided which issue to handle first. ของยังขาดและยังไม่ได้รับการแก้ไขค่ะ"}],
+      "expected": {"possible_contact_stop": false, "requested_deferral": false, "unresolved_problem": true, "main_customer_need": "unclear"},
+      "allowed_alternatives": {},
+      "rationale": "The unresolved shortage and a separate sample-pricing request are both present; no single main need is established."
+    },
+    {
+      "id": "hold_mixed_acknowledgment",
+      "language": "mixed",
+      "families": ["mere_acknowledgment"],
+      "evidence": [{"observed_at": null, "text": "Got it, thank you. รับทราบค่ะ ขอบคุณนะคะ"}],
+      "expected": {"possible_contact_stop": false, "requested_deferral": false, "unresolved_problem": false, "main_customer_need": "unclear"},
+      "allowed_alternatives": {},
+      "rationale": "A polite acknowledgment is not an order, timing request, unresolved problem, or opt-out."
+    },
+    {
+      "id": "hold_mixed_resolved_quoted_problem",
+      "language": "mixed",
+      "families": ["quoted_historical_complaint", "resolved_complaint", "negation"],
+      "evidence": [{"observed_at": null, "text": "Earlier I wrote, \"the butter arrived warm and unusable\", but your replacement arrived and the issue is resolved. ตอนนี้สินค้าใช้งานได้ปกติแล้วค่ะ"}],
+      "expected": {"possible_contact_stop": false, "requested_deferral": false, "unresolved_problem": false, "main_customer_need": "unclear"},
+      "allowed_alternatives": {},
+      "rationale": "The quoted complaint is explicitly followed by a replacement and a statement that the issue is resolved."
+    },
+    {
+      "id": "hold_mixed_answer_question",
+      "language": "mixed",
+      "families": ["product_question"],
+      "evidence": [{"observed_at": null, "text": "Can you confirm the delivery options for this account? ขอทราบเงื่อนไขการจัดส่งด้วยครับ"}],
+      "expected": {"possible_contact_stop": false, "requested_deferral": false, "unresolved_problem": false, "main_customer_need": "answer_question"},
+      "allowed_alternatives": {},
+      "rationale": "A request for delivery information is the single supported need."
+    }
+  ],
+  "controls": [
+    {
+      "id": "hold_missing_evidence",
+      "language": "en",
+      "kind": "missing_evidence",
+      "evidence": [],
+      "expected_handling": "not_assessed",
+      "rationale": "An empty evidence packet must not generate negative judgments or contact permission."
+    },
+    {
+      "id": "hold_over_budget_evidence",
+      "language": "en",
+      "kind": "input_too_long",
+      "repeat_count": 30,
+      "repeat_text": "This synthetic note contains no customer request, timing instruction, or unresolved problem. ",
+      "expected_handling": "not_assessed_input_too_long",
+      "rationale": "The full input must be refused when it exceeds the installed tokenizer limit, without shortening it or making a judgment."
+    }
+  ]
+}
