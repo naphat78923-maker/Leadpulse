@@ -260,11 +260,11 @@ describe('end-to-end journey on synthetic fixtures', () => {
 
     // 1 ── log the outreach and wait for a reply: no reply is recorded, no outcome invented.
     fireEvent.click(screen.getByRole('button', { name: /Log touch/i }));
-    fireEvent.change(await screen.findByPlaceholderText(/Follow-up call/i), {
+    fireEvent.change(await screen.findByLabelText('What happened'), {
       target: { value: 'Sent the intro email' },
     });
     fireEvent.click(screen.getByRole('radio', { name: /Log outreach and wait for reply/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(meetingRows()).toHaveLength(1));
 
     expect(meetingRows()[0]).toMatchObject({ type: 'call', direction: 'outbound', deal_id: 'deal-1' });
@@ -275,23 +275,24 @@ describe('end-to-end journey on synthetic fixtures', () => {
 
     // 2 ── the client replies, and the user chooses a direct follow-up with a new date.
     fireEvent.click(screen.getByRole('button', { name: /Log touch/i }));
-    fireEvent.change(await screen.findByPlaceholderText(/Follow-up call/i), {
+    fireEvent.change(await screen.findByLabelText('What happened'), {
       target: { value: 'Buyer called back asking for pricing' },
     });
-    fireEvent.click(screen.getByRole('radio', { name: /Client replied/i }));
+    fireEvent.click(screen.getByRole('radio', { name: /They replied/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Positive' }));
     fireEvent.click(screen.getByRole('radio', { name: /Record reply and schedule the follow-up/i }));
-    fireEvent.change(screen.getByLabelText(/Next follow-up date/i), { target: { value: '2026-09-25' } });
-    // The lane move needs a date, so it OWNS the deal schedule for this save — the
-    // preserve/replace/clear choice is not offered on top of it.
-    expect(screen.queryByRole('radio', { name: /Replace the deal schedule/i })).toBeNull();
-    expect(screen.getByText(/This move sets the deal's follow-up to the date above/i)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+    // The lane move needs a date, so it OWNS the deal schedule for this save — Keep and
+    // Clear are not offered on top of it.
+    expect(screen.queryByRole('radio', { name: 'Keep' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: 'Clear' })).toBeNull();
+    fireEvent.click(screen.getByRole('radio', { name: 'Pick date' }));
+    fireEvent.change(screen.getByLabelText(/Next follow-up date/i), { target: { value: '2099-09-25' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(meetingRows()).toHaveLength(2));
     expect(meetingRows()[0]).toMatchObject({ direction: 'inbound', outcome: 'positive', deal_id: 'deal-1' });
     const afterReply = persist(store.state as any);
-    expect(afterReply).toMatchObject({ workflow_action: 'reschedule', followup_date: '2026-09-25' });
+    expect(afterReply).toMatchObject({ workflow_action: 'reschedule', followup_date: '2099-09-25' });
     expect(afterReply.last_outcome).toMatch(/Customer reply \(positive\): Buyer called back asking for pricing/);
     // History is not rewritten: the first interaction keeps its own row.
     expect(meetingRows()[1]).toMatchObject({ direction: 'outbound', description: 'Sent the intro email' });
@@ -384,9 +385,9 @@ describe('end-to-end journey on synthetic fixtures', () => {
     await screen.findByText('ACTION LANE');
 
     fireEvent.click(screen.getByRole('button', { name: /Log touch/i }));
-    fireEvent.click(await screen.findByRole('button', { name: /^Note/ }));
-    fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), { target: { value: 'Reminder to self' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+    fireEvent.click(await screen.findByRole('radio', { name: 'Note' }));
+    fireEvent.change(screen.getByLabelText('What happened'), { target: { value: 'Reminder to self' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(meetingRows()).toHaveLength(1));
     expect(meetingRows()[0]).toMatchObject({ type: 'note', direction: 'internal' });
@@ -403,9 +404,9 @@ describe('end-to-end journey on synthetic fixtures', () => {
 
     store.state.failNextDealWrite = new Error('network down');
     fireEvent.click(screen.getByRole('button', { name: /Log touch/i }));
-    fireEvent.change(await screen.findByPlaceholderText(/Follow-up call/i), { target: { value: 'Sent the intro email' } });
+    fireEvent.change(await screen.findByLabelText('What happened'), { target: { value: 'Sent the intro email' } });
     fireEvent.click(screen.getByRole('radio', { name: /Log outreach and wait for reply/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     expect((await screen.findByRole('alert')).textContent).toMatch(/deal update was not confirmed/i);
     expect(meetingRows()).toHaveLength(1);
@@ -431,9 +432,9 @@ describe('end-to-end journey on synthetic fixtures', () => {
     store.state.deals[0] = { ...store.state.deals[0], workflow_action: 'sample', stage: 'proposal', updated_at: '2026-09-14T05:00:00.000Z' };
 
     fireEvent.click(screen.getByRole('button', { name: /Log touch/i }));
-    fireEvent.change(await screen.findByPlaceholderText(/Follow-up call/i), { target: { value: 'Sent the intro email' } });
+    fireEvent.change(await screen.findByLabelText('What happened'), { target: { value: 'Sent the intro email' } });
     fireEvent.click(screen.getByRole('radio', { name: /Log outreach and wait for reply/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     expect((await screen.findByRole('alert')).textContent).toMatch(/changed while the interaction was saving/i);
     expect(persist(store.state as any).workflow_action).toBe('sample');

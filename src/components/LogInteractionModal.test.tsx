@@ -64,11 +64,11 @@ describe('LogInteractionModal save recovery', () => {
     );
 
     expect(screen.getByRole('radio', { name: /Keep current/i }).getAttribute('aria-checked')).toBe('true');
-    fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
+    fireEvent.change(screen.getByLabelText('What happened'), {
       target: { value: 'Sent outbound email, no reply yet' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'No Response' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+    fireEvent.click(screen.getByRole('button', { name: 'No reply' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(onSave).toHaveBeenCalledTimes(1);
@@ -91,9 +91,9 @@ describe('LogInteractionModal save recovery', () => {
       />
     );
 
-    const description = screen.getByPlaceholderText(/Follow-up call/i) as HTMLInputElement;
+    const description = screen.getByLabelText('What happened') as HTMLTextAreaElement;
     fireEvent.change(description, { target: { value: 'Call notes that must survive' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     expect((await screen.findByRole('alert')).textContent).toMatch(/interaction write failed/i);
     expect(description.value).toBe('Call notes that must survive');
@@ -123,12 +123,12 @@ describe('LogInteractionModal save recovery', () => {
       />
     );
 
-    fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
+    fireEvent.change(screen.getByLabelText('What happened'), {
       target: { value: 'Alice asked for pricing' },
     });
     fireEvent.click(screen.getByRole('radio', { name: /Log outreach and wait for reply/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Positive' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     expect((await screen.findByRole('alert')).textContent).toMatch(/deal update was not confirmed/i);
     expect(onSave).toHaveBeenCalledTimes(1);
@@ -164,12 +164,12 @@ describe('LogInteractionModal save recovery', () => {
       />
     );
 
-    fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
+    fireEvent.change(screen.getByLabelText('What happened'), {
       target: { value: 'Sent follow-up email, no reply yet' },
     });
     fireEvent.click(screen.getByRole('radio', { name: /Log outreach and wait for reply/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'No Response' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+    fireEvent.click(screen.getByRole('button', { name: 'No reply' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(onSave).toHaveBeenCalledWith(
@@ -199,12 +199,12 @@ describe('LogInteractionModal save recovery', () => {
       />
     );
 
-    fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
+    fireEvent.change(screen.getByLabelText('What happened'), {
       target: { value: 'Alice asked for pricing' },
     });
-    fireEvent.click(screen.getByRole('radio', { name: /Client replied/i }));
+    fireEvent.click(screen.getByRole('radio', { name: /They replied/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Positive' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ direction: 'inbound', outcome: 'positive' }));
@@ -212,7 +212,7 @@ describe('LogInteractionModal save recovery', () => {
     expect(crmMocks.updateDealIfUnchanged).not.toHaveBeenCalled();
   });
 
-  it('refuses a client reply tagged as no response', async () => {
+  it('does not offer "No reply" for a client reply, and drops it when switching to a reply', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     const onClose = vi.fn();
 
@@ -228,16 +228,13 @@ describe('LogInteractionModal save recovery', () => {
       />
     );
 
-    fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
-      target: { value: 'Something happened' },
-    });
-    fireEvent.click(screen.getByRole('radio', { name: /Client replied/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'No Response' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+    fireEvent.click(screen.getByRole('button', { name: 'No reply' }));
+    fireEvent.click(screen.getByRole('radio', { name: /They replied/i }));
+    expect(screen.queryByRole('button', { name: 'No reply' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
-    expect((await screen.findByRole('alert')).textContent).toMatch(/cannot be recorded as 'No Response'/i);
-    expect(onSave).not.toHaveBeenCalled();
-    expect(crmMocks.updateDealIfUnchanged).not.toHaveBeenCalled();
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ direction: 'inbound', outcome: null }));
   });
 
   it('accepts a client reply with the sentiment left blank', async () => {
@@ -256,11 +253,11 @@ describe('LogInteractionModal save recovery', () => {
       />
     );
 
-    fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
+    fireEvent.change(screen.getByLabelText('What happened'), {
       target: { value: 'They replied without detail' },
     });
-    fireEvent.click(screen.getByRole('radio', { name: /Client replied/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+    fireEvent.click(screen.getByRole('radio', { name: /They replied/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ direction: 'inbound', outcome: null }));
@@ -282,12 +279,13 @@ describe('LogInteractionModal save recovery', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /^Note/ }));
-    expect(screen.getByText(/never moves the journey or counts as outreach/i)).toBeTruthy();
-    fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
+    fireEvent.click(screen.getByRole('radio', { name: 'Note' }));
+    expect(screen.queryByRole('radiogroup', { name: /Deal stage/i })).toBeNull();
+    expect(screen.queryByRole('radiogroup', { name: 'Channel' })).toBeNull();
+    fireEvent.change(screen.getByLabelText('What happened'), {
       target: { value: 'Internal pricing reminder' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ direction: 'internal', type: 'note' }));
@@ -315,24 +313,24 @@ describe('LogInteractionModal save recovery', () => {
       return { onSave, onClose };
     };
 
-    it('shows the deal as the authoritative current schedule', () => {
+    it('shows the deal\'s current follow-up and keeps it by default', () => {
       renderModal();
 
-      expect(screen.getByText(/Current deal schedule/i)).toBeTruthy();
-      expect(screen.getByText(/Follow up on the offer · 15 Sep/)).toBeTruthy();
+      expect(screen.getByText(/now 15 Sept? 2026/)).toBeTruthy();
+      expect(screen.getByRole('radio', { name: 'Keep' }).getAttribute('aria-checked')).toBe('true');
     });
 
     it('writes the schedule into the SAME update as the lane move', async () => {
       const { onSave, onClose } = renderModal();
       crmMocks.updateDealIfUnchanged.mockResolvedValue({ ...scheduledDeal, workflow_action: 'reply' });
 
-      fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
+      fireEvent.change(screen.getByLabelText('What happened'), {
         target: { value: 'Sent follow-up email, no reply yet' },
       });
       fireEvent.click(screen.getByRole('radio', { name: /Log outreach and wait for reply/i }));
-      fireEvent.click(screen.getByRole('radio', { name: /Replace the deal schedule/i }));
-      fireEvent.change(screen.getByLabelText(/Next follow-up date/i), { target: { value: '2026-09-22' } });
-      fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+      fireEvent.click(screen.getByRole('radio', { name: 'Pick date' }));
+      fireEvent.change(screen.getByLabelText(/Next follow-up date/i), { target: { value: '2099-09-22' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
       await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
       expect(onSave).toHaveBeenCalledTimes(1);
@@ -340,35 +338,45 @@ describe('LogInteractionModal save recovery', () => {
       expect(crmMocks.updateDealIfUnchanged).toHaveBeenCalledWith(
         scheduledDeal.id,
         scheduledDeal.updated_at,
-        expect.objectContaining({ workflow_action: 'reply', followup_date: '2026-09-22' })
+        expect.objectContaining({ workflow_action: 'reply', followup_date: '2099-09-22' })
       );
     });
 
-    it('preserves the schedule when the user does not reschedule, even with a date typed on the interaction', async () => {
+    it('leaves the deal schedule alone and records no date when Keep is chosen', async () => {
       const { onSave, onClose } = renderModal();
 
-      expect(screen.getByRole('radio', { name: /Leave the schedule alone/i }).getAttribute('aria-checked')).toBe('true');
-      fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
+      fireEvent.change(screen.getByLabelText('What happened'), {
         target: { value: 'Called about the trial' },
       });
-      fireEvent.change(screen.getByLabelText(/Next follow-up date/i), { target: { value: '2026-09-22' } });
-      fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
       await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-      // The interaction keeps its own date as history; the deal's schedule is untouched.
-      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ followup_date: '2026-09-22' }));
+      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ followup_date: null }));
       expect(crmMocks.updateDealIfUnchanged).not.toHaveBeenCalled();
+    });
+
+    it('sets the deal\'s follow-up from a quick option in one version-checked write', async () => {
+      const { onSave, onClose } = renderModal();
+      crmMocks.updateDealIfUnchanged.mockResolvedValue(scheduledDeal);
+
+      fireEvent.click(screen.getByRole('radio', { name: /^\+1 week/ }));
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      const [, , updates] = crmMocks.updateDealIfUnchanged.mock.calls[0];
+      expect(updates).toEqual({ followup_date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
+      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ followup_date: updates.followup_date }));
     });
 
     it('clears the schedule only when the user explicitly asks', async () => {
       const { onClose } = renderModal();
       crmMocks.updateDealIfUnchanged.mockResolvedValue({ ...scheduledDeal, followup_date: null });
 
-      fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
+      fireEvent.change(screen.getByLabelText('What happened'), {
         target: { value: 'No longer chasing this' },
       });
-      fireEvent.click(screen.getByRole('radio', { name: /Clear the deal schedule/i }));
-      fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+      fireEvent.click(screen.getByRole('radio', { name: 'Clear' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
       await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
       expect(crmMocks.updateDealIfUnchanged).toHaveBeenCalledWith(
@@ -382,14 +390,14 @@ describe('LogInteractionModal save recovery', () => {
       const { onSave, onClose } = renderModal();
       crmMocks.updateDealIfUnchanged
         .mockRejectedValueOnce(new Error('write failed'))
-        .mockResolvedValueOnce({ ...scheduledDeal, followup_date: '2026-09-22' });
+        .mockResolvedValueOnce({ ...scheduledDeal, followup_date: '2099-09-22' });
 
-      fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
+      fireEvent.change(screen.getByLabelText('What happened'), {
         target: { value: 'Confirm the sampling slot' },
       });
-      fireEvent.click(screen.getByRole('radio', { name: /Replace the deal schedule/i }));
-      fireEvent.change(screen.getByLabelText(/Next follow-up date/i), { target: { value: '2026-09-22' } });
-      fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+      fireEvent.click(screen.getByRole('radio', { name: 'Pick date' }));
+      fireEvent.change(screen.getByLabelText(/Next follow-up date/i), { target: { value: '2099-09-22' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
       expect((await screen.findByRole('alert')).textContent).toMatch(/deal update was not confirmed/i);
       // Half the action saved: the interaction went in once, the deal did not.
@@ -401,7 +409,7 @@ describe('LogInteractionModal save recovery', () => {
       await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
       expect(onSave).toHaveBeenCalledTimes(1);
       expect(crmMocks.updateDealIfUnchanged).toHaveBeenCalledTimes(2);
-      expect(crmMocks.updateDealIfUnchanged.mock.calls[1][2]).toEqual({ followup_date: '2026-09-22' });
+      expect(crmMocks.updateDealIfUnchanged.mock.calls[1][2]).toEqual({ followup_date: '2099-09-22' });
     });
 
     it('never schedules a deal from an unlinked note', async () => {
@@ -419,16 +427,16 @@ describe('LogInteractionModal save recovery', () => {
         />
       );
 
-      fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
+      fireEvent.change(screen.getByLabelText('What happened'), {
         target: { value: 'Note with no linked deal' },
       });
-      fireEvent.change(screen.getByLabelText(/Next follow-up date/i), { target: { value: '2026-09-22' } });
-      fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+      fireEvent.click(screen.getByRole('radio', { name: 'Pick date' }));
+      fireEvent.change(screen.getByLabelText(/Next follow-up date/i), { target: { value: '2099-09-22' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
       await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-      expect(onSave).toHaveBeenCalledTimes(1);
+      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ deal_id: null, followup_date: '2099-09-22' }));
       expect(crmMocks.updateDealIfUnchanged).not.toHaveBeenCalled();
-      expect(screen.queryByText(/Current deal schedule/i)).toBeNull();
     });
   });
 });
@@ -459,15 +467,16 @@ describe('LogInteractionModal next action continuation', () => {
       />
     );
 
+    fireEvent.click(screen.getByRole('button', { name: /More/ }));
     expect(screen.getByPlaceholderText('Keep: Send intro email')).toBeTruthy();
-    fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
+    fireEvent.change(screen.getByLabelText('What happened'), {
       target: { value: 'Called, chef asked for pricing' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'No Response' }));
+    fireEvent.click(screen.getByRole('button', { name: 'No reply' }));
     fireEvent.change(screen.getByLabelText('Next action on this deal'), {
       target: { value: 'Send pricing sheet' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(onSave).toHaveBeenCalledTimes(1);
@@ -494,15 +503,16 @@ describe('LogInteractionModal next action continuation', () => {
       />
     );
 
-    fireEvent.change(screen.getByPlaceholderText(/Follow-up call/i), {
+    fireEvent.change(screen.getByLabelText('What happened'), {
       target: { value: 'Called, no answer' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'No Response' }));
+    fireEvent.click(screen.getByRole('button', { name: 'No reply' }));
+    fireEvent.click(screen.getByRole('button', { name: /More/ }));
     // Same text as the current next action, just padded — a no-op, not a write.
     fireEvent.change(screen.getByLabelText('Next action on this deal'), {
       target: { value: '  Send intro email  ' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Save Interaction' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(onSave).toHaveBeenCalledTimes(1);
@@ -510,3 +520,64 @@ describe('LogInteractionModal next action continuation', () => {
   });
 });
 
+
+describe('LogInteractionModal quick logging', () => {
+  beforeEach(() => {
+    crmMocks.updateDealIfUnchanged.mockReset();
+    refresh.mockReset().mockResolvedValue(undefined);
+    logActivity.mockReset();
+  });
+
+  afterEach(cleanup);
+
+  const renderQuick = () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    render(
+      <LogInteractionModal
+        isOpen
+        onClose={onClose}
+        onSave={onSave}
+        deals={[deal]}
+        contacts={[]}
+        companies={[]}
+        selectedDealId={deal.id}
+      />
+    );
+    return { onSave, onClose };
+  };
+
+  it('saves with nothing typed, titled from the channel', async () => {
+    const { onSave, onClose } = renderQuick();
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Email' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ description: 'Sent an email', summary: null, type: 'email' }));
+  });
+
+  it('uses the first line as the title and the rest as notes', async () => {
+    const { onSave, onClose } = renderQuick();
+
+    fireEvent.change(screen.getByLabelText('What happened'), {
+      target: { value: 'Chef liked the sample\nWants 5 kg trial next month\nCall back Tuesday' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      description: 'Chef liked the sample',
+      summary: 'Wants 5 kg trial next month\nCall back Tuesday',
+    }));
+  });
+
+  it('saves on Cmd/Ctrl+Enter', async () => {
+    const { onSave, onClose } = renderQuick();
+
+    fireEvent.keyDown(screen.getByLabelText('What happened'), { key: 'Enter', metaKey: true });
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledTimes(1);
+  });
+});
