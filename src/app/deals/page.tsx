@@ -2,15 +2,20 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Deal, DealWorkflowAction, PRODUCT_OPTIONS, STAGE_LABELS } from '@/types/crm';
+import { Deal, DealWorkflowAction, PRODUCT_OPTIONS } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
 import { useQuerySelection } from '@/hooks/useQuerySelection';
 import CreateModal from '@/components/CreateModal';
 import ProspectsTab from '@/components/ProspectsTab';
+import PipelineToolbar from '@/components/pipeline/PipelineToolbar';
+import ReviewQueue from '@/components/pipeline/ReviewQueue';
+import DealsTable from '@/components/pipeline/DealsTable';
+import LanePickerSheet from '@/components/pipeline/LanePickerSheet';
+import { DraggableCard, DroppableLane } from '@/components/pipeline/BoardDnd';
+import { LANE_CRITERIA, dueStateFor, whyNow } from '@/components/pipeline/board-view';
 import DealDetail from '@/components/DealDetail';
 import DealCardPrimaryAction from '@/components/DealCardPrimaryAction';
 import DealCardContent from '@/components/DealCardContent';
-import CompanyLogo from '@/components/CompanyLogo';
 import LaneGateModal, { LaneGatePayload } from '@/components/LaneGateModal';
 import ReviewFixModal, { ReviewFixPayload } from '@/components/ReviewFixModal';
 import { useToast } from '@/components/ToastProvider';
@@ -23,20 +28,17 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  useDraggable,
-  useDroppable,
   DragStartEvent,
   DragEndEvent,
 } from '@dnd-kit/core';
-import { Plus, AlertCircle, Loader2, ArrowRight, Search, X } from 'lucide-react';
+import { Plus, Loader2, ArrowRight } from 'lucide-react';
 import clsx from 'clsx';
-import { PRIORITY_CLASSES, PRIORITY_LABELS } from '@/utils/deal-card';
 import { formatBaht, sumLaneValues } from '@/utils/format';
 import { calculateWeightedForecast, calculateSourcePerformance } from '@/utils/analytics-metrics';
 import { WORKFLOW_LANES, WORKFLOW_BY_ID, getWorkflowAction, isOnJourneyBoard, isJourneyLane, deriveNudge, formatDerivedNudgeBadge, outboundSendCountForDeal } from '@/utils/deal-workflow';
 import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
 import LogInteractionModal from '@/components/LogInteractionModal';
-import { BoardAttentionFilter, dealNeedsReview, reviewReasons, REVIEW_LABEL, buildReviewReport, buildReviewFix, filterAndSortBoardDeals, findDealsMatchingSearch, getDoNowCounts, localDateKey } from '@/utils/deal-board';
+import { BoardAttentionFilter, reviewReasons, REVIEW_LABEL, buildReviewReport, buildReviewFix, filterAndSortBoardDeals, findDealsMatchingSearch, getDoNowCounts, localDateKey } from '@/utils/deal-board';
 import type { DealCardPrimaryAction as DealCardPrimaryActionSpec } from '@/utils/deal-card';
 import { buildCloseUpdate } from '@/utils/deal-close';
 import { buildLaneGateDecision } from '@/utils/lane-gate';
@@ -44,45 +46,9 @@ import { buildDealCardPresentation } from '@/utils/deal-card';
 import { PageTransition, StaggerList, StaggerItem } from '@/components/motion';
 import { Blob } from '@/components/blob';
 import { LANE_BLOB_STATE } from '@/utils/lane-blob';
-import { EASE_OUT, pressScale, springPress, tweenBase } from '@/lib/motion';
+import { EASE_OUT, pressScale, springPress} from '@/lib/motion';
 
 type ViewMode = 'prospects' | 'board' | 'parked' | 'won' | 'lost' | 'table';
-
-const LANE_CRITERIA: Record<string, string> = {
-  outreach: 'No gate',
-  reply: 'Requires: last outreach logged',
-  sample: 'Requires: address / send intent',
-  testing: 'Requires: sample delivered + date',
-  reschedule: 'Requires: follow-up date',
-};
-
-function dueStateFor(deal: Deal, todayStr: string): 'overdue' | 'today' | null {
-  if (!deal.followup_date) return null;
-  if (deal.stage === 'closed_won' || deal.stage === 'closed_lost') return null;
-  if (deal.followup_date < todayStr) return 'overdue';
-  if (deal.followup_date === todayStr) return 'today';
-  return null;
-}
-
-function compactDate(date?: string | null) {
-  if (!date) return null;
-  return new Date(`${date}T12:00:00`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
-}
-
-function whyNow(deal: Deal, due: 'overdue' | 'today' | null): string | null {
-  if (!due) return null;
-  if (dealNeedsReview(deal)) {
-    return due === 'overdue' ? 'Past due and missing required lane details' : 'Due today but missing required lane details';
-  }
-  if (deal.priority === 'high') {
-    return due === 'overdue' ? 'High-priority follow-up slipped' : 'High-priority follow-up due today';
-  }
-  const lane = WORKFLOW_BY_ID[getWorkflowAction(deal)];
-  if (lane && lane.id !== 'outreach') {
-    return `Scheduled ${lane.shortLabel.toLowerCase()} is ${due === 'overdue' ? 'overdue' : 'due today'}`;
-  }
-  return due === 'overdue' ? 'Follow-up is overdue' : 'Follow-up is due today';
-}
 
 // Suspense boundary for useSearchParams (via useQuerySelection) — see its docs.
 export default function DealsPage() {
@@ -174,9 +140,10 @@ function DealsBoard() {
     [actionBoardDeals, attentionFilter, searchQuery, productFilter, priorityFilter, todayStr]
   );
 
+  // Same deals the "Needs review" count uses: lane requirements only apply on the board.
   const reviewReport = useMemo(
-    () => buildReviewReport(deals),
-    [deals]
+    () => buildReviewReport(actionBoardDeals),
+    [actionBoardDeals]
   );
   const productOptions = useMemo(
     () => Array.from(new Set([...PRODUCT_OPTIONS, ...actionBoardDeals.map(deal => deal.product)].filter(Boolean))).sort(),
@@ -379,6 +346,88 @@ function DealsBoard() {
     await refresh();
   };
 
+  // Won / Lost / Park from the exit modal: one version-checked close, logged for undo.
+  const handleExitConfirm = async (payload: ExitDealPayload) => {
+    if (!exitModal) return;
+    const d = exitModal.deal;
+    const before: Partial<Deal> = {
+      stage: d.stage,
+      workflow_action: getWorkflowAction(d),
+      followup_date: d.followup_date,
+      value: d.value,
+      next_action: d.next_action,
+      sample_status: d.sample_status || null,
+      nudge_stage: d.nudge_stage || null,
+      last_outcome: d.last_outcome,
+      close_date: d.close_date || null,
+      won_note: d.won_note || null,
+      lost_reason: d.lost_reason || null,
+      park_reason: d.park_reason || null,
+    };
+    if (payload.kind === 'won') {
+      const close = buildCloseUpdate(d, {
+        kind: 'won',
+        close_date: payload.close_date,
+        won_note: payload.won_note,
+        value: payload.value,
+        action: payload.action ?? null,
+      });
+      if (close.error) {
+        addToast(close.error, 'error');
+        return;
+      }
+      try {
+        await crm.closeDealWithOrderIfUnchanged({
+          dealId: d.id,
+          expectedUpdatedAt: d.updated_at,
+          updates: close.updates,
+          order: d.company_id && close.recordOrderAmount != null
+            ? {
+                companyId: d.company_id,
+                eventDate: payload.close_date || todayStr,
+                amount: close.recordOrderAmount,
+                productLine: d.product || null,
+              }
+            : null,
+        });
+      } catch (error) {
+        if (error instanceof crm.OrderRecordPendingError) {
+          logActivity({ type: 'edit', entity: 'deal', entityId: d.id, label: '🎉 Marked won', description: `${d.client} marked won; order record pending retry`, undoPayload: before });
+          addToast('Deal marked won; order record needs retry.', 'error', {
+            label: 'Retry',
+            onClick: () => {
+              void crm.recordOrderForClosedDeal(d.id, error.order)
+                .then(() => addToast('Order record saved'))
+                .catch(() => addToast('Order record still needs retry.', 'error'));
+            },
+          });
+          setExitModal(null);
+          await refresh();
+          return;
+        }
+        throw error;
+      }
+      logActivity({ type: 'edit', entity: 'deal', entityId: d.id, label: '🎉 Marked won', description: `${d.client} marked won`, undoPayload: before });
+      addToast('Deal marked won');
+    } else if (payload.kind === 'lost') {
+      const close = buildCloseUpdate(d, { kind: 'lost', lost_reason: payload.lost_reason });
+      await crm.updateDealIfUnchanged(d.id, d.updated_at, close.updates);
+      logActivity({ type: 'edit', entity: 'deal', entityId: d.id, label: '📉 Marked lost', description: `${d.client} marked lost`, undoPayload: before });
+      addToast('Deal marked lost');
+    } else {
+      const close = buildCloseUpdate(d, {
+        kind: 'park',
+        park_reason: payload.park_reason,
+        followup_date: payload.followup_date,
+      });
+      await crm.updateDealIfUnchanged(d.id, d.updated_at, close.updates);
+      logActivity({ type: 'edit', entity: 'deal', entityId: d.id, label: '⏸ Parked', description: `${d.client} parked`, undoPayload: before });
+      addToast('Deal parked');
+    }
+    setExitModal(null);
+    await refresh();
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -484,147 +533,30 @@ function DealsBoard() {
 
       {view === 'board' && (
         <>
-          {/* One toolbar: search, quick filters, product and priority, then a live count. */}
-          <section className="mb-2 flex flex-wrap items-center gap-2" aria-label="Do now filters">
-            <label className="relative w-full sm:w-60">
-              <span className="sr-only">Search by client or deal name</span>
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-clay-muted" />
-              <input
-                type="search"
-                value={searchQuery}
-                onChange={event => setSearchQuery(event.target.value)}
-                placeholder="Search deals"
-                className="h-9 w-full rounded-lg border border-clay-hairline bg-white pl-8 pr-3 text-base text-clay-ink placeholder:text-clay-muted focus:outline-none focus:ring-2 focus:ring-clay-lavender/40 dark:bg-clay-card md:text-sm"
-              />
-            </label>
-
-            <div className="-mx-4 flex gap-1.5 overflow-x-auto no-scrollbar px-4 sm:mx-0 sm:px-0" role="group" aria-label="Attention filter">
-              {([
-                ['all', 'All', doNowCounts.all],
-                ['overdue', 'Overdue', doNowCounts.overdue],
-                ['today', 'Due today', doNowCounts.today],
-                ['needs-review', 'Needs review', doNowCounts.needsReview],
-              ] as Array<[BoardAttentionFilter, string, number]>).map(([value, label, count]) => (
-                <button
-                  key={value}
-                  onClick={() => setAttentionFilter(value)}
-                  aria-pressed={attentionFilter === value}
-                  className={clsx(
-                    'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors',
-                    attentionFilter === value
-                      ? 'border-clay-lavender/60 bg-clay-lavender/20 text-clay-ink'
-                      : 'border-clay-hairline text-clay-body hover:border-clay-ink/30 hover:text-clay-ink',
-                  )}
-                >
-                  {label}
-                  <span className={clsx('text-xs', value === 'overdue' && count > 0 ? 'font-semibold text-clay-error' : 'text-clay-muted')}>{count}</span>
-                </button>
-              ))}
-            </div>
-
-            <label>
-              <span className="sr-only">Filter by product</span>
-              <select
-                value={productFilter}
-                onChange={event => setProductFilter(event.target.value)}
-                className="h-9 rounded-lg border border-clay-hairline bg-white px-2.5 text-base text-clay-body focus:outline-none focus:ring-2 focus:ring-clay-lavender/40 dark:bg-clay-card md:text-sm"
-              >
-                <option value="all">All products</option>
-                {productOptions.map(product => <option key={product} value={product}>{product}</option>)}
-              </select>
-            </label>
-
-            <label>
-              <span className="sr-only">Filter by priority</span>
-              <select
-                value={priorityFilter}
-                onChange={event => setPriorityFilter(event.target.value as Deal['priority'] | 'all')}
-                className="h-9 rounded-lg border border-clay-hairline bg-white px-2.5 text-base text-clay-body focus:outline-none focus:ring-2 focus:ring-clay-lavender/40 dark:bg-clay-card md:text-sm"
-              >
-                <option value="all">Any priority</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
-              </select>
-            </label>
-
-            {filtersActive && (
-              <button
-                onClick={clearDoNowFilters}
-                className="inline-flex h-9 items-center gap-1 rounded-lg px-2 text-sm text-clay-muted hover:bg-clay-surface hover:text-clay-ink"
-              >
-                <X className="h-3.5 w-3.5" /> Clear
-              </button>
-            )}
-          </section>
-
-          {/* One quiet line: what the board holds, how it works, and card density. */}
-          <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-clay-muted">
-            <span>{visibleActionBoardDeals.length} of {actionBoardDeals.length} deals</span>
-            <details className="open:basis-full" aria-label="Pipeline insights">
-              <summary className="cursor-pointer list-none marker:hidden hover:text-clay-ink">
-                Open pipeline <span className="font-semibold text-clay-ink">{formatBaht(openPipelineValue)}</span> <span aria-hidden="true">⌄</span>
-              </summary>
-              <div className="mt-2 space-y-1">
-                <p>Weighted forecast · <span className="font-semibold text-clay-ink">{formatBaht(weightedForecast)}</span></p>
-                {sourceRows.length > 0 && (
-                  <div className="flex flex-wrap gap-x-4 gap-y-1">
-                    {sourceRows.map(s => (
-                      <span key={s.source}><span className="font-medium text-clay-body">{s.source}</span> {s.won}/{s.total} won · {s.rate.toFixed(0)}%</span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </details>
-            <details className="open:basis-full">
-              <summary className="cursor-pointer list-none marker:hidden hover:text-clay-ink">How this board works <span aria-hidden="true">⌄</span></summary>
-              <p className="mt-1 max-w-xl leading-relaxed">Drag along the five journey stages. Waiting on reply requires logged outreach; Sample requires an address and send intent; Testing needs delivery and a date; Follow-up needs a date. Won / Lost / Park are exits, never columns. Four outbound nudges maximum, then park.</p>
-            </details>
-            <button onClick={() => setCompact(!compact)} className="ml-auto rounded-md px-2 py-1 hover:bg-clay-surface hover:text-clay-ink">
-              {compact ? 'Show more detail' : 'Compact cards'}
-            </button>
-          </div>
+          <PipelineToolbar
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            attentionFilter={attentionFilter}
+            onAttentionChange={setAttentionFilter}
+            counts={doNowCounts}
+            productFilter={productFilter}
+            onProductChange={setProductFilter}
+            productOptions={productOptions}
+            priorityFilter={priorityFilter}
+            onPriorityChange={setPriorityFilter}
+            filtersActive={filtersActive}
+            onClear={clearDoNowFilters}
+            visibleCount={visibleActionBoardDeals.length}
+            totalCount={actionBoardDeals.length}
+            openPipelineValue={openPipelineValue}
+            weightedForecast={weightedForecast}
+            sourceRows={sourceRows}
+            compact={compact}
+            onToggleCompact={() => setCompact(!compact)}
+          />
 
           {attentionFilter === 'needs-review' && (
-            <section className="mb-3 rounded-xl border border-clay-lavender/30 bg-clay-lavender/5 p-3 md:p-4" aria-label="Data hygiene review queue">
-              <div className="flex items-start justify-between gap-3 mb-2">
-                <div>
-                  <p className="zams-eyebrow mb-0.5">Data hygiene · dry run</p>
-                  <p className="text-sm font-semibold text-clay-ink">{reviewReport.length} deal{reviewReport.length === 1 ? '' : 's'} need review</p>
-                </div>
-                <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-medium text-clay-muted bg-clay-card border border-clay-hairline px-2 py-1 rounded-full">
-                  <AlertCircle className="w-3 h-3" /> Read-only · no changes made
-                </span>
-              </div>
-              <p className="text-[11px] text-clay-muted mb-3">These deals violate a lane requirement (existing or imported). Review the reason and suggested fix — nothing is edited until you open a deal and save it yourself.</p>
-              <ul className="space-y-2">
-                {reviewReport.map(item => (
-                  <li key={item.deal.id} className="rounded-lg border border-clay-hairline bg-white dark:bg-clay-card p-2.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-medium text-clay-ink truncate">{item.deal.client}</span>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="text-[10px] font-medium text-clay-lavender bg-clay-lavender/15 px-1.5 py-0.5 rounded">{WORKFLOW_BY_ID[item.lane].shortLabel}</span>
-                        <button
-                          onClick={() => setReviewFix({ deal: item.deal, reasons: item.reasons })}
-                          className="text-[10px] font-semibold text-clay-canvas bg-clay-lavender px-2 py-0.5 rounded active:opacity-85"
-                        >
-                          Fix
-                        </button>
-                      </div>
-                    </div>
-                    <ul className="mt-1.5 space-y-0.5">
-                      {item.labels.map(label => (
-                        <li key={label} className="text-[11px] text-clay-body flex items-start gap-1.5">
-                          <span className="text-clay-lavender mt-0.5">•</span>
-                          <span>{label}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <p className="text-[11px] text-clay-muted mt-1.5 leading-relaxed">Fix: {item.fix}</p>
-                  </li>
-                ))}
-              </ul>
-            </section>
+            <ReviewQueue items={reviewReport} onFix={(deal, reasons) => setReviewFix({ deal, reasons })} />
           )}
 
           {actionBoardDeals.length === 0 && (
@@ -843,60 +775,36 @@ function DealsBoard() {
         </>
       )}
 
-      {view === 'parked' && (
-        <div className="flex-1 overflow-y-auto">
-          <p className="text-sm text-clay-muted mb-3">Parked queue — revisit dates, not a journey column.</p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {parkedDeals.length === 0 ? (
-              <div className="col-span-full rounded-xl border border-dashed border-clay-hairline p-8 text-center text-sm text-clay-muted">Nothing parked.</div>
-            ) : parkedDeals.map(d => renderDealCard(d))}
+      {(view === 'parked' || view === 'won' || view === 'lost') && (() => {
+        const list = { parked: parkedDeals, won: wonDeals, lost: lostDeals }[view];
+        const [caption, empty] = {
+          parked: ['Parked queue — revisit dates, not a journey column.', 'Nothing parked.'],
+          won: ['Won filter — marked via exit, never by dragging to a column.', 'No won deals yet.'],
+          lost: ['Lost filter — reason captured on exit.', 'No lost deals.'],
+        }[view];
+        return (
+          <div className="flex-1 overflow-y-auto">
+            <p className="text-sm text-clay-muted mb-3">{caption}</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {list.length === 0 ? (
+                <div className="col-span-full rounded-xl border border-dashed border-clay-hairline p-8 text-center text-sm text-clay-muted">{empty}</div>
+              ) : list.map(d => renderDealCard(d))}
+            </div>
           </div>
-        </div>
-      )}
-
-      {view === 'won' && (
-        <div className="flex-1 overflow-y-auto">
-          <p className="text-sm text-clay-muted mb-3">Won filter — marked via exit, never by dragging to a column.</p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {wonDeals.length === 0 ? (
-              <div className="col-span-full rounded-xl border border-dashed border-clay-hairline p-8 text-center text-sm text-clay-muted">No won deals yet.</div>
-            ) : wonDeals.map(d => renderDealCard(d))}
-          </div>
-        </div>
-      )}
-
-      {view === 'lost' && (
-        <div className="flex-1 overflow-y-auto">
-          <p className="text-sm text-clay-muted mb-3">Lost filter — reason captured on exit.</p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {lostDeals.length === 0 ? (
-              <div className="col-span-full rounded-xl border border-dashed border-clay-hairline p-8 text-center text-sm text-clay-muted">No lost deals.</div>
-            ) : lostDeals.map(d => renderDealCard(d))}
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {view === 'table' && (
-        <div className="flex-1 overflow-auto bg-white dark:bg-clay-card rounded-xl border border-clay-hairline">
-          {searchQuery.trim() !== '' && (
-            <p data-table-search-note className="border-b border-clay-hairline px-3 py-2 text-[11px] text-clay-muted">
-              Searching every deal for “{searchQuery.trim()}” — {tableDeals.length} matching, {deals.length} in total.
-            </p>
-          )}
-          <table className="w-full text-sm">
-            <thead><tr className="border-b border-clay-hairline text-left text-clay-muted text-xs uppercase tracking-wide"><th className="px-3 py-3 font-medium">Client</th><th className="px-3 py-3 font-medium">Action</th><th className="hidden sm:table-cell px-3 py-3 font-medium">Stage</th><th className="hidden sm:table-cell px-3 py-3 font-medium">Follow-up</th><th className="px-3 py-3 font-medium">Priority</th></tr></thead>
-            <tbody>
-              {tableDeals.map(deal => {
-                const lane = WORKFLOW_BY_ID[getWorkflowAction(deal)];
-                const identity = buildDealCardPresentation(deal, contacts, companies, dueStateFor(deal, todayStr));
-                const derived = deriveNudge(deal, todayStr, {
-                  sendCount: outboundSendCountForDeal(dbMeetings || [], deal.id),
-                });
-                return <tr key={deal.id} onClick={() => setSelectedDeal(deal.id)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedDeal(deal.id); } }} tabIndex={0} className="border-b border-clay-hairline active:bg-clay-surface cursor-pointer transition-colors focus-visible:outline-2 focus-visible:outline-clay-teal"><td className="px-3 py-3"><div className="flex min-w-0 items-center gap-2.5"><CompanyLogo src={identity.companyLogoUrl} name={identity.companyName} id={deal.company_id} size={28} /><div className="min-w-0"><p className="font-medium text-clay-ink">{identity.companyName}</p><p className="text-[10px] text-clay-muted truncate max-w-40">{deal.title}</p></div></div></td><td className="px-3 py-3"><span className="text-xs text-clay-body whitespace-nowrap">{lane.icon} {lane.shortLabel}</span>{derived && <p className="text-[10px] text-clay-muted mt-0.5">{formatDerivedNudgeBadge(derived)}</p>}</td><td className="hidden sm:table-cell px-3 py-3"><span className="text-[10px] font-medium bg-clay-card px-1.5 py-0.5 rounded text-clay-muted">{STAGE_LABELS[deal.stage]}</span></td><td className="hidden sm:table-cell px-3 py-3 text-xs text-clay-muted">{compactDate(deal.followup_date) || '—'}</td><td className="px-3 py-3"><span className={clsx('text-[10px] font-semibold px-2 py-0.5 rounded', PRIORITY_CLASSES[deal.priority])}>{PRIORITY_LABELS[deal.priority]}</span></td></tr>;
-              })}
-            </tbody>
-          </table>
-        </div>
+        <DealsTable
+          deals={tableDeals}
+          totalCount={deals.length}
+          searchQuery={searchQuery}
+          contacts={contacts}
+          companies={companies}
+          meetings={dbMeetings || []}
+          today={todayStr}
+          onOpen={setSelectedDeal}
+        />
       )}
 
       {activeDeal && <DealDetail deal={activeDeal} onClose={() => setSelectedDeal(null)} onSaved={refresh} />}
@@ -944,85 +852,7 @@ function DealsBoard() {
           deal={exitModal.deal}
           kind={exitModal.kind}
           onCancel={() => setExitModal(null)}
-          onConfirm={async (payload: ExitDealPayload) => {
-            const d = exitModal.deal;
-            const before: Partial<Deal> = {
-              stage: d.stage,
-              workflow_action: getWorkflowAction(d),
-              followup_date: d.followup_date,
-              value: d.value,
-              next_action: d.next_action,
-              sample_status: d.sample_status || null,
-              nudge_stage: d.nudge_stage || null,
-              last_outcome: d.last_outcome,
-              close_date: d.close_date || null,
-              won_note: d.won_note || null,
-              lost_reason: d.lost_reason || null,
-              park_reason: d.park_reason || null,
-            };
-            if (payload.kind === 'won') {
-              const close = buildCloseUpdate(d, {
-                kind: 'won',
-                close_date: payload.close_date,
-                won_note: payload.won_note,
-                value: payload.value,
-                action: payload.action ?? null,
-              });
-              if (close.error) {
-                addToast(close.error, 'error');
-                return;
-              }
-              try {
-                await crm.closeDealWithOrderIfUnchanged({
-                  dealId: d.id,
-                  expectedUpdatedAt: d.updated_at,
-                  updates: close.updates,
-                  order: d.company_id && close.recordOrderAmount != null
-                    ? {
-                        companyId: d.company_id,
-                        eventDate: payload.close_date || todayStr,
-                        amount: close.recordOrderAmount,
-                        productLine: d.product || null,
-                      }
-                    : null,
-                });
-              } catch (error) {
-                if (error instanceof crm.OrderRecordPendingError) {
-                  logActivity({ type: 'edit', entity: 'deal', entityId: d.id, label: '🎉 Marked won', description: `${d.client} marked won; order record pending retry`, undoPayload: before });
-                  addToast('Deal marked won; order record needs retry.', 'error', {
-                    label: 'Retry',
-                    onClick: () => {
-                      void crm.recordOrderForClosedDeal(d.id, error.order)
-                        .then(() => addToast('Order record saved'))
-                        .catch(() => addToast('Order record still needs retry.', 'error'));
-                    },
-                  });
-                  setExitModal(null);
-                  await refresh();
-                  return;
-                }
-                throw error;
-              }
-              logActivity({ type: 'edit', entity: 'deal', entityId: d.id, label: '🎉 Marked won', description: `${d.client} marked won`, undoPayload: before });
-              addToast('Deal marked won');
-            } else if (payload.kind === 'lost') {
-              const close = buildCloseUpdate(d, { kind: 'lost', lost_reason: payload.lost_reason });
-              await crm.updateDealIfUnchanged(d.id, d.updated_at, close.updates);
-              logActivity({ type: 'edit', entity: 'deal', entityId: d.id, label: '📉 Marked lost', description: `${d.client} marked lost`, undoPayload: before });
-              addToast('Deal marked lost');
-            } else {
-              const close = buildCloseUpdate(d, {
-                kind: 'park',
-                park_reason: payload.park_reason,
-                followup_date: payload.followup_date,
-              });
-              await crm.updateDealIfUnchanged(d.id, d.updated_at, close.updates);
-              logActivity({ type: 'edit', entity: 'deal', entityId: d.id, label: '⏸ Parked', description: `${d.client} parked`, undoPayload: before });
-              addToast('Deal parked');
-            }
-            setExitModal(null);
-            await refresh();
-          }}
+          onConfirm={handleExitConfirm}
         />
       )}
 
@@ -1048,153 +878,5 @@ function DealsBoard() {
         initialValues={dealPrefill}
       />
     </PageTransition>
-  );
-}
-
-/* ─── Drag & drop primitives ─── */
-
-function DraggableCard({
-  deal, onClick, landing, reduceMotion, children,
-}: {
-  deal: Deal;
-  onClick: () => void;
-  landing?: boolean;
-  reduceMotion?: boolean;
-  children: React.ReactNode;
-}) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: deal.id });
-  const style = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined;
-  const settling = Boolean(landing) && !reduceMotion && !isDragging;
-  return (
-    <motion.div
-      ref={setNodeRef}
-      style={style}
-      {...listeners}
-      {...attributes}
-      onClick={onClick}
-      initial={false}
-      animate={
-        isDragging
-          ? { opacity: 0.4, scale: 1, y: 0 }
-          : settling
-            ? { opacity: 1, scale: [0.97, 1], y: [6, 0] }
-            : { opacity: 1, scale: 1, y: 0 }
-      }
-      transition={
-        settling
-          ? { duration: 0.24, ease: EASE_OUT }
-          : { duration: 0.15, ease: EASE_OUT }
-      }
-      className="touch-none cursor-grab active:cursor-grabbing"
-    >
-      {children}
-    </motion.div>
-  );
-}
-
-function DroppableLane({
-  laneId, className, children, reduceMotion,
-}: {
-  laneId: string;
-  className?: string;
-  children: React.ReactNode;
-  reduceMotion?: boolean;
-}) {
-  const { setNodeRef, isOver } = useDroppable({ id: laneId });
-  // Border/bg via className so lane theme restores on drag-out; FM owns the pulse (supersedes CSS .lane-drop-over).
-  return (
-    <motion.section
-      ref={setNodeRef}
-      data-lane-id={laneId}
-      className={clsx(
-        'flex-1 min-w-[12rem] max-w-[18rem] snap-start rounded-xl border border-clay-hairline bg-clay-surface/70 p-2.5 flex flex-col transition-colors 2xl:min-w-[150px]',
-        className,
-        isOver && 'border-[#7451f2] bg-[rgba(116,81,242,0.04)]'
-      )}
-      initial={false}
-      animate={
-        isOver && !reduceMotion
-          ? {
-              boxShadow: [
-                '0 0 0 0 rgba(116, 81, 242, 0)',
-                '0 0 0 4px rgba(116, 81, 242, 0.16)',
-                '0 0 0 0 rgba(116, 81, 242, 0)',
-              ],
-            }
-          : { boxShadow: '0 0 0 0 rgba(116, 81, 242, 0)' }
-      }
-      transition={
-        isOver && !reduceMotion
-          ? { duration: 0.9, repeat: Infinity, ease: 'easeInOut' }
-          : tweenBase
-      }
-    >
-      {children}
-    </motion.section>
-  );
-}
-
-/* ─── Mobile lane picker: tap Move, choose the lane, then the gate opens ─── */
-function LanePickerSheet({
-  deal, currentLane, counts, onPick, onExit, onClose,
-}: {
-  deal: Deal;
-  currentLane: DealWorkflowAction;
-  counts: Record<string, Deal[]>;
-  onPick: (target: DealWorkflowAction) => void;
-  onExit: (kind: 'won' | 'lost' | 'park') => void;
-  onClose: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-[65] md:hidden flex items-end">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-white dark:bg-clay-card w-full rounded-t-2xl animate-slide-up max-h-[80vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white dark:bg-clay-card border-b border-clay-hairline px-5 py-4 z-10 flex items-start justify-between gap-3">
-          <div>
-            <p className="zams-eyebrow mb-0.5">Move deal</p>
-            <h2 className="text-sm font-semibold text-clay-ink truncate">{deal.client}</h2>
-          </div>
-          <button onClick={onClose} className="p-2 text-clay-muted active:bg-clay-surface rounded-lg shrink-0">
-            <ArrowRight className="w-5 h-5 -rotate-90" />
-          </button>
-        </div>
-        <div className="p-3 space-y-1.5">
-          <p className="zams-mono text-[9px] uppercase tracking-[0.14px] text-clay-muted px-1">Journey</p>
-          {WORKFLOW_LANES.map(lane => (
-            <button
-              key={lane.id}
-              onClick={() => onPick(lane.id)}
-              className={clsx(
-                'w-full flex items-center gap-3 px-3 py-3 rounded-lg border text-left transition-colors',
-                currentLane === lane.id
-                  ? 'border-clay-lavender bg-clay-lavender/20'
-                  : 'border-clay-hairline bg-white dark:bg-clay-card active:bg-clay-surface'
-              )}
-            >
-              <span className="text-lg shrink-0">{lane.icon}</span>
-              <span className="flex-1 min-w-0">
-                <span className="block text-sm font-medium text-clay-ink truncate">{lane.label}</span>
-                <span className="block zams-mono text-[9px] uppercase tracking-[0.14px] text-clay-muted-soft mt-0.5">{LANE_CRITERIA[lane.id]}</span>
-              </span>
-              <span className="text-xs text-clay-muted-soft shrink-0">{counts[lane.id]?.length ?? 0}</span>
-            </button>
-          ))}
-          <p className="zams-mono text-[9px] uppercase tracking-[0.14px] text-clay-muted px-1 pt-2">Exits (not columns)</p>
-          {([
-            ['won', '🎉 Mark won'],
-            ['lost', '📉 Mark lost'],
-            ['park', '⏸ Park'],
-          ] as const).map(([kind, label]) => (
-            <button
-              key={kind}
-              onClick={() => onExit(kind)}
-              className="w-full flex items-center gap-3 px-3 py-3 rounded-lg border border-clay-hairline bg-white dark:bg-clay-card text-left active:bg-clay-surface"
-            >
-              <span className="text-sm font-medium text-clay-ink">{label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
   );
 }
