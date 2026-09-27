@@ -263,6 +263,7 @@ describe('end-to-end journey on synthetic fixtures', () => {
     fireEvent.change(await screen.findByLabelText('What happened'), {
       target: { value: 'Sent the intro email' },
     });
+    fireEvent.click(screen.getByRole('button', { name: /More/ }));
     fireEvent.click(screen.getByRole('radio', { name: /Log outreach and wait for reply/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(meetingRows()).toHaveLength(1));
@@ -279,21 +280,21 @@ describe('end-to-end journey on synthetic fixtures', () => {
       target: { value: 'Buyer called back asking for pricing' },
     });
     fireEvent.click(screen.getByRole('radio', { name: /They replied/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Positive' }));
+    fireEvent.click(screen.getByRole('button', { name: /More/ }));
     fireEvent.click(screen.getByRole('radio', { name: /Record reply and schedule the follow-up/i }));
     // The lane move needs a date, so it OWNS the deal schedule for this save — Keep and
     // Clear are not offered on top of it.
     expect(screen.queryByRole('radio', { name: 'Keep' })).toBeNull();
-    expect(screen.queryByRole('radio', { name: 'Clear' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: 'None' })).toBeNull();
     fireEvent.click(screen.getByRole('radio', { name: 'Pick date' }));
     fireEvent.change(screen.getByLabelText(/Next follow-up date/i), { target: { value: '2099-09-25' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(meetingRows()).toHaveLength(2));
-    expect(meetingRows()[0]).toMatchObject({ direction: 'inbound', outcome: 'positive', deal_id: 'deal-1' });
+    expect(meetingRows()[0]).toMatchObject({ direction: 'inbound', outcome: null, deal_id: 'deal-1' });
     const afterReply = persist(store.state as any);
     expect(afterReply).toMatchObject({ workflow_action: 'reschedule', followup_date: '2099-09-25' });
-    expect(afterReply.last_outcome).toMatch(/Customer reply \(positive\): Buyer called back asking for pricing/);
+    expect(afterReply.last_outcome).toMatch(/Customer reply \(sentiment not recorded\): Buyer called back asking for pricing/);
     // History is not rewritten: the first interaction keeps its own row.
     expect(meetingRows()[1]).toMatchObject({ direction: 'outbound', description: 'Sent the intro email' });
 
@@ -405,6 +406,7 @@ describe('end-to-end journey on synthetic fixtures', () => {
     store.state.failNextDealWrite = new Error('network down');
     fireEvent.click(screen.getByRole('button', { name: /Log touch/i }));
     fireEvent.change(await screen.findByLabelText('What happened'), { target: { value: 'Sent the intro email' } });
+    fireEvent.click(screen.getByRole('button', { name: /More/ }));
     fireEvent.click(screen.getByRole('radio', { name: /Log outreach and wait for reply/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
@@ -433,6 +435,7 @@ describe('end-to-end journey on synthetic fixtures', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Log touch/i }));
     fireEvent.change(await screen.findByLabelText('What happened'), { target: { value: 'Sent the intro email' } });
+    fireEvent.click(screen.getByRole('button', { name: /More/ }));
     fireEvent.click(screen.getByRole('radio', { name: /Log outreach and wait for reply/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
