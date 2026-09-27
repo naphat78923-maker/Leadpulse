@@ -1,30 +1,23 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { MeetingType, Meeting, Deal, Contact, Company, SampleStatus, DealWorkflowAction, MeetingDirection } from '@/types/crm';
-import { X, MessageCircle, Phone, Mail, Users, FileText, ArrowRight, AlertTriangle, Loader2 } from 'lucide-react';
+import { X, MessageCircle, Phone, Mail, Users, ArrowRight, AlertTriangle, Loader2, ChevronRight, ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
 import ContactPicker from '@/components/ContactPicker';
 import * as crm from '@/lib/crm';
 import { useCrm } from '@/components/CrmProvider';
 import { useToast } from '@/components/ToastProvider';
-import { SAMPLE_STATUS_OPTIONS, WORKFLOW_BY_ID, getWorkflowAction } from '@/utils/deal-workflow';
+import { SAMPLE_STATUS_OPTIONS, WORKFLOW_BY_ID, addDaysToDateKey, getWorkflowAction } from '@/utils/deal-workflow';
 import { buildInteractionWorkflowUpdate, laneTargetOptions } from '@/utils/interaction-workflow';
 import {
-  currentDealSchedule,
-  describeDealSchedule,
+  formatScheduleDate,
   scheduleUpdateForIntent,
   validateScheduleIntent,
   type ScheduleIntent,
-  type ScheduleMode,
 } from '@/utils/deal-schedule';
-import {
-  INTERACTION_EVENT_OPTIONS,
-  defaultEventKind,
-  directionForEvent,
-  validateInteractionEvent,
-  type InteractionEventKind,
-} from '@/utils/interaction-event';
+import { directionForEvent, type InteractionEventKind } from '@/utils/interaction-event';
 import { localDateKey } from '@/utils/deal-board';
 import ModalShell from '@/components/motion/ModalShell';
 
@@ -40,21 +33,88 @@ interface LogInteractionModalProps {
   initialCompanyId?: string;
 }
 
-// De-bloated: 5 interaction types. Sample/Nudge are workflow steps, not meeting logs.
-const typeOptions: { value: MeetingType; label: string; icon: React.ReactNode }[] = [
-  { value: 'call', label: 'Call', icon: <Phone className="w-4 h-4" /> },
-  { value: 'email', label: 'Email', icon: <Mail className="w-4 h-4" /> },
-  { value: 'dm', label: 'DM', icon: <MessageCircle className="w-4 h-4" /> },
-  { value: 'meeting', label: 'Meeting', icon: <Users className="w-4 h-4" /> },
-  { value: 'note', label: 'Note', icon: <FileText className="w-4 h-4" /> },
+const KINDS: { value: InteractionEventKind; label: string }[] = [
+  { value: 'outbound_attempt', label: 'I reached out' },
+  { value: 'customer_response', label: 'They replied' },
+  { value: 'internal_note', label: 'Note' },
 ];
 
-const outcomeOptions = [
-  { value: 'positive', label: 'Positive', color: 'bg-clay-success/10 text-clay-success border-clay-success/20' },
-  { value: 'neutral', label: 'Neutral', color: 'bg-clay-card text-clay-body border-clay-hairline' },
-  { value: 'negative', label: 'Negative', color: 'bg-clay-error/10 text-clay-error border-clay-error/20' },
-  { value: 'no_response', label: 'No Response', color: 'bg-clay-card text-clay-muted border-clay-hairline' },
+type Channel = Exclude<MeetingType, 'note' | 'sample_sent' | 'nudge' | 'reward'>;
+
+const CHANNELS: { value: Channel; label: string; icon: ReactNode }[] = [
+  { value: 'call', label: 'Call', icon: <Phone className="w-3.5 h-3.5" /> },
+  { value: 'email', label: 'Email', icon: <Mail className="w-3.5 h-3.5" /> },
+  { value: 'dm', label: 'DM', icon: <MessageCircle className="w-3.5 h-3.5" /> },
+  { value: 'meeting', label: 'Meeting', icon: <Users className="w-3.5 h-3.5" /> },
 ];
+
+const QUICK_FOLLOWUPS = [
+  { label: '+3 days', days: 3 },
+  { label: '+1 week', days: 7 },
+];
+
+/** Keep = leave the deal's date; pick = a new date (replaces it); clear = remove it. */
+type FollowupChoice = 'keep' | 'pick' | 'clear';
+
+function shortDate(dateKey: string): string {
+  return formatScheduleDate(dateKey).replace(/ \d{4}$/, '');
+}
+
+/** Title used when nothing is typed, so a quick "called, no answer" needs no typing. */
+function autoTitle(kind: InteractionEventKind, channel: Channel): string {
+  if (kind === 'internal_note') return 'Note';
+  if (kind === 'customer_response') {
+    return { call: 'They replied by phone', email: 'They replied by email', dm: 'They replied by DM', meeting: 'They replied in a meeting' }[channel];
+  }
+  return { call: 'Called', email: 'Sent an email', dm: 'Sent a DM', meeting: 'Met' }[channel];
+}
+
+function Chip({
+  selected,
+  onClick,
+  children,
+  tone,
+  role = 'radio',
+  ariaLabel,
+}: {
+  selected: boolean;
+  onClick: () => void;
+  children: ReactNode;
+  tone?: string;
+  role?: 'radio' | 'button';
+  ariaLabel?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role={role}
+      aria-checked={role === 'radio' ? selected : undefined}
+      aria-pressed={role === 'button' ? selected : undefined}
+      aria-label={ariaLabel}
+      onClick={onClick}
+      className={clsx(
+        'inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors',
+        selected
+          ? tone ?? 'border-clay-lavender/60 bg-clay-lavender/20 text-clay-ink'
+          : 'border-clay-hairline text-clay-body hover:border-clay-ink/30 hover:text-clay-ink',
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Row({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
+  return (
+    <div>
+      <div className="mb-1.5 flex items-baseline justify-between gap-2">
+        <p className="text-sm text-clay-muted">{label}</p>
+        {hint && <p className="truncate text-xs text-clay-muted">{hint}</p>}
+      </div>
+      {children}
+    </div>
+  );
+}
 
 export default function LogInteractionModal({
   isOpen,
@@ -69,25 +129,23 @@ export default function LogInteractionModal({
 }: LogInteractionModalProps) {
   const { refresh, logActivity } = useCrm();
   const { addToast } = useToast();
-  const [type, setType] = useState<MeetingType>('call');
-  const [description, setDescription] = useState('');
+  const [kind, setKind] = useState<InteractionEventKind>('outbound_attempt');
+  const [channel, setChannel] = useState<Channel>('call');
+  const [notes, setNotes] = useState('');
   const [date, setDate] = useState(localDateKey());
+  const [editingDate, setEditingDate] = useState(false);
   const [selectedDeal, setSelectedDeal] = useState(selectedDealId || '');
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>(initialContactIds || []);
-  const [summary, setSummary] = useState('');
-  const [outcome, setOutcome] = useState<Meeting['outcome']>(null);
+  const [followupChoice, setFollowupChoice] = useState<FollowupChoice>('keep');
   const [followupDate, setFollowupDate] = useState('');
   /** Typed = replace the deal's next action in the same write; empty = keep, never write. */
   const [nextActionEdit, setNextActionEdit] = useState('');
   const [nextWorkflowAction, setNextWorkflowAction] = useState<DealWorkflowAction | ''>('');
   const [sampleStatus, setSampleStatus] = useState<SampleStatus | ''>('');
-  /** Explicit event kind. `null` follows the channel's default until the user says otherwise. */
-  const [eventKind, setEventKind] = useState<InteractionEventKind | null>(null);
   const [confirmSuccess, setConfirmSuccess] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  /** What the save should do to the DEAL's schedule: preserve by default, never inferred. */
-  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('preserve');
   const [pendingDealUpdate, setPendingDealUpdate] = useState<{
     dealId: string;
     dealLabel: string;
@@ -98,6 +156,7 @@ export default function LogInteractionModal({
     label: string;
     description: string;
   } | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -108,16 +167,16 @@ export default function LogInteractionModal({
       setSelectedDeal(selectedDealId || '');
       setNextWorkflowAction(initialDeal ? getWorkflowAction(initialDeal) : '');
       setSampleStatus('');
-      setEventKind(null);
-      setScheduleMode('preserve');
+      setKind('outbound_attempt');
+      setChannel('call');
+      setFollowupChoice('keep');
       setConfirmSuccess(false);
-      setType('call');
-      setDescription('');
+      setNotes('');
       setDate(localDateKey());
-      setSummary('');
-      setOutcome(null);
+      setEditingDate(false);
       setFollowupDate('');
       setNextActionEdit('');
+      setMoreOpen(false);
       setSaving(false);
       setSaveError(null);
       setPendingDealUpdate(null);
@@ -128,43 +187,54 @@ export default function LogInteractionModal({
 
   const deal = deals.find(item => item.id === selectedDeal);
   const dealAction = deal ? getWorkflowAction(deal) : undefined;
+  const company = companies.find(c => c.id === (deal?.company_id ?? initialCompanyId));
+  const type: MeetingType = kind === 'internal_note' ? 'note' : channel;
   // The event owns direction and sentiment; the lane move is a separate explicit choice.
-  const effectiveKind: InteractionEventKind = eventKind ?? defaultEventKind(type);
-  const laneTargets = deal ? laneTargetOptions(deal, effectiveKind) : [];
+  const laneTargets = deal ? laneTargetOptions(deal, kind) : [];
   const selectedAction = deal ? (nextWorkflowAction || dealAction) : undefined;
   const isChangingLane = !!dealAction && !!selectedAction && selectedAction !== dealAction;
+
   // A move into Testing or a Follow-up carries the date the lane needs, so it OWNS the deal's
-  // schedule for this save; otherwise the user's explicit preserve/replace/clear choice does.
+  // schedule for this save; otherwise the follow-up choice does.
   const laneRequiresDate = isChangingLane && (selectedAction === 'testing' || selectedAction === 'reschedule');
   const scheduleIntent: ScheduleIntent =
-    scheduleMode === 'replace'
+    followupChoice === 'pick'
       ? { mode: 'replace', date: followupDate }
-      : scheduleMode === 'clear'
+      : followupChoice === 'clear'
         ? { mode: 'clear' }
         : { mode: 'preserve' };
   const scheduleUpdates = scheduleUpdateForIntent(deal ?? null, scheduleIntent);
 
-  const applyEventKind = (kind: InteractionEventKind | null) => {
-    setEventKind(kind);
+  const today = localDateKey();
+  const quickDates = QUICK_FOLLOWUPS.map(q => ({ ...q, date: addDaysToDateKey(today, q.days) }));
+  const isQuickDate = followupChoice === 'pick' && quickDates.some(q => q.date === followupDate);
+  const contactCount = selectedContactIds.length;
+
+  const chooseKind = (next: InteractionEventKind) => {
+    setKind(next);
     setSaveError(null);
     if (!deal || !dealAction) return;
     // The safe default is always the current lane: a target the new event does not
     // permit is dropped rather than silently kept.
-    const allowed = laneTargetOptions(deal, kind ?? defaultEventKind(type));
+    const allowed = laneTargetOptions(deal, next);
     setNextWorkflowAction(prev => (prev && allowed.some(option => option.target === prev) ? prev : dealAction));
   };
 
+  const chooseFollowup = (choice: FollowupChoice, dateKey = '') => {
+    setFollowupChoice(choice);
+    setFollowupDate(dateKey);
+    setSaveError(null);
+  };
+
   const resetAndClose = () => {
-    setDescription('');
-    setSummary('');
+    setNotes('');
     setFollowupDate('');
     setNextActionEdit('');
-    setOutcome(null);
     setSelectedDeal('');
     setSelectedContactIds([]);
     setNextWorkflowAction('');
     setSampleStatus('');
-    setEventKind(null);
+    setKind('outbound_attempt');
     setConfirmSuccess(false);
     setSaveError(null);
     setPendingDealUpdate(null);
@@ -176,9 +246,9 @@ export default function LogInteractionModal({
     setSelectedDeal(dealId);
     setNextWorkflowAction(nextDeal ? getWorkflowAction(nextDeal) : '');
     setSampleStatus('');
-    setEventKind(null);
     setNextActionEdit('');
     setConfirmSuccess(false);
+    setFollowupChoice(followupChoice === 'clear' ? 'keep' : followupChoice);
     setSaveError(null);
   };
 
@@ -195,20 +265,15 @@ export default function LogInteractionModal({
     });
   };
 
+  // Sentiment isn't asked for: the event (reached out / replied / note) is what counts.
+  const outcome: Meeting['outcome'] = null;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!description.trim() || saving) return;
-
-    // The event is written on every save, with or without a lane move, so it is
-    // validated before anything is persisted.
-    const eventError = validateInteractionEvent({ kind: effectiveKind, outcome });
-    if (eventError) {
-      setSaveError(eventError);
-      return;
-    }
+    if (saving) return;
 
     // The DEAL schedule is a separate, explicit decision: a lane that needs a date sets it,
-    // otherwise the user's preserve/replace/clear choice is honoured exactly.
+    // otherwise the follow-up choice is honoured exactly.
     const scheduleError = laneRequiresDate ? null : validateScheduleIntent(scheduleIntent);
     if (scheduleError) {
       setSaveError(scheduleError);
@@ -227,11 +292,16 @@ export default function LogInteractionModal({
         return;
       }
 
+      // One text box: the first line is the title, anything after it is the notes.
+      const [firstLine = '', ...rest] = notes.trim().split('\n');
+      const description = firstLine.trim() || autoTitle(kind, channel);
+      const summary = rest.join('\n').trim() || null;
+
       const workflowUpdates = deal && selectedAction
         ? buildInteractionWorkflowUpdate(deal, selectedAction, {
-            kind: effectiveKind,
+            kind,
             outcome,
-            interactionDescription: summary.trim() || description.trim(),
+            interactionDescription: notes.trim() || description,
             channel: type,
             sampleStatus: sampleStatus || null,
             testingDate: followupDate || null,
@@ -255,18 +325,17 @@ export default function LogInteractionModal({
       const companyId = selectedContacts[0]?.company_id || deal?.company_id || initialCompanyId || null;
 
       // Direction comes from the chosen event, never from the lane the deal moves to.
-      // An internal note and a captured client reply are their own categories.
-      const direction: MeetingDirection = directionForEvent(effectiveKind);
+      const direction: MeetingDirection = directionForEvent(kind);
 
       await onSave({
-        description: description.trim(),
+        description,
         type,
         date,
         company_id: companyId,
         contact_ids: selectedContactIds,
         deal_id: selectedDeal || null,
         product: deal?.product || 'Butter',
-        summary: summary.trim() || null,
+        summary,
         outcome,
         followup_date: followupDate || null,
         direction,
@@ -317,413 +386,300 @@ export default function LogInteractionModal({
     }
   };
 
+  const locked = saving || !!pendingDealUpdate;
+  const moreSummary = [
+    isChangingLane && selectedAction ? `→ ${WORKFLOW_BY_ID[selectedAction].shortLabel}` : null,
+    contactCount > 0 ? `${contactCount} contact${contactCount === 1 ? '' : 's'}` : null,
+    nextActionEdit.trim() ? 'new next action' : null,
+  ].filter(Boolean).join(' · ');
+  const title = deal?.client || company?.name || 'Log a touch';
+  const openDeals = deals
+    .filter(d => d.stage !== 'closed_won' && d.stage !== 'closed_lost')
+    // The account's own deals first when logging against an account.
+    .sort((a, b) => Number(b.company_id === initialCompanyId) - Number(a.company_id === initialCompanyId));
+
   return (
     <ModalShell
       open={isOpen}
       onClose={onClose}
-      lockDismiss={saving || !!pendingDealUpdate}
-      panelClassName="bg-white dark:bg-clay-card md:max-w-lg md:rounded-2xl rounded-t-2xl shadow-2xl max-h-[90vh] overflow-y-auto"
+      lockDismiss={locked}
+      panelClassName="bg-white dark:bg-clay-card md:max-w-md md:rounded-2xl rounded-t-2xl shadow-2xl max-h-[92vh] flex flex-col"
     >
-      <>
-        <div className="sticky top-0 bg-white dark:bg-clay-card flex items-center justify-between p-4 border-b border-clay-hairline z-10">
-          <h2 className="text-lg font-semibold text-clay-ink">Log Interaction</h2>
-          <button onClick={onClose} disabled={saving || !!pendingDealUpdate} className="text-clay-muted hover:text-clay-ink p-2 -mr-2 disabled:opacity-40">
-            <X className="w-5 h-5" />
+      <form
+        ref={formRef}
+        onSubmit={handleSubmit}
+        onKeyDown={e => {
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            formRef.current?.requestSubmit();
+          }
+        }}
+        className="flex min-h-0 flex-1 flex-col"
+        aria-label={`Log a touch · ${title}`}
+      >
+        {/* Header: who and when. The deal is already known when opened from one. */}
+        <div className="flex items-start justify-between gap-3 px-5 pt-5 pb-3">
+          <div className="min-w-0">
+            <h2 className="truncate text-lg font-semibold text-clay-ink">{title === 'Log a touch' ? title : `Log · ${title}`}</h2>
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-sm text-clay-muted">
+              {deal && <span>{deal.product} deal ·</span>}
+              {editingDate ? (
+                <input
+                  type="date"
+                  aria-label="Date of this touch"
+                  value={date}
+                  max={today}
+                  onChange={e => setDate(e.target.value || today)}
+                  onBlur={() => setEditingDate(false)}
+                  autoFocus
+                  className="rounded border border-clay-hairline bg-transparent px-1 text-sm text-clay-ink"
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setEditingDate(true)}
+                  aria-label="Change the date of this touch"
+                  className="inline-flex items-center gap-1 rounded hover:text-clay-ink"
+                >
+                  {date === today ? 'Today' : formatScheduleDate(date)}
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={locked}
+            aria-label="Close"
+            className="-mr-2 -mt-1 rounded-lg p-2 text-clay-muted hover:bg-clay-surface hover:text-clay-ink disabled:opacity-40"
+          >
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-4 space-y-4">
-          <fieldset disabled={saving || !!pendingDealUpdate} className="space-y-4 disabled:opacity-70">
-          {/* Type */}
-          <div>
-            <label className="block text-sm font-medium text-clay-body mb-2">Type</label>
-            <div className="grid grid-cols-3 gap-2">
-              {typeOptions.map(opt => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setType(opt.value)}
-                  className={clsx(
-                    'flex items-center justify-center gap-2 px-3 py-3 rounded-lg text-sm font-medium border transition-colors min-h-[44px]',
-                    type === opt.value
-                      ? 'bg-clay-ink text-clay-canvas border-clay-ink'
-                      : 'bg-white dark:bg-clay-card text-clay-muted border-clay-hairline active:bg-clay-surface'
-                  )}
-                >
-                  {opt.icon}
-                  <span className="hidden sm:inline">{opt.label}</span>
-                </button>
+        <fieldset disabled={locked} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 pb-4 disabled:opacity-70">
+          {/* What happened: one segmented control; the event owns direction. */}
+          <div role="radiogroup" aria-label="What happened?" className="grid grid-cols-3 gap-2">
+            {KINDS.map(option => (
+              <button
+                key={option.value}
+                type="button"
+                role="radio"
+                aria-checked={kind === option.value}
+                onClick={() => chooseKind(option.value)}
+                className={clsx(
+                  'h-10 rounded-lg border text-sm font-medium transition-colors',
+                  kind === option.value
+                    ? 'border-clay-ink bg-clay-ink text-clay-canvas'
+                    : 'border-clay-hairline text-clay-ink hover:border-clay-ink/30',
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          {kind !== 'internal_note' && (
+            <div role="radiogroup" aria-label="Channel" className="flex flex-wrap gap-2">
+              {CHANNELS.map(option => (
+                <Chip key={option.value} selected={channel === option.value} onClick={() => setChannel(option.value)}>
+                  {option.icon}
+                  {option.label}
+                </Chip>
               ))}
-            </div>
-          </div>
-
-          {/* What happened — the event owns direction; the lane never redefines it. */}
-          <div>
-            <label className="block text-sm font-medium text-clay-body mb-2">What happened?</label>
-            <div className="grid gap-2" role="radiogroup" aria-label="What happened?">
-              {INTERACTION_EVENT_OPTIONS.map(option => (
-                <button
-                  key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={effectiveKind === option.value}
-                  onClick={() => applyEventKind(option.value)}
-                  className={clsx(
-                    'min-h-[48px] rounded-lg border px-3 py-2.5 text-left transition-colors',
-                    effectiveKind === option.value
-                      ? 'border-clay-ink bg-clay-ink/5 text-clay-ink'
-                      : 'border-clay-hairline bg-white dark:bg-clay-card text-clay-muted'
-                  )}
-                >
-                  <span className="block text-sm font-semibold">{option.label}</span>
-                  <span className="block text-[10px] mt-0.5 opacity-75">{option.hint}</span>
-                </button>
-              ))}
-            </div>
-            <p className="text-[11px] text-clay-muted mt-1.5">
-              Recorded as <span className="font-medium text-clay-body">{directionForEvent(effectiveKind)}</span>
-              {effectiveKind === 'customer_response'
-                ? ' — a customer response.'
-                : effectiveKind === 'internal_note'
-                  ? ' — never counts as outreach or a reply.'
-                  : ' — an outreach attempt.'}
-            </p>
-          </div>
-
-          {/* Description */}
-          <div>
-            <label className="block text-sm font-medium text-clay-body mb-1">Description *</label>
-            <input
-              type="text"
-              value={description}
-              onChange={e => setDescription(e.target.value)}
-              required
-              className="w-full px-3 py-3 border border-clay-hairline rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-clay-ink bg-white dark:bg-clay-card text-clay-ink"
-              placeholder="e.g., Follow-up call with K. Oil about test results"
-            />
-          </div>
-
-          {/* Date */}
-          <div>
-            <label className="block text-sm font-medium text-clay-body mb-1">Date</label>
-            <input
-              type="date"
-              value={date}
-              onChange={e => setDate(e.target.value)}
-              className="w-full px-3 py-3 border border-clay-hairline rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-clay-ink bg-white dark:bg-clay-card text-clay-ink"
-            />
-          </div>
-
-          {/* Linked Deal — drives the single state advance */}
-          <div>
-            <label className="block text-sm font-medium text-clay-body mb-1">Linked Deal</label>
-            <select
-              value={selectedDeal}
-              onChange={e => handleDealChange(e.target.value)}
-              className="w-full px-3 py-3 border border-clay-hairline rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-clay-ink bg-white dark:bg-clay-card text-clay-ink"
-            >
-              <option value="">— None (just log a note) —</option>
-              {deals.filter(d => d.stage !== 'closed_won' && d.stage !== 'closed_lost').map(d => (
-                <option key={d.id} value={d.id}>{d.client} — {d.product}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Explicit post-interaction action. The safe default is always the current lane. */}
-          {deal && dealAction && (
-            <div className="bg-clay-surface rounded-xl p-3 border border-clay-hairline space-y-3">
-              <div>
-                <p className="text-sm font-medium text-clay-ink">Next action after this interaction</p>
-                <p className="text-[11px] text-clay-muted mt-0.5">Nothing moves unless you choose it.</p>
-              </div>
-
-              <div className="grid gap-2" role="radiogroup" aria-label="Next action after this interaction">
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={selectedAction === dealAction}
-                  onClick={() => {
-                    setNextWorkflowAction(dealAction);
-                    setSaveError(null);
-                  }}
-                  className={clsx(
-                    'min-h-[48px] rounded-lg border px-3 py-2.5 text-left transition-colors',
-                    selectedAction === dealAction
-                      ? 'border-clay-lavender bg-clay-lavender/20 text-clay-ink'
-                      : 'border-clay-hairline bg-white dark:bg-clay-card text-clay-muted'
-                  )}
-                >
-                  <span className="block text-sm font-semibold">Keep current · {WORKFLOW_BY_ID[dealAction].shortLabel}</span>
-                  <span className="block text-[10px] mt-0.5 opacity-75">Recommended for outbound messages, notes, and no response.</span>
-                </button>
-
-                {laneTargets.map(option => (
-                  <button
-                    key={option.target}
-                    type="button"
-                    role="radio"
-                    aria-checked={selectedAction === option.target}
-                    onClick={() => {
-                      setNextWorkflowAction(option.target);
-                      setSaveError(null);
-                    }}
-                    className={clsx(
-                      'min-h-[48px] rounded-lg border px-3 py-2.5 text-left transition-colors',
-                      selectedAction === option.target
-                        ? 'border-clay-mint bg-clay-mint/15 text-clay-ink'
-                        : 'border-clay-hairline bg-white dark:bg-clay-card text-clay-muted'
-                    )}
-                  >
-                    <span className="flex items-center gap-2 text-sm font-semibold">
-                      {option.label} <ArrowRight className="w-3.5 h-3.5" /> {WORKFLOW_BY_ID[option.target].shortLabel}
-                    </span>
-                    {option.hint && <span className="block text-[10px] mt-0.5 opacity-75">{option.hint}</span>}
-                  </button>
-                ))}
-              </div>
-
-              {laneTargets.length === 0 && (
-                <p className="text-[11px] text-clay-muted">
-                  An internal note records information — it never moves the journey or counts as outreach.
-                </p>
-              )}
-
-              {effectiveKind === 'customer_response' && (
-                <p className="text-[11px] text-clay-muted">
-                  A recorded reply is not a wait: choose the next action above, or keep the current lane.
-                </p>
-              )}
-
-              {selectedAction === 'sample' && isChangingLane && (
-                <div>
-                  <p className="text-xs font-medium text-clay-body mb-2">Sample status *</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {SAMPLE_STATUS_OPTIONS.map(option => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => setSampleStatus(option.value)}
-                        className={clsx(
-                          'min-h-[44px] rounded-lg border px-3 py-2 text-sm font-medium',
-                          sampleStatus === option.value
-                            ? 'border-clay-ochre bg-clay-ochre/15 text-clay-ochre'
-                            : 'border-clay-hairline bg-white dark:bg-clay-card text-clay-muted'
-                        )}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {selectedAction === 'testing' && isChangingLane && (
-                <p className="text-[11px] text-clay-muted">Set the required testing date in the date field below.</p>
-              )}
-
-              {selectedAction === 'success' && isChangingLane && (
-                <button
-                  type="button"
-                  onClick={() => setConfirmSuccess(value => !value)}
-                  className={clsx(
-                    'w-full min-h-[44px] rounded-lg border px-3 py-2.5 text-left text-sm font-medium',
-                    confirmSuccess
-                      ? 'border-clay-mint bg-clay-mint/15 text-clay-teal'
-                      : 'border-clay-hairline bg-white dark:bg-clay-card text-clay-muted'
-                  )}
-                >
-                  {confirmSuccess ? '✓ Confirmed: this deal is won' : 'Confirm this deal is won'}
-                </button>
-              )}
             </div>
           )}
 
-          {/* Linked Contacts */}
-          <ContactPicker
-            contacts={contacts}
-            companies={companies}
-            selectedCompanyId={deal?.company_id ?? undefined}
-            selectedIds={selectedContactIds}
-            onChange={setSelectedContactIds}
+          <textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            rows={3}
+            aria-label="What happened"
+            placeholder="What happened? (first line becomes the title)"
+            className="w-full resize-none rounded-xl border border-clay-hairline bg-transparent px-3.5 py-3 text-sm text-clay-ink placeholder:text-clay-muted focus:border-clay-ink/40 focus:outline-none focus:ring-2 focus:ring-clay-ink/10"
           />
 
-          {/* Summary */}
-          <div>
-            <label className="block text-sm font-medium text-clay-body mb-1">Summary / Notes</label>
-            <textarea
-              value={summary}
-              onChange={e => setSummary(e.target.value)}
-              rows={3}
-              className="w-full px-3 py-3 border border-clay-hairline rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-clay-ink resize-none bg-white dark:bg-clay-card text-clay-ink"
-              placeholder="What was discussed, decided, or needs follow-up..."
-            />
-          </div>
+          {!selectedDealId && (
+            <Row label="Deal">
+              <select
+                aria-label="Linked deal"
+                value={selectedDeal}
+                onChange={e => handleDealChange(e.target.value)}
+                className="h-9 w-full rounded-lg border border-clay-hairline bg-transparent px-3 text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-clay-ink/10"
+              >
+                <option value="">No deal</option>
+                {openDeals.map(d => (
+                  <option key={d.id} value={d.id}>{d.client} · {d.product}</option>
+                ))}
+              </select>
+            </Row>
+          )}
 
-          {/* Outcome */}
-          <div>
-            <label className="block text-sm font-medium text-clay-body mb-2">Outcome</label>
-            <div className="grid grid-cols-2 gap-2">
-              {outcomeOptions.map(opt => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setOutcome(opt.value as Meeting['outcome'])}
-                  className={clsx(
-                    'px-3 py-3 rounded-lg text-sm font-medium border transition-colors min-h-[44px]',
-                    outcome === opt.value ? opt.color : 'bg-white dark:bg-clay-card text-clay-muted border-clay-hairline active:bg-clay-surface'
-                  )}
+          {/* One follow-up date: picking one sets the deal's next follow-up. */}
+          <Row
+            label={laneRequiresDate
+              ? `Date for ${WORKFLOW_BY_ID[selectedAction!].shortLabel}`
+              : `Next follow-up${deal?.followup_date ? ` · now ${shortDate(deal.followup_date)}` : ''}`}
+          >
+            <div role="radiogroup" aria-label="Next follow-up" className="flex flex-wrap gap-2">
+              {!laneRequiresDate && deal?.followup_date && (
+                <Chip selected={followupChoice === 'keep'} onClick={() => chooseFollowup('keep')}>Keep</Chip>
+              )}
+              {quickDates.map(q => (
+                <Chip
+                  key={q.label}
+                  selected={followupChoice === 'pick' && followupDate === q.date}
+                  onClick={() => chooseFollowup('pick', q.date)}
+                  ariaLabel={`${q.label} (${formatScheduleDate(q.date)})`}
                 >
-                  {opt.label}
-                </button>
+                  {q.label}
+                </Chip>
               ))}
-            </div>
-          </div>
-
-          {/* One authoritative deal schedule: the interaction keeps its own date as history. */}
-          <div className="rounded-xl border border-clay-hairline bg-clay-surface p-3 space-y-3">
-            <div>
-              <p className="text-sm font-medium text-clay-ink">Next follow-up</p>
-              {deal ? (
-                <p className="mt-0.5 text-[11px] text-clay-muted">
-                  Current deal schedule ·{' '}
-                  <span data-deal-schedule className="font-medium text-clay-body">
-                    {describeDealSchedule(currentDealSchedule(deal))}
-                  </span>
-                </p>
-              ) : (
-                <p className="mt-0.5 text-[11px] text-clay-muted">
-                  No deal linked — this date is recorded on the interaction only, and no deal schedule changes.
-                </p>
+              <Chip
+                selected={followupChoice === 'pick' && !isQuickDate}
+                onClick={() => chooseFollowup('pick', isQuickDate ? '' : followupDate)}
+                ariaLabel="Pick date"
+              >
+                {followupChoice === 'pick' && !isQuickDate && followupDate ? shortDate(followupDate) : 'Pick…'}
+              </Chip>
+              {!laneRequiresDate && (
+                // With a saved date, None clears it; without one, None simply keeps there being none.
+                <Chip
+                  selected={deal?.followup_date ? followupChoice === 'clear' : followupChoice === 'keep'}
+                  onClick={() => chooseFollowup(deal?.followup_date ? 'clear' : 'keep')}
+                >
+                  None
+                </Chip>
               )}
             </div>
-
-            <label className="block text-sm font-medium text-clay-body">
-              Next follow-up date
+            {followupChoice === 'pick' && !isQuickDate && (
               <input
-                aria-label="Next follow-up date"
                 type="date"
+                aria-label="Next follow-up date"
                 value={followupDate}
+                min={today}
                 onChange={e => setFollowupDate(e.target.value)}
-                className="mt-1 block w-full px-3 py-3 border border-clay-hairline rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-clay-ink bg-white dark:bg-clay-card text-clay-ink"
+                className="mt-2 h-9 w-full rounded-lg border border-clay-hairline bg-transparent px-3 text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-clay-ink/10"
               />
-            </label>
-
-            {deal && (
-              <label className="block text-sm font-medium text-clay-body">
-                Next action on this deal
-                <input
-                  aria-label="Next action on this deal"
-                  type="text"
-                  value={nextActionEdit}
-                  onChange={e => setNextActionEdit(e.target.value)}
-                  placeholder={deal.next_action ? `Keep: ${deal.next_action}` : 'Start with a verb: call, send, ask, confirm…'}
-                  className="mt-1 block w-full px-3 py-3 border border-clay-hairline rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-clay-ink bg-white dark:bg-clay-card text-clay-ink"
-                />
-                <span className="mt-1 block text-[11px] font-normal text-clay-muted">Empty keeps the current next action.</span>
-              </label>
             )}
+            {laneRequiresDate && !followupDate && (
+              <p className="mt-1.5 text-xs text-clay-muted">No date picked: the deal keeps its current follow-up.</p>
+            )}
+          </Row>
 
-            {deal && !laneRequiresDate && (
-              <div className="grid gap-2" role="radiogroup" aria-label="Deal schedule">
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={scheduleMode === 'preserve'}
-                  onClick={() => setScheduleMode('preserve')}
-                  className={clsx(
-                    'min-h-[44px] rounded-lg border px-3 py-2 text-left transition-colors',
-                    scheduleMode === 'preserve'
-                      ? 'border-clay-lavender bg-clay-lavender/20 text-clay-ink'
-                      : 'border-clay-hairline bg-white dark:bg-clay-card text-clay-muted'
-                  )}
-                >
-                  <span className="block text-sm font-semibold">Leave the schedule alone</span>
-                  <span className="block text-[10px] mt-0.5 opacity-75">The deal&apos;s date is left exactly as it is.</span>
-                </button>
+          {/* Rarely needed: who was involved and the deal's next action. */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setMoreOpen(open => !open)}
+              aria-expanded={moreOpen}
+              className="flex w-full items-center gap-1.5 text-sm text-clay-muted hover:text-clay-ink"
+            >
+              <ChevronRight className={clsx('h-4 w-4 transition-transform', moreOpen && 'rotate-90')} />
+              <span>More: move lane, contacts, next action</span>
+              {moreSummary && <span className="ml-auto truncate font-normal text-clay-ink">{moreSummary}</span>}
+            </button>
+            {moreOpen && (
+              <div className="mt-3 space-y-4">
+                {/* Stage: nothing moves unless chosen. Notes never move the journey. */}
+                {deal && dealAction && laneTargets.length > 0 && (
+                  <Row label="Stage">
+                    <div role="radiogroup" aria-label="Deal stage after this touch" className="flex flex-wrap gap-2">
+                      <Chip
+                        selected={selectedAction === dealAction}
+                        onClick={() => { setNextWorkflowAction(dealAction); setSaveError(null); }}
+                        ariaLabel={`Keep current stage · ${WORKFLOW_BY_ID[dealAction].shortLabel}`}
+                      >
+                        Stay in {WORKFLOW_BY_ID[dealAction].shortLabel}
+                      </Chip>
+                      {laneTargets.map(option => (
+                        <Chip
+                          key={option.target}
+                          selected={selectedAction === option.target}
+                          tone="border-clay-teal bg-clay-mint/20 text-clay-teal"
+                          onClick={() => { setNextWorkflowAction(option.target); setSaveError(null); }}
+                          ariaLabel={option.label}
+                        >
+                          <ArrowRight className="h-3 w-3" />
+                          {WORKFLOW_BY_ID[option.target].shortLabel}
+                        </Chip>
+                      ))}
+                    </div>
 
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={scheduleMode === 'replace'}
-                  onClick={() => setScheduleMode('replace')}
-                  className={clsx(
-                    'min-h-[44px] rounded-lg border px-3 py-2 text-left transition-colors',
-                    scheduleMode === 'replace'
-                      ? 'border-clay-mint bg-clay-mint/15 text-clay-ink'
-                      : 'border-clay-hairline bg-white dark:bg-clay-card text-clay-muted'
-                  )}
-                >
-                  <span className="block text-sm font-semibold">Replace the deal schedule</span>
-                  <span className="block text-[10px] mt-0.5 opacity-75">Uses the date above as the deal&apos;s next follow-up.</span>
-                </button>
-
-                {deal.followup_date && (
-                  <button
-                    type="button"
-                    role="radio"
-                    aria-checked={scheduleMode === 'clear'}
-                    onClick={() => {
-                      setScheduleMode('clear');
-                      setFollowupDate('');
-                    }}
-                    className={clsx(
-                      'min-h-[44px] rounded-lg border px-3 py-2 text-left transition-colors',
-                      scheduleMode === 'clear'
-                        ? 'border-clay-ochre bg-clay-ochre/15 text-clay-ochre'
-                        : 'border-clay-hairline bg-white dark:bg-clay-card text-clay-muted'
+                    {selectedAction === 'sample' && isChangingLane && (
+                      <div role="radiogroup" aria-label="Sample status" className="mt-2 flex flex-wrap gap-2">
+                        {SAMPLE_STATUS_OPTIONS.map(option => (
+                          <Chip key={option.value} selected={sampleStatus === option.value} onClick={() => setSampleStatus(option.value)}>
+                            {option.label}
+                          </Chip>
+                        ))}
+                      </div>
                     )}
-                  >
-                    <span className="block text-sm font-semibold">Clear the deal schedule</span>
-                    <span className="block text-[10px] mt-0.5 opacity-75">Removes the date and leaves none on this interaction.</span>
-                  </button>
+
+                    {selectedAction === 'success' && isChangingLane && (
+                      <label className="mt-2 flex items-center gap-2 text-sm text-clay-body">
+                        <input
+                          type="checkbox"
+                          checked={confirmSuccess}
+                          onChange={e => setConfirmSuccess(e.target.checked)}
+                          className="h-4 w-4 accent-clay-ink"
+                        />
+                        Confirm this deal is won
+                      </label>
+                    )}
+                  </Row>
                 )}
+                {deal && (
+                  <Row label="Next action on this deal">
+                    <input
+                      aria-label="Next action on this deal"
+                      type="text"
+                      value={nextActionEdit}
+                      onChange={e => setNextActionEdit(e.target.value)}
+                      placeholder={deal.next_action ? `Keep: ${deal.next_action}` : 'Start with a verb: call, send, ask…'}
+                      className="h-9 w-full rounded-lg border border-clay-hairline bg-transparent px-3 text-sm text-clay-ink placeholder:text-clay-muted focus:outline-none focus:ring-2 focus:ring-clay-ink/10"
+                    />
+                  </Row>
+                )}
+                <ContactPicker
+                  contacts={contacts}
+                  companies={companies}
+                  selectedCompanyId={deal?.company_id ?? initialCompanyId}
+                  selectedIds={selectedContactIds}
+                  onChange={setSelectedContactIds}
+                />
               </div>
             )}
-
-            {deal && laneRequiresDate && (
-              <p className="text-[11px] text-clay-muted">
-                {followupDate
-                  ? "This move sets the deal's follow-up to the date above."
-                  : "This move keeps the deal's existing follow-up date — add a date above to change it."}
-              </p>
-            )}
           </div>
-          </fieldset>
 
           {pendingDealUpdate && !saveError && (
             <div className="flex items-start gap-2 rounded-lg border border-clay-ochre/30 bg-clay-ochre/10 px-3 py-2.5 text-xs text-clay-ochre" role="status">
-              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
               <span>The interaction is saved. Finish the deal update before closing.</span>
             </div>
           )}
 
           {saveError && (
             <div className="flex items-start gap-2 rounded-lg border border-clay-error/30 bg-clay-error/10 px-3 py-2.5 text-xs text-clay-error" role="alert">
-              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
               <span>{saveError}</span>
             </div>
           )}
+        </fieldset>
 
-          <div className="flex items-center gap-3 pt-2 pb-4">
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-clay-ink text-clay-canvas text-sm font-medium rounded-lg motion-press min-h-[48px] disabled:opacity-60"
-            >
-              {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-              {saving ? 'Saving…' : pendingDealUpdate ? 'Retry deal update' : 'Save Interaction'}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={saving || !!pendingDealUpdate}
-              className="px-4 py-3 bg-clay-card text-clay-ink text-sm font-medium rounded-lg motion-press min-h-[48px] disabled:opacity-40"
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
-      </>
+        <div className="flex justify-end px-5 pb-5 pt-1">
+          <button
+            type="submit"
+            disabled={saving}
+            title="Save (⌘ Enter)"
+            className="inline-flex h-10 items-center gap-2 rounded-lg bg-clay-ink px-5 text-sm font-medium text-clay-canvas hover:opacity-90 disabled:opacity-60"
+          >
+            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+            {saving ? 'Saving…' : pendingDealUpdate ? 'Retry deal update' : 'Save'}
+          </button>
+        </div>
+      </form>
     </ModalShell>
   );
 }
