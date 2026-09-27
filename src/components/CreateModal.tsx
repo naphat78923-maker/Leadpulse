@@ -20,18 +20,20 @@ interface CreateModalProps {
   companies?: Company[];
   contacts?: Contact[];
   deals?: Deal[];
+  /** Pre-filled fields merged over the blank form each time it opens, e.g. { company_id }. */
+  initialValues?: Record<string, unknown>;
 }
 
-export default function CreateModal({ isOpen, onClose, onSave, type, companies = [], contacts = [], deals = [] }: CreateModalProps) {
-  const [form, setForm] = useState<Record<string, any>>(() => getInitialState(type));
+export default function CreateModal({ isOpen, onClose, onSave, type, companies = [], contacts = [], deals = [], initialValues }: CreateModalProps) {
+  const [form, setForm] = useState<Record<string, any>>(() => ({ ...getInitialState(type), ...initialValues }));
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
-      setForm(getInitialState(type));
+      setForm({ ...getInitialState(type), ...initialValues });
       setError(null);
     }
-  }, [isOpen, type]);
+  }, [isOpen, type, initialValues]);
 
   function getInitialState(t: ModalType) {
     switch (t) {
