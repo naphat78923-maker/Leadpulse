@@ -144,6 +144,18 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-clay-muted-soft);
 }
+/* Short staggered rise-in for dashboard cards and rows (delay set inline, capped).
+   Only transform and opacity animate; reduced motion gets no movement. */
+@keyframes lp-rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.lp-rise {
+  animation: lp-rise 260ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-rise { animation: none; }
+}
 /* Swipe rows (tabs, chips) scroll without a visible track. */
 .no-scrollbar {
   scrollbar-width: none;
