@@ -7,7 +7,6 @@ import { useCrm } from '@/components/CrmProvider';
 import CreateModal from '@/components/CreateModal';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import ThisWeekQueue from '@/components/ThisWeekQueue';
-import RecentChanges from '@/components/RecentChanges';
 import { PageTransition } from '@/components/motion';
 import { useToast } from '@/components/ToastProvider';
 import * as crm from '@/lib/crm';
@@ -166,6 +165,9 @@ export default function TodayPage() {
       <ThisWeekQueue
         queue={queue}
         today={todayKey}
+        deals={deals}
+        companies={companies}
+        meetings={meetings}
         loading={loading}
         sourceError={Boolean(error)}
         accountEventsUnavailable={accountEventsUnavailable}
@@ -173,7 +175,6 @@ export default function TodayPage() {
         onLogDeal={openDealLog}
         onLogCompany={openCompanyLog}
       />
-      <RecentChanges />
 
       <CreateModal
         isOpen={isCreateOpen}

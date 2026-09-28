@@ -98,13 +98,39 @@ describe('This week page', () => {
     render(<TodayPage />);
 
     expect(screen.getByRole('heading', { name: 'This week' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Overdue' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /Overdue/ }).getAttribute('aria-selected')).toBe('true');
     expect(screen.getByRole('heading', { name: 'Customers to check in with' })).toBeTruthy();
-    expect(screen.getByText('Check sample feedback')).toBeTruthy();
+    // The row is grouped by age under the Overdue tab.
+    expect(screen.getByRole('heading', { name: /This week · 1/ })).toBeTruthy();
+    expect(screen.getAllByText('Check sample feedback').length).toBeGreaterThan(0);
     expect(screen.getByRole('link', { name: /open deal:.*synthetic bakery/i }).getAttribute('href'))
       .toBe('/deals?deal=synthetic-deal-1');
     expect(screen.getByRole('link', { name: /open company:.*synthetic bakery/i }).getAttribute('href'))
       .toBe('/companies?company=synthetic-company-1');
+  });
+
+  it('shows the four stat cards and switches the list from a card', () => {
+    setCrm({
+      deals: [
+        makeDeal({ id: 'late', title: 'Late deal', followup_date: addDaysToDateKey(today(), -20) }),
+        makeDeal({ id: 'soon', title: 'Soon deal', followup_date: addDaysToDateKey(today(), 2) }),
+      ],
+      companies: [makeCompany()],
+      meetings: [{ id: 'm1', date: today(), type: 'call', direction: 'outbound', outcome: 'positive' }],
+    });
+    render(<TodayPage />);
+
+    const cards = screen.getByLabelText('This week at a glance');
+    expect(cards.textContent).toMatch(/Overdue\s*1/);
+    expect(cards.textContent).toMatch(/1 over 2 weeks/);
+    expect(cards.textContent).toMatch(/Due this week\s*1/);
+    expect(cards.textContent).toMatch(/Check-ins\s*1/);
+    expect(cards.textContent).toMatch(/Touches · 7 days\s*1/);
+    expect(screen.getByRole('heading', { name: /Over 2 weeks · 1/ })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /Due this week/ }));
+    expect(screen.getByRole('tab', { name: /This week/ }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('link', { name: /open deal: soon deal/i })).toBeTruthy();
   });
 
   it('keeps distinct deals for one company and honors parked/closed deal rules', () => {
@@ -118,19 +144,22 @@ describe('This week page', () => {
     });
     render(<TodayPage />);
 
-    expect(screen.getByText(/0 overdue · 2 due this week/)).toBeTruthy();
+    // Nothing overdue, so the This week tab opens with both deals.
+    expect(screen.getByRole('tab', { name: /This week\s*2/ }).getAttribute('aria-selected')).toBe('true');
     expect(screen.getByRole('link', { name: /open deal: sample request/i })).toBeTruthy();
     expect(screen.getByRole('link', { name: /open deal: saved quote/i })).toBeTruthy();
     expect(screen.queryByRole('link', { name: /parked one|closed one/i })).toBeNull();
   });
 
-  it('tucks undated deals into a collapsed group without inventing a date', () => {
+  it('keeps undated deals under their own tab without inventing a date', () => {
     setCrm({ deals: [makeDeal({ followup_date: null })] });
     render(<TodayPage />);
 
-    const summary = screen.getByText(/no follow-up date — set one or park them/i);
-    expect(summary.closest('details')?.open).toBe(false);
-    expect(screen.queryByRole('heading', { name: 'Overdue' })).toBeNull();
+    expect(screen.queryByRole('link', { name: /open deal/i })).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: /No date\s*1/ }));
+    expect(screen.getByRole('link', { name: /open deal: synthetic bakery/i })).toBeTruthy();
+    expect(screen.getByText(/set a follow-up date or park it/i)).toBeTruthy();
+    expect(screen.queryByText(/\d+d$/)).toBeNull();
   });
 
   it('flags a known contact hold and offers no Log shortcut for it', () => {
@@ -146,7 +175,7 @@ describe('This week page', () => {
     });
     render(<TodayPage />);
 
-    expect(screen.getByRole('heading', { name: 'Needs a decision' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /Needs a decision/ })).toBeTruthy();
     expect(screen.getByText(/on hold — check before contacting/i)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Log interaction for/i })).toBeNull();
   });
@@ -197,7 +226,7 @@ describe('This week page', () => {
     render(<TodayPage />);
 
     expect(screen.getByRole('link', { name: 'Open company: Historical Buyer' })).toBeTruthy();
-    expect(screen.getByText(/40 days past that cycle/)).toBeTruthy();
+    expect(screen.getByText(/40d past reorder/)).toBeTruthy();
   });
 
   it('shows source failures without claiming an empty list and retries through the provider', () => {

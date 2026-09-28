@@ -35,7 +35,7 @@ describe('RecentChanges', () => {
     };
     render(<RecentChanges />);
 
-    expect(screen.getByText('Recent changes you can undo')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Recent changes' })).toBeTruthy();
     expect(screen.queryByText('Viewed only')).toBeNull();
     expect(screen.queryByText('Too old')).toBeNull();
     expect(screen.getByText('Undone')).toBeTruthy();

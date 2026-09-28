@@ -34,19 +34,16 @@ export default function RecentChanges() {
   };
 
   return (
-    <details className="mt-3 min-w-0">
-      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-xl border border-dashed border-clay-hairline px-4 text-sm text-clay-muted hover:text-clay-ink">
-        <span>Recent changes you can undo</span>
-        <span className="shrink-0 rounded-full bg-clay-surface px-2 py-0.5 text-xs font-semibold">{changes.length}</span>
-      </summary>
-      <ul className="mt-2 divide-y divide-clay-hairline rounded-xl border border-clay-hairline bg-white dark:bg-clay-card">
+    <section aria-labelledby="recent-changes" className="rounded-xl border border-clay-hairline bg-white p-3.5 dark:bg-clay-card">
+      <h2 id="recent-changes" className="mb-1 text-sm font-semibold text-clay-ink">Recent changes</h2>
+      <ul>
         {changes.map((a) => {
           const undone = a.applied === false;
           return (
-            <li key={a.id} className={clsx('flex items-center gap-3 px-4 py-2.5', undone && 'opacity-60')}>
+            <li key={a.id} className={clsx('flex items-center gap-2 border-t border-clay-hairline py-2 first:border-t-0', undone && 'opacity-60')}>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-clay-ink break-words">{a.label}</p>
-                <p className="text-xs text-clay-muted">
+                <p className="truncate text-sm text-clay-ink">{a.label}</p>
+                <p className="truncate text-[11px] text-clay-muted">
                   {timeLabel(a.timestamp)}
                   {a.description ? ` · ${a.description}` : ''}
                 </p>
@@ -59,7 +56,7 @@ export default function RecentChanges() {
                   onClick={() => void undo(a.id)}
                   disabled={undoingId !== null}
                   aria-label={`Undo: ${a.label}`}
-                  className="shrink-0 min-h-11 rounded-lg border border-clay-hairline px-3 text-xs font-semibold text-clay-ink hover:border-clay-lavender disabled:opacity-50"
+                  className="h-8 shrink-0 rounded-lg px-2 text-xs font-medium text-clay-lavender hover:bg-clay-surface active:scale-[0.97] disabled:opacity-50"
                 >
                   {undoingId === a.id ? 'Undoing…' : 'Undo'}
                 </button>
@@ -68,6 +65,6 @@ export default function RecentChanges() {
           );
         })}
       </ul>
-    </details>
+    </section>
   );
 }
