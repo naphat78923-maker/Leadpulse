@@ -12,6 +12,7 @@ import {
   type LayaBuyerResponseLevel,
 } from '@/utils/laya-buyer-response';
 import { buildLayaSalesEvidence } from '@/utils/laya-evidence';
+import { parseLayaScore, type LayaScoreRun } from '@/utils/laya-answers';
 import { requestLocalLaya, type LayaConnection } from '@/utils/laya-transport';
 import clsx from 'clsx';
 
@@ -24,48 +25,25 @@ const LABELS: Record<LayaBuyerResponseLevel, string> = {
 };
 
 const RESPONSE_LEVELS = Object.keys(LABELS) as LayaBuyerResponseLevel[];
-const LOCAL_ENGINES = ['cpu_ne', 'cpu_gpu'] as const;
-function isLocalEngine(value: unknown): boolean {
-  return typeof value === 'string' && LOCAL_ENGINES.some(engine => engine === value);
-}
 
 type ScoreResult = {
-  question: 'buyer_response';
   recommendation: LayaBuyerResponseLevel;
-  confidence: number;
   probabilities: Record<LayaBuyerResponseLevel, number>;
-  usage?: { input_tokens?: number | null; output_tokens?: number | null };
-  trace: {
-    scored_input: { state: string; questions: Record<string, unknown> };
-    model: { repository: string; source_revision: string; package_sha256: string; engine: string };
-    scored_at: string;
-  };
+  usage: LayaScoreRun['usage'];
+  trace: LayaScoreRun['trace'];
 };
 
-function isProbability(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;
-}
-
-function isScoreResult(value: unknown): value is ScoreResult {
-  if (!value || typeof value !== 'object') return false;
-  const result = value as Partial<ScoreResult>;
-  return (
-    result.question === 'buyer_response' &&
-    typeof result.recommendation === 'string' &&
-    Object.prototype.hasOwnProperty.call(LABELS, result.recommendation) &&
-    isProbability(result.confidence) &&
-    !!result.probabilities &&
-    RESPONSE_LEVELS.every(level => isProbability(result.probabilities?.[level])) &&
-    !!result.trace && typeof result.trace === 'object' &&
-    typeof result.trace.scored_input?.state === 'string' &&
-    !!result.trace.scored_input?.questions &&
-    typeof result.trace.model?.repository === 'string' &&
-    typeof result.trace.model?.source_revision === 'string' &&
-    typeof result.trace.model?.package_sha256 === 'string' &&
-    isLocalEngine(result.trace.model?.engine) &&
-    typeof result.trace.scored_at === 'string' &&
-    Number.isFinite(Date.parse(result.trace.scored_at))
-  );
+/** The buyer_response answer out of a /score payload, checked against the exact request. */
+function toScoreResult(payload: unknown, requestBody: string): ScoreResult | null {
+  const run = parseLayaScore(payload, JSON.parse(requestBody));
+  const answer = run?.answers.buyer_response;
+  if (!run || answer?.type !== 'choice') return null;
+  return {
+    recommendation: answer.choice as LayaBuyerResponseLevel,
+    probabilities: answer.probabilities as Record<LayaBuyerResponseLevel, number>,
+    usage: run.usage,
+    trace: run.trace,
+  };
 }
 
 export default function LayaScoreCard({ deal, company }: { deal: Deal; company?: Company }) {
@@ -179,11 +157,9 @@ function LayaScoreRequest({
         const detail = payload && typeof payload === 'object' && 'error' in payload ? String(payload.error) : 'Could not score this buyer reply.';
         throw new Error(detail);
       }
-      if (!isScoreResult(payload)) throw new Error('Laya returned an incomplete score: buyer-response classification data is missing.');
-      if (JSON.stringify(payload.trace.scored_input) !== requestBody) {
-        throw new Error('Laya’s reported scored input did not match the request. No interpretation shown.');
-      }
-      setResult(payload);
+      const parsed = toScoreResult(payload, requestBody);
+      if (!parsed) throw new Error('Laya returned an incomplete score, or its reported input did not match the request. No interpretation shown.');
+      setResult(parsed);
       setHasScored(true);
       setShowHelp(false);
     } catch (reason) {

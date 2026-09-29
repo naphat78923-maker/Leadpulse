@@ -118,6 +118,12 @@ notes still need human review. A negated phrase such as "did not request no
 contact" may also be refused for manual review rather than interpreted as
 permission. No Laya output authorizes outreach.
 
+**Question source:** every frozen question and every accepted question set lives once,
+in `src/utils/laya-questions.json`. The TypeScript builder imports it and the worker
+loads it; `/score` accepts only those sets (`buyer`, `terminal`, `fit`) and answers with
+`{answers, usage, trace}`. Every client checks a response with the one shared parser in
+`src/utils/laya-answers.ts`, which also requires the trace to echo the exact request.
+
 **Judgment scope:** two frozen questions are active. Buyer-response `Choice` gives
 attention advice, not purchase odds, qualification or contact authorization. Deal-amount
 `Score` (six ordered ฿ buckets plus an honest "no amount stated" bucket) runs only in the
@@ -251,7 +257,7 @@ the downloaded model tokenizer/config files (no neural inference in this suite):
 
 ```bash
 /Users/pat/laya-coreml/.venv/bin/python -B -m unittest discover -s scripts -p 'test_laya_score_server.py' -v
-npm test -- src/utils/laya-buyer-response.test.ts src/utils/laya-buyer-response.contract.test.ts src/components/LayaScoreCard.test.tsx
+npm test -- src/utils/laya-buyer-response.test.ts src/utils/laya-buyer-response.contract.test.ts src/utils/laya-answers.test.ts src/components/LayaScoreCard.test.tsx
 ```
 
 The default paths match Pat's install. Override either only if Laya lives elsewhere;

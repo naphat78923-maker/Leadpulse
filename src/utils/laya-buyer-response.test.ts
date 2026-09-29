@@ -3,7 +3,6 @@ import {
   buildLayaBuyerResponseInput,
   buildLayaProspectFitInput,
   buyerResponseSignal,
-  scoreFitFromLaya,
 } from './laya-buyer-response';
 
 describe('buildLayaBuyerResponseInput', () => {
@@ -168,105 +167,5 @@ describe('buildLayaProspectFitInput', () => {
   it('preserves multilingual identity text without shortening', () => {
     const name = 'ร้านขนมเบเกอรี่ไทย'.repeat(20);
     expect(buildLayaProspectFitInput({ name, taxonomyVersion: 'v1' })!.state).toContain(name);
-  });
-});
-
-describe('scoreFitFromLaya', () => {
-  const validPayload = () => ({
-    question: 'archetype_select',
-    archetype: 'bakery_patisserie_brands',
-    answers: {
-      archetype_select: {
-        choice: 'bakery_patisserie_brands',
-        confidence: 0.8,
-        probabilities: {
-          plant_based_restaurant_cafe: 0.05,
-          modern_trade_specialty_retail: 0.05,
-          bakery_patisserie_brands: 0.8,
-          no_fit: 0.1,
-        },
-      },
-      role_support: { noul: 0.2, confidence: 0.8 },
-    },
-    usage: { input_tokens: 150, output_tokens: 0 },
-  });
-
-  it('accepts a well-formed fit run and returns both answers', () => {
-    const result = scoreFitFromLaya(validPayload());
-    expect(result).not.toBeNull();
-    expect(result!.archetype_select.choice).toBe('bakery_patisserie_brands');
-    expect(result!.archetype_select.probabilities.no_fit).toBe(0.1);
-    expect(result!.role_support).toEqual({ noul: 0.2, confidence: 0.8 });
-  });
-
-  it('rejects a buyer-response payload — the wrong question never parses as a fit', () => {
-    expect(scoreFitFromLaya({ question: 'buyer_response', answers: validPayload().answers })).toBeNull();
-    expect(scoreFitFromLaya({ question: 'archetype_select' })).toBeNull();
-    expect(scoreFitFromLaya(null)).toBeNull();
-    expect(scoreFitFromLaya('archetype_select')).toBeNull();
-  });
-
-  it('rejects missing, extra, or partial answers', () => {
-    const missing = validPayload();
-    delete (missing.answers as Record<string, unknown>).role_support;
-    expect(scoreFitFromLaya(missing)).toBeNull();
-
-    const extra = validPayload();
-    (extra.answers as Record<string, unknown>).deal_amount = { score: 0 };
-    expect(scoreFitFromLaya(extra)).toBeNull();
-
-    const partial = validPayload();
-    delete (partial.answers.archetype_select as Record<string, unknown>).probabilities;
-    expect(scoreFitFromLaya(partial)).toBeNull();
-  });
-
-  it('rejects a choice outside the frozen criteria', () => {
-    const unknown = validPayload();
-    unknown.answers.archetype_select.choice = 'foodservice_restaurant' as never;
-    expect(scoreFitFromLaya(unknown)).toBeNull();
-  });
-
-  it('rejects a distribution that does not key exactly like the criteria or total one', () => {
-    const wrongKey = validPayload();
-    wrongKey.answers.archetype_select.probabilities = {
-      plant_based_restaurant_cafe: 0.5,
-      modern_trade_specialty_retail: 0.05,
-      bakery_patisserie_brands: 0.05,
-      bakery: 0.4, // a key that is not in the frozen criteria
-    } as never;
-    expect(scoreFitFromLaya(wrongKey)).toBeNull();
-
-    const badTotal = validPayload();
-    badTotal.answers.archetype_select.probabilities.no_fit = 0.5; // 1.4 total
-    expect(scoreFitFromLaya(badTotal)).toBeNull();
-
-    const extraKey = validPayload();
-    (extraKey.answers.archetype_select.probabilities as Record<string, number>).other = 0;
-    expect(scoreFitFromLaya(extraKey)).toBeNull();
-  });
-
-  it('rejects out-of-range or non-finite values', () => {
-    const outOfRange = validPayload();
-    outOfRange.answers.role_support.noul = 1.5;
-    expect(scoreFitFromLaya(outOfRange)).toBeNull();
-
-    const nan = validPayload();
-    nan.answers.archetype_select.confidence = Number.NaN;
-    expect(scoreFitFromLaya(nan)).toBeNull();
-
-    const bool = validPayload();
-    bool.answers.archetype_select.confidence = true as never;
-    expect(scoreFitFromLaya(bool)).toBeNull();
-  });
-
-  it('rejects a noul whose confidence does not match max(noul, 1 − noul)', () => {
-    const mismatch = validPayload();
-    mismatch.answers.role_support = { noul: 0.2, confidence: 0.5 };
-    expect(scoreFitFromLaya(mismatch)).toBeNull();
-
-    // The identity holds at the boundaries too.
-    const boundary = validPayload();
-    boundary.answers.role_support = { noul: 0, confidence: 1 };
-    expect(scoreFitFromLaya(boundary)).not.toBeNull();
   });
 });

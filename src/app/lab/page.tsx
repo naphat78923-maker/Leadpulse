@@ -56,7 +56,8 @@ import {
   READINESS_DIMENSIONS,
   type ReviewContact,
 } from '@/utils/prospectReview';
-import { buildLayaProspectFitInput, scoreFitFromLaya } from '@/utils/laya-buyer-response';
+import { buildLayaProspectFitInput } from '@/utils/laya-buyer-response';
+import { fitAnswersFromRun, parseLayaScore } from '@/utils/laya-answers';
 import { requestLocalLaya } from '@/utils/laya-transport';
 import { TAXONOMY_VERSION } from '@/utils/companyRole';
 import ProspectReviewPanel from '@/components/ProspectReviewPanel';
@@ -545,9 +546,10 @@ export default function ProspectsPage() {
       });
       if (!fitInput) return 'Nothing to send: this account states no name, industry or tags.';
       try {
+        const sent = { state: fitInput.state, questions: fitInput.questions };
         const { ok, status, payload } = await requestLocalLaya('/score', {
           signal,
-          body: JSON.stringify({ state: fitInput.state, questions: fitInput.questions }),
+          body: JSON.stringify(sent),
         });
         if (!ok) {
           const p = payload as { status?: unknown; error?: unknown } | null;
@@ -557,7 +559,7 @@ export default function ProspectsPage() {
               : `The local worker refused this judgment (HTTP ${status}).`;
           return p?.status === 'not_scored' || status === 422 ? `Not judged: ${message}` : message;
         }
-        const answers = scoreFitFromLaya(payload);
+        const answers = fitAnswersFromRun(parseLayaScore(payload, sent));
         if (!answers) {
           return 'Laya returned an invalid score. A malformed payload is never rendered as a result.';
         }

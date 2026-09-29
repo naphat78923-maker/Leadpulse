@@ -28,8 +28,9 @@ const deal: Deal = {
 
 const success = (recommendation = 'requested_next_step') => ({
   ok: true,
-  json: async () => ({ question: 'buyer_response', recommendation, confidence: 0.4,
-    probabilities: { requested_next_step: 0.4, deferred: 0.2, declined: 0.2, no_commitment: 0.1, unclear: 0.1 },
+  json: async () => ({
+    answers: { buyer_response: { choice: recommendation, confidence: 0.4,
+      probabilities: { requested_next_step: 0.4, deferred: 0.2, declined: 0.2, no_commitment: 0.1, unclear: 0.1 } } },
     usage: { input_tokens: 93, output_tokens: 0 },
     trace: {
       scored_input: JSON.parse(String(vi.mocked(fetch).mock.calls.at(-1)?.[1]?.body)),
@@ -253,7 +254,8 @@ describe('LayaScoreCard', () => {
   it.each([NaN, Infinity, -0.1, 1.1])('rejects invalid option probability %s', async probability => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({
       ...(await success().json()),
-      probabilities: { requested_next_step: probability, deferred: 0.2, declined: 0.2, no_commitment: 0.1, unclear: 0.1 },
+      answers: { buyer_response: { choice: 'requested_next_step', confidence: 0.4,
+        probabilities: { requested_next_step: probability, deferred: 0.2, declined: 0.2, no_commitment: 0.1, unclear: 0.1 } } },
     }) }));
     render(<LayaScoreCard deal={deal} />);
     fireEvent.click(screen.getByRole('button', { name: 'Score buyer reply with Laya' }));
@@ -439,8 +441,8 @@ describe('LayaScoreCard', () => {
       ok: true,
       json: async () => ({
         ...(await success().json()),
-        recommendation: 'requested_next_step', confidence: 0.4376,
-        probabilities: { requested_next_step: 0.4376, deferred: 0.1, declined: 0.1, no_commitment: 0.2, unclear: 0.1624 },
+        answers: { buyer_response: { choice: 'requested_next_step', confidence: 0.4376,
+          probabilities: { requested_next_step: 0.4376, deferred: 0.1, declined: 0.1, no_commitment: 0.2, unclear: 0.1624 } } },
         usage: { input_tokens: 93, output_tokens: 0 },
       }),
     });

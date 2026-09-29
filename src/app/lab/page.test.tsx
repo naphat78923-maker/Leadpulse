@@ -337,7 +337,6 @@ describe('Prospects review queue', () => {
         ok: true,
         status: 200,
         json: async () => ({
-          question: 'archetype_select',
           answers: {
             archetype_select: {
               choice: 'no_fit',
@@ -350,6 +349,11 @@ describe('Prospects review queue', () => {
               },
             },
             role_support: { noul: 0.9, confidence: 0.9 },
+          },
+          trace: {
+            scored_input: JSON.parse(String(init.body)),
+            model: { repository: 'laya-local', source_revision: 'rev1', package_sha256: 'sha256', engine: 'cpu_gpu' },
+            scored_at: '2026-09-24T00:00:00Z',
           },
         }),
       };
@@ -373,11 +377,10 @@ describe('Prospects review queue', () => {
   it('renders a judged archetype with its distribution and the support check', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => ({
+      vi.fn(async (_url: unknown, init: { body?: string }) => ({
         ok: true,
         status: 200,
         json: async () => ({
-          question: 'archetype_select',
           answers: {
             archetype_select: {
               choice: 'plant_based_restaurant_cafe',
@@ -390,6 +393,11 @@ describe('Prospects review queue', () => {
               },
             },
             role_support: { noul: 0.2, confidence: 0.8 },
+          },
+          trace: {
+            scored_input: JSON.parse(String(init.body)),
+            model: { repository: 'laya-local', source_revision: 'rev1', package_sha256: 'sha256', engine: 'cpu_gpu' },
+            scored_at: '2026-09-24T00:00:00Z',
           },
         }),
       }))

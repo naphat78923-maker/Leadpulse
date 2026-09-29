@@ -61,8 +61,8 @@ interface MutableScorePayload {
   trace: { scored_input: { state: string; questions: Record<string, Record<string, unknown>> } };
 }
 
-// The worker echoes every answer plus the legacy buyer_response top-level
-// fields — the exact /score shape for the combined seven-question run.
+// The worker echoes every answer — the exact /score shape for the combined
+// seven-question run.
 // `mutate` corrupts a copy so one payload shape covers every rejection case.
 const success = (mutate?: (payload: MutableScorePayload) => void) => ({
   ok: true,
@@ -71,10 +71,6 @@ const success = (mutate?: (payload: MutableScorePayload) => void) => ({
     // The trace echoes the request body, so it is built here — when json() is
     // read, after this run's fetch call exists — then `mutate` corrupts it.
     const payload = {
-      question: 'buyer_response',
-      recommendation: 'requested_next_step',
-      confidence: 0.4,
-      probabilities: buyerProbabilities,
       answers: {
         buyer_response: {
           choice: 'requested_next_step',
