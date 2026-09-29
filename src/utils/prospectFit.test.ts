@@ -4,6 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildProspectFitReport,
+  FIT_THRESHOLD,
   judgmentFromAnswers,
   orderCandidates,
   renderProspectFitMarkdown,
@@ -33,19 +34,14 @@ export function row(over: Partial<ProspectSourceRow> & { company_id: string }): 
   };
 }
 
-export function answers(choice: 'bakery_patisserie_brands' | 'no_fit', noul = 0.2): LayaFitAnswers {
+export function answers(choice: 'bakery_patisserie_brands' | 'no_fit', bakery = 0.8): LayaFitAnswers {
+  const noul = (value: number) => ({ noul: value, confidence: Math.max(value, 1 - value) });
   return {
-    archetype_select: {
-      choice,
-      confidence: 0.8,
-      probabilities: {
-        plant_based_restaurant_cafe: 0.05,
-        modern_trade_specialty_retail: 0.05,
-        bakery_patisserie_brands: choice === 'bakery_patisserie_brands' ? 0.8 : 0.05,
-        no_fit: choice === 'no_fit' ? 0.85 : 0.1,
-      },
+    support: {
+      plant_based_restaurant_cafe: noul(0.05),
+      modern_trade_specialty_retail: noul(0.1),
+      bakery_patisserie_brands: noul(choice === 'bakery_patisserie_brands' ? bakery : 0.2),
     },
-    role_support: { noul, confidence: Math.max(noul, 1 - noul) },
   };
 }
 
@@ -96,6 +92,41 @@ describe('buildProspectFitReport', () => {
 });
 
 
+describe('judgmentFromAnswers', () => {
+  const at = new Date('2026-09-29T00:00:00Z');
+
+  it('picks the highest fit Noul at or above the threshold, with its published name', () => {
+    const j = judgmentFromAnswers('c1', answers('bakery_patisserie_brands', 0.82), at);
+    expect(j.archetype_id).toBe('bakery_patisserie_brands');
+    expect(j.archetype_name).toBeTruthy();
+    expect(j.archetype_confidence).toBe(0.82);
+    expect(j.support).toEqual({
+      plant_based_restaurant_cafe: 0.05,
+      modern_trade_specialty_retail: 0.1,
+      bakery_patisserie_brands: 0.82,
+    });
+    expect(j.judged_at).toBe(at.toISOString());
+  });
+
+  it('is no_fit with a null name when no Noul reaches the threshold', () => {
+    const j = judgmentFromAnswers('c1', answers('bakery_patisserie_brands', FIT_THRESHOLD - 0.01), at);
+    expect(j.archetype_id).toBe('no_fit');
+    expect(j.archetype_name).toBeNull();
+    expect(j.archetype_confidence).toBeCloseTo(1 - (FIT_THRESHOLD - 0.01));
+  });
+
+  it('counts a Noul exactly at the threshold as a fit', () => {
+    expect(judgmentFromAnswers('c1', answers('bakery_patisserie_brands', FIT_THRESHOLD), at).archetype_id)
+      .toBe('bakery_patisserie_brands');
+  });
+
+  it('breaks two supported archetypes by the higher Noul', () => {
+    const both = answers('bakery_patisserie_brands', 0.85);
+    both.support.modern_trade_specialty_retail = { noul: 0.82, confidence: 0.82 };
+    expect(judgmentFromAnswers('c1', both, at).archetype_id).toBe('bakery_patisserie_brands');
+  });
+});
+
 describe('orderCandidates', () => {
   const candidates = buildProspectFitReport(
     [
@@ -111,14 +142,11 @@ describe('orderCandidates', () => {
     archetype_id: 'bakery_patisserie_brands' as const,
     archetype_name: 'Bakery, patisserie and multi-line dessert brands',
     archetype_confidence: confidence,
-    probabilities: {
+    support: {
       plant_based_restaurant_cafe: 0.05,
       modern_trade_specialty_retail: 0.05,
       bakery_patisserie_brands: confidence,
-      no_fit: 1 - confidence - 0.1,
     },
-    role_support: 0.1,
-    role_support_confidence: 0.9,
     judged_at: '2026-09-11T00:00:00.000Z',
   });
 

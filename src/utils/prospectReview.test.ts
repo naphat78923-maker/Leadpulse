@@ -149,14 +149,11 @@ describe('filterProspects', () => {
     archetype_id: 'plant_based_restaurant_cafe' as const,
     archetype_name: 'Plant-based restaurant and cafe kitchens',
     archetype_confidence: 0.85,
-    probabilities: {
+    support: {
       plant_based_restaurant_cafe: 0.85,
       modern_trade_specialty_retail: 0.05,
       bakery_patisserie_brands: 0.05,
-      no_fit: 0.05,
     },
-    role_support: 0.15,
-    role_support_confidence: 0.85,
     judged_at: '2026-09-26T00:00:00.000Z',
   };
 
@@ -232,14 +229,11 @@ describe('judgment options', () => {
         archetype_id: 'bakery_patisserie_brands' as const,
         archetype_name: 'Bakery',
         archetype_confidence: 0.8,
-        probabilities: {
+        support: {
           plant_based_restaurant_cafe: 0.05,
           modern_trade_specialty_retail: 0.05,
           bakery_patisserie_brands: 0.8,
-          no_fit: 0.1,
         },
-        role_support: 0.2,
-        role_support_confidence: 0.8,
         judged_at: '2026-09-26T00:00:00.000Z',
       },
     };

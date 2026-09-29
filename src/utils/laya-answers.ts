@@ -10,7 +10,7 @@
 //   • `answers` has one entry per sent question and nothing else,
 //   • each answer fits its question's own type and options.
 
-import type { LayaArchetypeChoice, LayaFitAnswers } from './laya-buyer-response';
+import { LAYA_PUBLISHED_ARCHETYPES, type LayaFitAnswers, type LayaPublishedArchetype } from './laya-buyer-response';
 
 export type LayaChoiceAnswer = {
   type: 'choice';
@@ -43,7 +43,7 @@ export interface LayaScoreRun {
 
 type QuestionDef = {
   type: 'choice' | 'noul' | 'score';
-  criteria: Record<string, string> | readonly string[];
+  criteria?: Record<string, string> | readonly string[];
 };
 
 // The worker enforces the same tolerance.
@@ -82,7 +82,7 @@ function parseAnswer(def: QuestionDef, raw: unknown): LayaAnswer | null {
   const distribution = raw.probabilities;
 
   if (def.type === 'choice') {
-    const options = Object.keys(def.criteria);
+    const options = Object.keys(def.criteria ?? {});
     const choice = raw.choice;
     if (typeof choice !== 'string' || !options.includes(choice)) return null;
     if (Object.keys(distribution).length !== options.length) return null;
@@ -96,7 +96,7 @@ function parseAnswer(def: QuestionDef, raw: unknown): LayaAnswer | null {
     return { type: 'choice', choice, confidence, probabilities };
   }
 
-  const criteria = def.criteria as readonly string[];
+  const criteria = (def.criteria ?? []) as readonly string[];
   const score = raw.score;
   if (!isRecord(raw.legend) || typeof score !== 'number' || !Number.isFinite(score)) return null;
   const legendMap = raw.legend;
@@ -162,17 +162,14 @@ export function parseLayaScore(
   };
 }
 
-/** The prospect-fit pair out of a parsed run, or null when either is missing. */
+/** The fit Noul for every published archetype, or null when any is missing. */
 export function fitAnswersFromRun(run: LayaScoreRun | null): LayaFitAnswers | null {
-  const select = run?.answers.archetype_select;
-  const support = run?.answers.role_support;
-  if (select?.type !== 'choice' || support?.type !== 'noul') return null;
-  return {
-    archetype_select: {
-      choice: select.choice as LayaArchetypeChoice,
-      confidence: select.confidence,
-      probabilities: select.probabilities as Record<LayaArchetypeChoice, number>,
-    },
-    role_support: { noul: support.noul, confidence: support.confidence },
-  };
+  if (!run) return null;
+  const support = {} as LayaFitAnswers['support'];
+  for (const archetype of LAYA_PUBLISHED_ARCHETYPES) {
+    const answer = run.answers[`fit_${archetype}`];
+    if (answer?.type !== 'noul') return null;
+    support[archetype as LayaPublishedArchetype] = { noul: answer.noul, confidence: answer.confidence };
+  }
+  return { support };
 }

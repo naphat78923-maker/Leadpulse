@@ -3,6 +3,7 @@ import {
   buildLayaBuyerResponseInput,
   buildLayaProspectFitInput,
   buyerResponseSignal,
+  LAYA_PUBLISHED_ARCHETYPES,
 } from './laya-buyer-response';
 
 describe('buildLayaBuyerResponseInput', () => {
@@ -73,26 +74,11 @@ describe('buildLayaBuyerResponseInput', () => {
     expect(input!.state).not.toContain('contacted');
   });
 
-  it('adds the recorded deal value only when the terminal opts in', () => {
+  it('never adds a deal value — deal size is bucketed in code, not asked of the model', () => {
     const deal = { product: 'Butter', last_outcome: null, buyer_reply: 'Please quote 20 kg.', value: 30000 };
-    // The score card keeps the exact eval-measured state — value never leaks in.
-    expect(buildLayaBuyerResponseInput({ deal })!.state).not.toContain('Deal value');
-    expect(buildLayaBuyerResponseInput({ deal, includeDealValue: false })!.state)
-      .not.toContain('Deal value');
-    expect(buildLayaBuyerResponseInput({ deal, includeDealValue: true })!.state).toBe(
-      'We supply Butter to this account. The buyer\'s latest reply: "Please quote 20 kg." Deal value on record: ฿30,000.',
+    expect(buildLayaBuyerResponseInput({ deal })!.state).toBe(
+      'We supply Butter to this account. The buyer\'s latest reply: "Please quote 20 kg."',
     );
-  });
-
-  it('skips the value sentence for null, zero or non-finite values and appends it to note states too', () => {
-    for (const value of [null, 0, -5, Number.NaN, Number.POSITIVE_INFINITY]) {
-      expect(
-        buildLayaBuyerResponseInput({ deal: { ...baseDeal, value }, includeDealValue: true })!.state,
-      ).not.toContain('Deal value on record');
-    }
-    expect(
-      buildLayaBuyerResponseInput({ deal: { ...baseDeal, value: 1500.5 }, includeDealValue: true })!.state,
-    ).toContain(' Deal value on record: ฿1,501.');
   });
 });
 
@@ -115,30 +101,27 @@ describe('buyerResponseSignal — shipped 2-class slice (eval report option 1)',
 });
 
 describe('buildLayaProspectFitInput', () => {
-  it('builds the sentence-form identity with the criteria-derived candidate archetypes', () => {
-    const input = buildLayaProspectFitInput({
-      name: "April's Bakery",
-      industry: 'Bakery',
-      tags: ['bakery', 'chain'],
-      taxonomyVersion: 'v1',
-    });
-    expect(input).not.toBeNull();
-    expect(input!.state).toBe(
-      'Candidate account: name "April\'s Bakery", industry "Bakery", tags "bakery | chain". ' +
-        'Candidate archetypes (taxonomy v1): plant_based_restaurant_cafe, modern_trade_specialty_retail, bakery_patisserie_brands.',
-    );
-    // The state's candidate list and the question's criteria cannot drift: both
-    // derive from the same frozen criteria (minus no_fit).
-    expect(input!.state).not.toContain('no_fit');
-    expect(Object.keys(input!.questions)).toEqual(['archetype_select', 'role_support']);
+  it('builds a plain sentence of the identity, with one fit Noul per published archetype', () => {
+    const input = buildLayaProspectFitInput({ name: "April's Bakery", industry: 'Bakery', tags: ['bakery', 'chain'] });
+    expect(input!.state).toBe('The account is named "April\'s Bakery"; its industry is "Bakery"; its tags are "bakery, chain".');
+    expect(Object.keys(input!.questions)).toEqual([
+      'fit_plant_based_restaurant_cafe',
+      'fit_modern_trade_specialty_retail',
+      'fit_bakery_patisserie_brands',
+    ]);
   });
 
-  it('carries only the fields the question restricts itself to — name, industry, tags', () => {
+  it('never names an archetype in the state — that made every fit Noul answer yes', () => {
+    const state = buildLayaProspectFitInput({ name: 'Green Eats', industry: 'Restaurant', tags: ['vegan'] })!.state;
+    for (const archetype of LAYA_PUBLISHED_ARCHETYPES) expect(state).not.toContain(archetype);
+    expect(state).not.toMatch(/archetype/i);
+  });
+
+  it('carries only name, industry and tags', () => {
     const input = buildLayaProspectFitInput({
       name: 'Green Eats',
       industry: 'Restaurant',
       tags: ['vegan'],
-      taxonomyVersion: 'v1',
       website: 'https://example.com',
       status: 'prospect',
     } as never);
@@ -147,25 +130,17 @@ describe('buildLayaProspectFitInput', () => {
   });
 
   it('omits absent identity fields instead of inventing them', () => {
-    const input = buildLayaProspectFitInput({
-      name: null,
-      industry: '  ',
-      tags: ['', ' plant-based '],
-      taxonomyVersion: 'v1',
-    });
-    expect(input!.state).toBe(
-      'Candidate account: tags "plant-based". ' +
-        'Candidate archetypes (taxonomy v1): plant_based_restaurant_cafe, modern_trade_specialty_retail, bakery_patisserie_brands.',
-    );
+    const input = buildLayaProspectFitInput({ name: null, industry: '  ', tags: ['', ' plant-based '] });
+    expect(input!.state).toBe('its tags are "plant-based".');
   });
 
   it('returns null when the account states nothing — a code-layer needs_evidence safeguard', () => {
-    expect(buildLayaProspectFitInput({ taxonomyVersion: 'v1' })).toBeNull();
-    expect(buildLayaProspectFitInput({ name: '  ', industry: null, tags: [], taxonomyVersion: 'v1' })).toBeNull();
+    expect(buildLayaProspectFitInput({})).toBeNull();
+    expect(buildLayaProspectFitInput({ name: '  ', industry: null, tags: [] })).toBeNull();
   });
 
   it('preserves multilingual identity text without shortening', () => {
     const name = 'ร้านขนมเบเกอรี่ไทย'.repeat(20);
-    expect(buildLayaProspectFitInput({ name, taxonomyVersion: 'v1' })!.state).toContain(name);
+    expect(buildLayaProspectFitInput({ name })!.state).toContain(name);
   });
 });

@@ -68,8 +68,8 @@ console.log(JSON.stringify({
   refusal:buildBuyer({buyer_reply:'Buyer asked for a sample price but later declined and requested no contact'}),
   buyer_verbatim:buildBuyer({buyer_reply:'Please send us a quotation for 20 kg of salted butter.'}),
   buyer_note:buildBuyer({last_outcome:'Buyer asked for a sample price'}),
-  fit:post(m.exports.buildLayaProspectFitInput({name:"April's Bakery",industry:"Bakery",tags:["bakery","chain"],taxonomyVersion:"v1"})),
-  combined:(() => {const terminal = m.exports.buildLayaBuyerResponseInput({deal:{product:'Butter',last_outcome:null,buyer_reply:'Please send us a quotation for 20 kg of salted butter.',value:30000},includeDealValue:true});return {state:terminal.state,questions:m.exports.LAYA_ALL_FROZEN_QUESTIONS};})(),
+  fit:post(m.exports.buildLayaProspectFitInput({name:"April's Bakery",industry:"Bakery",tags:["bakery","chain"]})),
+  combined:(() => {const terminal = m.exports.buildLayaBuyerResponseInput({deal:{product:'Butter',last_outcome:null,buyer_reply:'Please send us a quotation for 20 kg of salted butter.'}});return {state:terminal.state,questions:m.exports.LAYA_ALL_FROZEN_QUESTIONS};})(),
 }));
 """
         cls.inputs = json.loads(subprocess.check_output(['node', '-e', javascript], cwd=ROOT, text=True))
@@ -266,30 +266,13 @@ console.log(JSON.stringify({
                 ['requested_next_step', 'deferred', 'declined', 'no_commitment', 'unclear'], 0.2)}},
             'usage': {'input_tokens': 60, 'output_tokens': 0}}
 
-    def deal_amount_probabilities(self):
-        return {'0': 0.05, '1': 0.10, '2': 0.25, '3': 0.30, '4': 0.20, '5': 0.05, '6': 0.05}
-
-    def deal_amount_answer(self, criteria, overrides=None):
-        probabilities = self.deal_amount_probabilities()
-        answer = {
-            'type': 'score',
-            'score': sum(int(level) * probability for level, probability in probabilities.items()),
-            'legend': {str(index): text for index, text in enumerate(criteria)},
-            'probabilities': probabilities,
-            'confidence': 0.5,
-        }
-        if overrides:
-            answer.update(overrides)
-        return answer
-
-    def combined_result(self, criteria, deal_overrides=None):
+    def combined_result(self):
         questions = self.inputs['combined']['questions']
         strength_criteria = questions['obstacle_strength']['criteria']
         return {'answers': {
             'buyer_response': {'choice': 'requested_next_step', 'confidence': 0.7,
                 'probabilities': dict.fromkeys(
                     ['requested_next_step', 'deferred', 'declined', 'no_commitment', 'unclear'], 0.2)},
-            'deal_amount': self.deal_amount_answer(criteria, deal_overrides),
             'next_step_commitment': {'type': 'noul', 'noul': 0.7, 'confidence': 0.7},
             'sample_trial_report': {'type': 'choice', 'choice': 'testing_planned', 'confidence': 0.55,
                 'probabilities': dict.fromkeys(
@@ -305,20 +288,19 @@ console.log(JSON.stringify({
                 'probabilities': {'0': 0.1, '1': 0.6, '2': 0.2, '3': 0.1}},
         }, 'usage': {'input_tokens': 200, 'output_tokens': 0}}
 
-    def test_terminal_state_carries_the_recorded_deal_value_while_buyer_only_does_not(self):
-        self.assertIn('Deal value on record: ฿30,000.', self.inputs['combined']['state'])
+    def test_terminal_state_carries_no_deal_value_and_asks_no_deal_amount(self):
+        # Deal size is bucketed in code from the CRM value, never asked of the model.
+        self.assertNotIn('Deal value', self.inputs['combined']['state'])
         self.assertEqual(list(self.inputs['combined']['questions']), [
-            'buyer_response', 'deal_amount', 'next_step_commitment', 'sample_trial_report',
+            'buyer_response', 'next_step_commitment', 'sample_trial_report',
             'commercial_info_request', 'obstacle_kind', 'obstacle_strength',
         ])
-        self.assertNotIn('Deal value on record', self.inputs['baseline']['state'])
 
     def test_combined_frozen_questions_score_in_one_pass(self):
         payload = self.inputs['combined']
-        criteria = payload['questions']['deal_amount']['criteria']
         original = self.agent.predict.return_value
         try:
-            self.agent.predict.return_value = self.combined_result(criteria)
+            self.agent.predict.return_value = self.combined_result()
             status, data = self.post(payload)
             self.assertEqual(status, 200)
             # No legacy top-level fields: every client reads `answers`.
@@ -326,7 +308,7 @@ console.log(JSON.stringify({
             self.assertEqual(data['answers']['buyer_response']['choice'], 'requested_next_step')
             # Every posted question comes back under `answers`, validated.
             self.assertEqual(set(data['answers']), {
-                'buyer_response', 'deal_amount', 'next_step_commitment', 'sample_trial_report',
+                'buyer_response', 'next_step_commitment', 'sample_trial_report',
                 'commercial_info_request', 'obstacle_kind', 'obstacle_strength',
             })
             self.assertEqual(data['answers']['next_step_commitment']['noul'], 0.7)
@@ -335,60 +317,20 @@ console.log(JSON.stringify({
             self.assertEqual(data['answers']['obstacle_strength']['legend'],
                              {str(index): text for index, text in
                               enumerate(payload['questions']['obstacle_strength']['criteria'])})
-            deal = data['answers']['deal_amount']
-            self.assertEqual(deal['legend'], {str(index): text for index, text in enumerate(criteria)})
-            self.assertAlmostEqual(deal['score'],
-                                   sum(int(level) * value for level, value in deal['probabilities'].items()),
-                                   places=9)
             self.assertEqual(data['trace']['scored_input'], payload)
             self.agent.predict.assert_called_once_with(payload['state'], payload['questions'])
         finally:
             self.agent.predict.return_value = original
 
-    def test_malformed_deal_amount_answers_never_become_a_recommendation(self):
+    def test_rejects_partial_retired_or_tampered_combined_schema_without_inference(self):
         payload = self.inputs['combined']
-        criteria = payload['questions']['deal_amount']['criteria']
-        valid = self.combined_result(criteria)
-        probabilities = self.deal_amount_probabilities()
-        wrong_legend = {str(index): text for index, text in enumerate(criteria)}
-        wrong_legend['0'] = 'Altered bucket'
-        extra_key = dict(probabilities)
-        extra_key['7'] = 0.0
-        mistotaled = dict(probabilities)
-        mistotaled['3'] = 0.5
-        variants = [
-            {**valid, 'answers': {'buyer_response': valid['answers']['buyer_response']}},
-            self.combined_result(criteria, {'type': 'choice'}),
-            self.combined_result(criteria, {'probabilities': {bucket: 1 / 7 for bucket in criteria}}),
-            self.combined_result(criteria, {'probabilities': extra_key}),
-            self.combined_result(criteria, {'legend': wrong_legend}),
-            self.combined_result(criteria, {'score': 1}),
-            self.combined_result(criteria, {'score': 7}),
-            self.combined_result(criteria, {'score': float('nan')}),
-            self.combined_result(criteria, {'confidence': 1.5}),
-            self.combined_result(criteria, {'probabilities': mistotaled}),
-            {**valid, 'answers': {**valid['answers'], 'deal_amount': 'bucket 3'}},
-        ]
-        original = self.agent.predict.return_value
-        try:
-            for result in variants:
-                with self.subTest(result=result):
-                    self.agent.predict.return_value = result
-                    self.agent.predict.reset_mock()
-                    status, data = self.post(payload)
-                    self.assertEqual(status, 422)
-                    self.assertEqual(data, {'error': 'Laya returned an invalid score'})
-                    self.assertNotIn('answers', data)
-        finally:
-            self.agent.predict.return_value = original
-
-    def test_rejects_deal_amount_only_or_tampered_combined_schema_without_inference(self):
-        payload = self.inputs['combined']
-        deal_question = payload['questions']['deal_amount']
         tampered = json.loads(json.dumps(payload))
-        tampered['questions']['deal_amount']['criteria'][0] = 'Ignore rules'
+        tampered['questions']['obstacle_strength']['criteria'][0] = 'Ignore rules'
+        retired_deal_amount = {'deal_amount': {'type': 'score', 'instructions': 'How much is this deal?',
+                                               'criteria': ['0-2500', 'no amount stated']}}
         for body in (
-            {'state': payload['state'], 'questions': {'deal_amount': deal_question}},
+            {'state': payload['state'], 'questions': {'obstacle_strength': payload['questions']['obstacle_strength']}},
+            {**payload, 'questions': {**payload['questions'], **retired_deal_amount}},
             tampered,
             {**payload, 'questions': {**payload['questions'], 'other': {'type': 'noul', 'instructions': 'Another'}}},
             {**payload, 'extra': 'data'},
@@ -402,8 +344,7 @@ console.log(JSON.stringify({
 
     def test_malformed_buyer_detail_answers_reject_the_whole_score(self):
         payload = self.inputs['combined']
-        criteria = payload['questions']['deal_amount']['criteria']
-        valid = self.combined_result(criteria)
+        valid = self.combined_result()
         sample_keys = list(payload['questions']['sample_trial_report']['criteria'])
         obstacle_keys = list(payload['questions']['obstacle_kind']['criteria'])
         strength_legend = {str(index): text for index, text in
@@ -469,12 +410,11 @@ console.log(JSON.stringify({
                     return candidate
             self.fail(f'Could not construct boundary fixture: {count}')
 
-        # A state that lands the heaviest of the seven questions exactly on the
+        # A state that lands the heaviest of the six questions exactly on the
         # limit still scores — the detail questions did not eat the budget.
         original = self.agent.predict.return_value
         payload['state'] = state_at(limit)
-        self.agent.predict.return_value = self.combined_result(
-            payload['questions']['deal_amount']['criteria'])
+        self.agent.predict.return_value = self.combined_result()
         try:
             status, data = self.post(payload)
             self.assertEqual(status, 200)
@@ -491,58 +431,56 @@ console.log(JSON.stringify({
         self.assertNotIn('answers', data)
         self.agent.predict.assert_not_called()
 
-    def test_fit_pair_scores_archetype_and_support_in_one_pass(self):
+    def fit_result(self):
+        return {
+            'answers': {
+                'fit_plant_based_restaurant_cafe': {'type': 'noul', 'noul': 0.01, 'confidence': 0.99},
+                'fit_modern_trade_specialty_retail': {'type': 'noul', 'noul': 0.1, 'confidence': 0.9},
+                'fit_bakery_patisserie_brands': {'type': 'noul', 'noul': 0.82, 'confidence': 0.82},
+            },
+            'usage': {'input_tokens': 150, 'output_tokens': 0},
+        }
+
+    def test_fit_nouls_score_in_one_pass(self):
         payload = self.inputs['fit']
+        self.assertEqual(payload['state'], 'The account is named "April\'s Bakery"; its industry is "Bakery"; its tags are "bakery, chain".')
         original = self.agent.predict.return_value
         try:
-            self.agent.predict.return_value = {
-                'answers': {
-                    'archetype_select': {'choice': 'bakery_patisserie_brands', 'confidence': 0.8,
-                        'probabilities': {'plant_based_restaurant_cafe': 0.05,
-                            'modern_trade_specialty_retail': 0.05,
-                            'bakery_patisserie_brands': 0.8, 'no_fit': 0.1}},
-                    'role_support': {'noul': 0.2, 'confidence': 0.8},
-                },
-                'usage': {'input_tokens': 150, 'output_tokens': 0},
-            }
+            self.agent.predict.return_value = self.fit_result()
             status, data = self.post(payload)
             self.assertEqual(status, 200)
             self.assertEqual(set(data), {'answers', 'usage', 'trace'})
-            self.assertEqual(data['answers']['archetype_select']['choice'], 'bakery_patisserie_brands')
-            self.assertEqual(set(data['answers']), {'archetype_select', 'role_support'})
+            self.assertEqual(set(data['answers']), {
+                'fit_plant_based_restaurant_cafe', 'fit_modern_trade_specialty_retail', 'fit_bakery_patisserie_brands'})
             self.assertEqual(data['trace']['scored_input'], payload)
             self.agent.predict.assert_called_once_with(payload['state'], payload['questions'])
         finally:
             self.agent.predict.return_value = original
 
+    def test_retired_fit_pair_is_rejected_without_inference(self):
+        retired = {'archetype_select': {'type': 'choice', 'instructions': 'Which published archetype does this account fit?',
+                                        'criteria': {'no_fit': 'none'}},
+                   'role_support': {'type': 'noul', 'instructions': 'Is the assigned archetype unsupported?'}}
+        status, data = self.post({'state': self.inputs['fit']['state'], 'questions': retired})
+        self.assertEqual(status, 400)
+        self.assertEqual(data, {'error': 'Unsupported scoring schema'})
+        self.agent.predict.assert_not_called()
+
     def test_fit_rejects_partial_or_malformed_native_outputs(self):
         payload = self.inputs['fit']
-        valid = {
-            'answers': {
-                'archetype_select': {'choice': 'bakery_patisserie_brands', 'confidence': 0.8,
-                    'probabilities': {'plant_based_restaurant_cafe': 0.05,
-                        'modern_trade_specialty_retail': 0.05,
-                        'bakery_patisserie_brands': 0.8, 'no_fit': 0.1}},
-                'role_support': {'noul': 0.2, 'confidence': 0.8},
-            },
-            'usage': {'input_tokens': 150, 'output_tokens': 0},
-        }
         variants = []
-        missing = json.loads(json.dumps(valid))
-        del missing['answers']['role_support']
+        missing = self.fit_result()
+        del missing['answers']['fit_bakery_patisserie_brands']
         variants.append(missing)
-        wrong_choice = json.loads(json.dumps(valid))
-        wrong_choice['answers']['archetype_select']['choice'] = 'foodservice_restaurant'
-        variants.append(wrong_choice)
-        mistotaled = json.loads(json.dumps(valid))
-        mistotaled['answers']['archetype_select']['probabilities']['no_fit'] = 0.5
-        variants.append(mistotaled)
-        bad_noul = json.loads(json.dumps(valid))
-        bad_noul['answers']['role_support']['noul'] = 1.5
+        bad_noul = self.fit_result()
+        bad_noul['answers']['fit_bakery_patisserie_brands'] = {'type': 'noul', 'noul': 1.5, 'confidence': 1.5}
         variants.append(bad_noul)
-        bad_confidence = json.loads(json.dumps(valid))
-        bad_confidence['answers']['role_support']['confidence'] = 0.5
+        bad_confidence = self.fit_result()
+        bad_confidence['answers']['fit_bakery_patisserie_brands']['confidence'] = 0.5
         variants.append(bad_confidence)
+        not_a_dict = self.fit_result()
+        not_a_dict['answers']['fit_modern_trade_specialty_retail'] = 'yes'
+        variants.append(not_a_dict)
         original = self.agent.predict.return_value
         try:
             for result in variants:

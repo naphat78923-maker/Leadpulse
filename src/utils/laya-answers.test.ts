@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { LAYA_ALL_FROZEN_QUESTIONS, LAYA_FIT_FROZEN_QUESTIONS } from './laya-buyer-response';
 import { fitAnswersFromRun, parseLayaScore } from './laya-answers';
 
-const fitSent = { state: 'Candidate account: name "April\'s Bakery".', questions: LAYA_FIT_FROZEN_QUESTIONS };
+const fitSent = { state: 'The account is named "April\'s Bakery".', questions: LAYA_FIT_FROZEN_QUESTIONS };
 const trace = (sent: { state: string; questions: object }) => ({
   scored_input: sent,
   model: { repository: 'aac6fef/laya-multilingual-coreml', source_revision: 'rev', package_sha256: 'sha', engine: 'cpu_gpu' },
@@ -11,17 +11,9 @@ const trace = (sent: { state: string; questions: object }) => ({
 
 const fitPayload = () => ({
   answers: {
-    archetype_select: {
-      choice: 'bakery_patisserie_brands',
-      confidence: 0.8,
-      probabilities: {
-        plant_based_restaurant_cafe: 0.05,
-        modern_trade_specialty_retail: 0.05,
-        bakery_patisserie_brands: 0.8,
-        no_fit: 0.1,
-      } as Record<string, number>,
-    },
-    role_support: { noul: 0.2, confidence: 0.8 },
+    fit_plant_based_restaurant_cafe: { type: 'noul', noul: 0.01, confidence: 0.99 },
+    fit_modern_trade_specialty_retail: { type: 'noul', noul: 0.1, confidence: 0.9 },
+    fit_bakery_patisserie_brands: { type: 'noul', noul: 0.82, confidence: 0.82 },
   } as Record<string, Record<string, unknown>>,
   usage: { input_tokens: 150, output_tokens: 0 },
   trace: trace(fitSent),
@@ -29,17 +21,18 @@ const fitPayload = () => ({
 
 const fit = (payload: unknown) => fitAnswersFromRun(parseLayaScore(payload, fitSent));
 
-describe('parseLayaScore — prospect-fit pair', () => {
-  it('accepts a well-formed fit run and returns both answers', () => {
-    const result = fit(fitPayload());
-    expect(result!.archetype_select.choice).toBe('bakery_patisserie_brands');
-    expect(result!.archetype_select.probabilities.no_fit).toBe(0.1);
-    expect(result!.role_support).toEqual({ noul: 0.2, confidence: 0.8 });
+describe('parseLayaScore — prospect-fit Nouls', () => {
+  it('accepts a well-formed fit run and returns every archetype\'s Noul', () => {
+    expect(fit(fitPayload())!.support).toEqual({
+      plant_based_restaurant_cafe: { noul: 0.01, confidence: 0.99 },
+      modern_trade_specialty_retail: { noul: 0.1, confidence: 0.9 },
+      bakery_patisserie_brands: { noul: 0.82, confidence: 0.82 },
+    });
   });
 
   it('rejects non-objects and payloads without answers or trace', () => {
     expect(fit(null)).toBeNull();
-    expect(fit('archetype_select')).toBeNull();
+    expect(fit('fit')).toBeNull();
     expect(fit({ ...fitPayload(), answers: undefined })).toBeNull();
     expect(fit({ ...fitPayload(), trace: undefined })).toBeNull();
   });
@@ -59,76 +52,77 @@ describe('parseLayaScore — prospect-fit pair', () => {
     expect(fit(badTime)).toBeNull();
   });
 
-  it('rejects missing, extra, or partial answers', () => {
+  it('rejects missing or extra answers', () => {
     const missing = fitPayload();
-    delete missing.answers.role_support;
+    delete missing.answers.fit_bakery_patisserie_brands;
     expect(fit(missing)).toBeNull();
 
     const extra = fitPayload();
-    extra.answers.deal_amount = { score: 0 };
+    extra.answers.role_support = { noul: 0.2, confidence: 0.8 };
     expect(fit(extra)).toBeNull();
-
-    const partial = fitPayload();
-    delete partial.answers.archetype_select.probabilities;
-    expect(fit(partial)).toBeNull();
   });
 
-  it('rejects a choice outside the frozen criteria or a declared type that disagrees', () => {
-    const unknown = fitPayload();
-    unknown.answers.archetype_select.choice = 'foodservice_restaurant';
-    expect(fit(unknown)).toBeNull();
+  it('rejects a declared type that disagrees with the question', () => {
     const wrongType = fitPayload();
-    wrongType.answers.archetype_select.type = 'noul';
+    wrongType.answers.fit_bakery_patisserie_brands.type = 'choice';
     expect(fit(wrongType)).toBeNull();
-  });
-
-  it('rejects a distribution that does not key exactly like the criteria or total one', () => {
-    const wrongKey = fitPayload();
-    wrongKey.answers.archetype_select.probabilities = {
-      plant_based_restaurant_cafe: 0.5,
-      modern_trade_specialty_retail: 0.05,
-      bakery_patisserie_brands: 0.05,
-      bakery: 0.4,
-    };
-    expect(fit(wrongKey)).toBeNull();
-
-    const badTotal = fitPayload();
-    (badTotal.answers.archetype_select.probabilities as Record<string, number>).no_fit = 0.5;
-    expect(fit(badTotal)).toBeNull();
-
-    const extraKey = fitPayload();
-    (extraKey.answers.archetype_select.probabilities as Record<string, number>).other = 0;
-    expect(fit(extraKey)).toBeNull();
-  });
-
-  it.each(['constructor', 'toString', '__proto__'])('rejects inherited choice key %s', (key) => {
-    const inherited = fitPayload();
-    inherited.answers.archetype_select.choice = key;
-    expect(fit(inherited)).toBeNull();
   });
 
   it('rejects out-of-range or non-finite values', () => {
     const outOfRange = fitPayload();
-    outOfRange.answers.role_support.noul = 1.5;
+    outOfRange.answers.fit_bakery_patisserie_brands = { noul: 1.5, confidence: 1.5 };
     expect(fit(outOfRange)).toBeNull();
 
     const nan = fitPayload();
-    nan.answers.archetype_select.confidence = Number.NaN;
+    nan.answers.fit_bakery_patisserie_brands.confidence = Number.NaN;
     expect(fit(nan)).toBeNull();
 
     const bool = fitPayload();
-    bool.answers.archetype_select.confidence = true;
+    bool.answers.fit_bakery_patisserie_brands.noul = true;
     expect(fit(bool)).toBeNull();
   });
 
   it('rejects a noul whose confidence does not match max(noul, 1 − noul)', () => {
     const mismatch = fitPayload();
-    mismatch.answers.role_support = { noul: 0.2, confidence: 0.5 };
+    mismatch.answers.fit_bakery_patisserie_brands = { noul: 0.2, confidence: 0.5 };
     expect(fit(mismatch)).toBeNull();
 
     const boundary = fitPayload();
-    boundary.answers.role_support = { noul: 0, confidence: 1 };
+    boundary.answers.fit_bakery_patisserie_brands = { noul: 0, confidence: 1 };
     expect(fit(boundary)).not.toBeNull();
+  });
+});
+
+describe('parseLayaScore — choice answers', () => {
+  const sent = { state: 'The buyer asks for a quote.', questions: { buyer_response: LAYA_ALL_FROZEN_QUESTIONS.buyer_response } };
+  const payload = () => ({
+    answers: {
+      buyer_response: {
+        choice: 'requested_next_step',
+        confidence: 0.6,
+        probabilities: { unclear: 0.1, no_commitment: 0.1, declined: 0.1, deferred: 0.1, requested_next_step: 0.6 } as Record<string, number>,
+      } as Record<string, unknown>,
+    },
+    trace: trace(sent),
+  });
+
+  it('accepts a choice inside the frozen options with a unit total', () => {
+    expect(parseLayaScore(payload(), sent)!.answers.buyer_response).toMatchObject({ type: 'choice', choice: 'requested_next_step' });
+  });
+
+  it.each(['constructor', 'toString', '__proto__', 'priority'])('rejects choice key %s', (key) => {
+    const bad = payload();
+    bad.answers.buyer_response.choice = key;
+    expect(parseLayaScore(bad, sent)).toBeNull();
+  });
+
+  it('rejects a distribution with a foreign key or a bad total', () => {
+    const foreign = payload();
+    foreign.answers.buyer_response.probabilities = { unclear: 0.1, no_commitment: 0.1, declined: 0.1, deferred: 0.1, other: 0.6 };
+    expect(parseLayaScore(foreign, sent)).toBeNull();
+    const total = payload();
+    (total.answers.buyer_response.probabilities as Record<string, number>).unclear = 0.5;
+    expect(parseLayaScore(total, sent)).toBeNull();
   });
 });
 

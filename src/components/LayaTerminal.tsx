@@ -8,9 +8,9 @@
 // the section starts collapsed, "Open in terminal" only prefills the state
 // box, and nothing is scored until Run is pressed.
 //
-// Run sends every frozen question — buyer_response (a choice), deal_amount
-// (a score), and the five buyer-detail additions (two nouls, two choices, a
-// score) — in one inference pass. The response pane maps over a
+// Run sends every frozen question — buyer_response (a choice) and the five
+// buyer-detail additions (two nouls, two choices, a score) — in one inference
+// pass. The response pane maps over a
 // questionResults[] array with a per-type renderer, so a new question in
 // laya-questions.json is a data change, not a layout change.
 
@@ -95,11 +95,6 @@ interface NotScored {
   tokenLimit: number | null;
 }
 
-/** Display form of one deal-amount bucket: money buckets wear the ฿ sign. */
-function bucketLabel(entry: string): string {
-  return /^[0-9]/.test(entry) ? `฿${entry}` : entry;
-}
-
 /** Pretty option labels per choice question; unlisted keys render as-is. */
 const CHOICE_LABELS: Record<string, Record<string, string>> = {
   buyer_response: LABELS,
@@ -126,7 +121,6 @@ const CHOICE_LABELS: Record<string, Record<string, string>> = {
 interface FrozenQuestionDef {
   type: 'choice' | 'noul' | 'score';
   instructions: string;
-  criteria: Record<string, string> | readonly string[];
 }
 
 const FROZEN_QUESTIONS = LAYA_ALL_FROZEN_QUESTIONS as Record<string, FrozenQuestionDef>;
@@ -173,7 +167,7 @@ function toQuestionResult(id: string, answer: LayaAnswer): QuestionResult {
   });
   const bars = answer.legend.map((entry, index) => ({
     key: String(index),
-    label: bucketLabel(entry),
+    label: entry,
     value: answer.probabilities[index],
     winner: index === winnerIndex,
   }));
@@ -213,7 +207,7 @@ function parseScorePayload(payload: unknown, sent: { state: string; questions: R
  */
 export function buildLayaTerminalPrefill(deals: Deal[]): LayaTerminalPrefill | null {
   for (const deal of deals) {
-    const built = buildLayaBuyerResponseInput({ deal, includeDealValue: true });
+    const built = buildLayaBuyerResponseInput({ deal });
     if (built) return { state: built.state, verbatim: built.verbatim, source: deal.title || 'deal' };
   }
   return null;

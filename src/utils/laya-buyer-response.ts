@@ -12,14 +12,17 @@
 // 2. THE QUESTIONS ARE FROZEN. Their text lives once, in laya-questions.json,
 //    which scripts/laya_score_server.py loads too. The worker accepts only the
 //    sets named there and rejects anything else with 400 "Unsupported scoring
-//    schema". Option and bucket order is part of the measured contract:
-//    buyer_response keeps the reversed order (eval variant v_verbatim_revopts,
-//    8/8 requested_next_step recall on verbatim replies); deal_amount ends with
-//    an explicit "no amount stated" bucket; every buyer-detail question scores in
-//    its own sequence and fits the 1024-token budget (worst case obstacle_kind at
-//    152 tokens of overhead). Edit the JSON only with a fresh eval.
+//    schema". Option order is part of the measured contract: buyer_response keeps
+//    the reversed order (eval variant v_verbatim_revopts, 8/8 requested_next_step
+//    recall on verbatim replies); every buyer-detail question scores in its own
+//    sequence and fits the 1024-token budget (worst case obstacle_kind at 152
+//    tokens of overhead). Edit the JSON only with a fresh eval.
 //
-// Evidence: scripts/eval_results/2026-09-23-buyer-response-eval-report.md
+// Deal size is not a model question: the CRM value is already a number, and
+// lead-scoring.ts buckets it in code.
+//
+// Evidence: scripts/eval_results/2026-09-23-buyer-response-eval-report.md,
+//           scripts/evaluate_laya_prospect_fit.py (fit Nouls)
 
 import LAYA_QUESTIONS from './laya-questions.json';
 
@@ -46,7 +49,8 @@ export interface LayaBuyerResponseInput {
 type FrozenQuestion = {
   type: 'choice' | 'noul' | 'score';
   instructions: string;
-  criteria: Record<string, string> | readonly string[];
+  /** a Noul may omit it and use the model's default yes/no wording */
+  criteria?: Record<string, string> | readonly string[];
 };
 type Questions = typeof LAYA_QUESTIONS.questions;
 type QuestionId = keyof Questions;
@@ -61,7 +65,6 @@ function frozenSet(name: keyof typeof LAYA_QUESTIONS.sets): Record<string, Froze
 }
 
 const BUYER_RESPONSE_QUESTION = frozenSet('buyer') as unknown as LayaBuyerResponseInput['questions'];
-const ARCHETYPE_SELECT_QUESTION = { archetype_select: LAYA_QUESTIONS.questions.archetype_select };
 
 /** The buyer-only set: the score card's request and the terminal's Questions pane. */
 export const LAYA_BUYER_FROZEN_QUESTIONS: LayaBuyerResponseInput['questions'] = BUYER_RESPONSE_QUESTION;
@@ -70,7 +73,6 @@ export const LAYA_BUYER_FROZEN_QUESTIONS: LayaBuyerResponseInput['questions'] = 
 export const LAYA_ALL_FROZEN_QUESTIONS = frozenSet('terminal') as unknown as Pick<
   Questions,
   | 'buyer_response'
-  | 'deal_amount'
   | 'next_step_commitment'
   | 'sample_trial_report'
   | 'commercial_info_request'
@@ -78,59 +80,56 @@ export const LAYA_ALL_FROZEN_QUESTIONS = frozenSet('terminal') as unknown as Pic
   | 'obstacle_strength'
 >;
 
-/** The prospect-fit pair — archetype (choice) and its evidential support (noul). */
-export const LAYA_FIT_FROZEN_QUESTIONS = frozenSet('fit') as unknown as Pick<Questions, 'archetype_select' | 'role_support'>;
+/**
+ * The prospect-fit set: one yes/no Noul per published archetype, asked in one
+ * pass. Code picks the fit (see judgmentFromAnswers in prospectFit.ts), so the
+ * support number is the fit number — there is no second question to disagree.
+ */
+export const LAYA_FIT_FROZEN_QUESTIONS = frozenSet('fit') as unknown as Pick<
+  Questions,
+  'fit_plant_based_restaurant_cafe' | 'fit_modern_trade_specialty_retail' | 'fit_bakery_patisserie_brands'
+>;
 
-export type LayaArchetypeChoice = keyof typeof ARCHETYPE_SELECT_QUESTION.archetype_select.criteria;
+export type LayaPublishedArchetype =
+  | 'plant_based_restaurant_cafe'
+  | 'modern_trade_specialty_retail'
+  | 'bakery_patisserie_brands';
+export type LayaArchetypeChoice = LayaPublishedArchetype | 'no_fit';
+
+/** Published archetype ids, in fit-set order (fit_<id> in laya-questions.json). */
+export const LAYA_PUBLISHED_ARCHETYPES = LAYA_QUESTIONS.sets.fit.map((id) =>
+  id.replace(/^fit_/, ''),
+) as LayaPublishedArchetype[];
 
 export interface LayaFitAnswers {
-  archetype_select: {
-    choice: LayaArchetypeChoice;
-    confidence: number;
-    probabilities: Record<LayaArchetypeChoice, number>;
-  };
-  role_support: { noul: number; confidence: number };
+  /** fit Noul per published archetype: probability the account is that type */
+  support: Record<LayaPublishedArchetype, { noul: number; confidence: number }>;
 }
 
 /**
- * Build the frozen one-pass prospect-fit input: a sentence-form identity of the
- * candidate account plus the frozen fit pair. The state carries ONLY the name,
- * industry and tags — exactly the fields the question restricts itself to — so
- * the judgment cannot lean on anything else. The candidate archetype list is
- * derived from the question's own criteria (minus `no_fit`), so state and
- * question can never name different sets.
+ * Build the frozen one-pass prospect-fit input: a plain sentence of the
+ * candidate account's name, industry and tags, and nothing else. The state must
+ * not list archetype names — measured on the dev set, naming them in the state
+ * made every support Noul answer "yes".
  *
  * Returns null when the account states nothing at all: a needs_evidence
  * safeguard handled in code, never by the model.
- *
- * `taxonomyVersion` comes from the caller's archetype source (TAXONOMY_VERSION
- * in src/utils/companyRole.ts) because this file takes no runtime imports.
  */
 export function buildLayaProspectFitInput(account: {
   name?: string | null;
   industry?: string | null;
   tags?: string[] | null;
-  taxonomyVersion: string;
 }): { state: string; questions: typeof LAYA_FIT_FROZEN_QUESTIONS } | null {
   const name = account.name?.trim();
   const industry = account.industry?.trim();
   const tags = (account.tags ?? []).map((tag) => tag.trim()).filter(Boolean);
 
-  const identity: string[] = [];
-  if (name) identity.push(`name "${name}"`);
-  if (industry) identity.push(`industry "${industry}"`);
-  if (tags.length > 0) identity.push(`tags "${tags.join(' | ')}"`);
-  if (identity.length === 0) return null;
-
-  const candidateArchetypes = Object.keys(ARCHETYPE_SELECT_QUESTION.archetype_select.criteria)
-    .filter((key) => key !== 'no_fit')
-    .join(', ');
-  return {
-    state:
-      `Candidate account: ${identity.join(', ')}. ` +
-      `Candidate archetypes (taxonomy ${account.taxonomyVersion}): ${candidateArchetypes}.`,
-    questions: LAYA_FIT_FROZEN_QUESTIONS,
-  };
+  const parts: string[] = [];
+  if (name) parts.push(`The account is named "${name}"`);
+  if (industry) parts.push(`its industry is "${industry}"`);
+  if (tags.length > 0) parts.push(`its tags are "${tags.join(', ')}"`);
+  if (parts.length === 0) return null;
+  return { state: `${parts.join('; ')}.`, questions: LAYA_FIT_FROZEN_QUESTIONS };
 }
 
 /**
@@ -143,40 +142,28 @@ export function buildLayaProspectFitInput(account: {
  * The complete selected text is preserved; the worker's input-budget guard
  * refuses oversized input instead of cutting it.
  *
- * `includeDealValue: true` appends "Deal value on record: ฿X." when the CRM has
- * one — the deal-amount question's grounding. Only the terminal opts in: the
- * score card stays on the exact eval-measured state, so nothing else about the
- * buyer-response contract (or its privacy story) changes.
  */
 export function buildLayaBuyerResponseInput(input: {
   deal: {
     product?: string | null;
     last_outcome?: string | null;
     buyer_reply?: string | null;
-    value?: number | null;
   };
-  /** append the recorded CRM deal value — only the deal-amount question needs it */
-  includeDealValue?: boolean;
 }): LayaBuyerResponseInput | null {
   const product = input.deal.product?.trim() || 'our products';
   const reply = input.deal.buyer_reply?.trim();
   const note = input.deal.last_outcome?.trim();
-  const value = Math.round(input.deal.value ?? 0);
-  const valueSentence =
-    input.includeDealValue && Number.isFinite(value) && value > 0
-      ? ` Deal value on record: ฿${value.toLocaleString('en-US')}.`
-      : '';
 
   if (reply) {
     return {
-      state: `We supply ${product} to this account. The buyer's latest reply: "${reply}"${valueSentence}`,
+      state: `We supply ${product} to this account. The buyer's latest reply: "${reply}"`,
       questions: BUYER_RESPONSE_QUESTION,
       verbatim: true,
     };
   }
   if (note) {
     return {
-      state: `We supply ${product} to this account. The latest recorded outcome note says: "${note}"${valueSentence}`,
+      state: `We supply ${product} to this account. The latest recorded outcome note says: "${note}"`,
       questions: BUYER_RESPONSE_QUESTION,
       verbatim: false,
     };
