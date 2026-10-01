@@ -211,6 +211,60 @@ describe('LogInteractionModal save recovery', () => {
     expect(crmMocks.updateDealIfUnchanged).not.toHaveBeenCalled();
   });
 
+  it('offers the exact-words box only for a client reply', () => {
+    render(
+      <LogInteractionModal isOpen onClose={vi.fn()} onSave={vi.fn()} deals={[deal]} contacts={[]} companies={[]} selectedDealId={deal.id} />
+    );
+    expect(screen.queryByLabelText('Their exact words')).toBeNull();
+    fireEvent.click(screen.getByRole('radio', { name: /They replied/i }));
+    expect(screen.getByLabelText('Their exact words')).toBeTruthy();
+    fireEvent.click(screen.getByRole('radio', { name: /Note/i }));
+    expect(screen.queryByLabelText('Their exact words')).toBeNull();
+  });
+
+  it('saves the pasted words to buyer_reply without moving the lane, with an undo snapshot', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    crmMocks.updateDealIfUnchanged.mockResolvedValue({ ...deal, buyer_reply: 'Please quote 20 kg.' });
+    render(
+      <LogInteractionModal isOpen onClose={onClose} onSave={onSave} deals={[deal]} contacts={[]} companies={[]} selectedDealId={deal.id} />
+    );
+
+    fireEvent.click(screen.getByRole('radio', { name: /They replied/i }));
+    fireEvent.change(screen.getByLabelText('What happened'), { target: { value: 'Alice asked for a quote' } });
+    fireEvent.change(screen.getByLabelText('Their exact words'), { target: { value: '  Please quote 20 kg.  ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(crmMocks.updateDealIfUnchanged).toHaveBeenCalledWith(deal.id, deal.updated_at, { buyer_reply: 'Please quote 20 kg.' });
+    // The words stay out of the interaction row: the summary is the rep's, the reply is the buyer's.
+    expect(JSON.stringify(onSave.mock.calls[0][0])).not.toContain('Please quote 20 kg.');
+    expect(logActivity).toHaveBeenCalledWith(expect.objectContaining({
+      label: 'Buyer reply recorded',
+      undoPayload: expect.objectContaining({ buyer_reply: null }),
+    }));
+  });
+
+  it('clears an out-of-date saved reply when a new reply is logged without words, and says so first', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    const withReply = { ...deal, buyer_reply: 'Old reply from August' };
+    crmMocks.updateDealIfUnchanged.mockResolvedValue({ ...withReply, buyer_reply: null });
+    render(
+      <LogInteractionModal isOpen onClose={onClose} onSave={onSave} deals={[withReply]} contacts={[]} companies={[]} selectedDealId={deal.id} />
+    );
+
+    fireEvent.click(screen.getByRole('radio', { name: /They replied/i }));
+    expect(screen.getByText(/older saved reply is cleared/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(crmMocks.updateDealIfUnchanged).toHaveBeenCalledWith(deal.id, deal.updated_at, { buyer_reply: null });
+    expect(logActivity).toHaveBeenCalledWith(expect.objectContaining({
+      undoPayload: expect.objectContaining({ buyer_reply: 'Old reply from August' }),
+    }));
+  });
+
   it('does not ask how it went', () => {
     render(
       <LogInteractionModal
