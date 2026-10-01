@@ -127,8 +127,10 @@ describe('parseLayaScore — choice answers', () => {
 });
 
 describe('parseLayaScore — score answers', () => {
-  const criteria = LAYA_ALL_FROZEN_QUESTIONS.obstacle_strength.criteria;
-  const sent = { state: 'The buyer says the price is too high.', questions: { obstacle_strength: LAYA_ALL_FROZEN_QUESTIONS.obstacle_strength } };
+  // No frozen set uses Score today; the parser still supports the type.
+  const criteria = ['No obstacle', 'Minor friction', 'Material obstacle', 'Explicit blocker'];
+  const strengthQuestion = { type: 'score', instructions: 'How strongly does the obstacle block progress?', criteria };
+  const sent = { state: 'The buyer says the price is too high.', questions: { obstacle_strength: strengthQuestion } };
   const payload = () => ({
     answers: {
       obstacle_strength: {

@@ -64,22 +64,23 @@ npm run laya:serve  # local Laya worker for lead recommendations
 
 ### Local Laya lead recommendations
 
-Laya runs on this Mac, not on Vercel. The default is the local multilingual
-**1,024-token CPU/GPU** Core ML bundle (not the earlier 96-token ANE export).
-Download the pinned model revision once, then start the local worker before
-opening a deal:
+Laya runs on this Mac, not on Vercel. The default is the **Typed Decisions 421M**
+Core ML bundle (1,024 tokens, CPU/GPU), the checkpoint fine-tuned on typed business
+decisions. It replaced the multilingual 322M bundle on 2026-10-01. Its tokenizer is
+English: Thai text still runs but expect weaker answers. Download the pinned
+revision once, then start the local worker before opening a deal:
 
 ```bash
 cd ~/Projects/LeadPulse
-~/laya-coreml/.venv/bin/hf download aac6fef/laya-multilingual-coreml \
-  --revision 8139e9089273319512c730218903784074133187 \
-  --local-dir ~/laya-coreml/models/multilingual-1024
+~/laya-coreml/.venv/bin/hf download aac6fef/laya-typed-decisions-coreml \
+  --revision 28d24fa8d67a3264556b23391ec6c3fd98573056 \
+  --local-dir ~/laya-coreml/models/typed-decisions
 npm run laya:serve
 ```
 
-The model stays on this Mac and loads offline after download. The older
-`~/laya-coreml/models/ane` bundle is retained for rollback; `LAYA_COREML_MODEL_PATH`
-can override the default directory. The worker identifies the loaded bundle in
+The model stays on this Mac and loads offline after download. To go back to the
+multilingual bundle, download `aac6fef/laya-multilingual-coreml` at revision
+`8139e9089273319512c730218903784074133187` and point `LAYA_COREML_MODEL_PATH` at it. The worker identifies the loaded bundle in
 each scoring trace and reports its selected compute units in `/health`.
 
 Then use **Score with Laya** in a deal. The live LeadPulse page calls only
@@ -127,7 +128,7 @@ loads it; `/score` accepts only those sets (`buyer`, `terminal`, `fit`) and answ
 **Judgment scope:** the score card asks one question: buyer-response `Choice`, which gives
 attention advice, not purchase odds, qualification or contact authorization (8/8
 requested_next_step recall on verbatim replies, `scripts/eval_results/2026-09-23-buyer-response-eval-report.md`).
-The /lab terminal adds five buyer-detail questions in the same pass; they are review-only and
+The /lab terminal adds two buyer-detail Nouls in the same pass; they are review-only and
 not yet accuracy-evaluated. Deal size is **not** a model question: the CRM value is already a
 number, and `lead-scoring.ts` buckets it in code. Prospect fit asks one yes/no `Noul` per
 published archetype over a plain-sentence identity; code picks the highest at or above 0.5,
@@ -259,12 +260,11 @@ the downloaded model tokenizer/config files (no neural inference in this suite):
 npm test -- src/utils/laya-buyer-response.test.ts src/utils/laya-buyer-response.contract.test.ts src/utils/laya-answers.test.ts src/components/LayaScoreCard.test.tsx
 ```
 
-The default paths match Pat's install. Override either only if Laya lives elsewhere;
-to roll back specifically to the retained 96-token bundle, use:
+The default paths match Pat's install. Override either only if Laya lives elsewhere:
 
 ```bash
 LAYA_COREML_PYTHON=/Users/pat/laya-coreml/.venv/bin/python \
-LAYA_COREML_MODEL_PATH=/Users/pat/laya-coreml/models/ane \
+LAYA_COREML_MODEL_PATH=/path/to/another/laya-coreml-bundle \
 npm run laya:serve
 ```
 

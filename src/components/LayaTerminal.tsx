@@ -8,9 +8,8 @@
 // the section starts collapsed, "Open in terminal" only prefills the state
 // box, and nothing is scored until Run is pressed.
 //
-// Run sends every frozen question — buyer_response (a choice) and the five
-// buyer-detail additions (two nouls, two choices, a score) — in one inference
-// pass. The response pane maps over a
+// Run sends every frozen question — buyer_response (a choice) and the two
+// buyer-detail Nouls — in one inference pass. The response pane maps over a
 // questionResults[] array with a per-type renderer, so a new question in
 // laya-questions.json is a data change, not a layout change.
 
@@ -98,23 +97,6 @@ interface NotScored {
 /** Pretty option labels per choice question; unlisted keys render as-is. */
 const CHOICE_LABELS: Record<string, Record<string, string>> = {
   buyer_response: LABELS,
-  sample_trial_report: {
-    not_established: 'Not established',
-    received: 'Received',
-    testing_planned: 'Testing planned',
-    positive_result: 'Positive result',
-    negative_result: 'Negative result',
-    mixed_result: 'Mixed result',
-  },
-  obstacle_kind: {
-    no_obstacle_stated: 'No obstacle stated',
-    application_technical: 'Application / technical',
-    price_terms: 'Price / terms',
-    delivery: 'Delivery',
-    internal_approval: 'Internal approval',
-    timing: 'Timing',
-    unclear: 'Unclear',
-  },
 };
 
 /** One frozen question, typed loosely so rows can dispatch per id. */

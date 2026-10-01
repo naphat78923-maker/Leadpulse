@@ -14,9 +14,11 @@
 //    sets named there and rejects anything else with 400 "Unsupported scoring
 //    schema". Option order is part of the measured contract: buyer_response keeps
 //    the reversed order (eval variant v_verbatim_revopts, 8/8 requested_next_step
-//    recall on verbatim replies); every buyer-detail question scores in its own
-//    sequence and fits the 1024-token budget (worst case obstacle_kind at 152
-//    tokens of overhead). Edit the JSON only with a fresh eval.
+//    recall on verbatim replies); every question scores in its own sequence and
+//    fits the 1024-token budget. Edit the JSON only with a fresh eval. The
+//    sample_trial_report, obstacle_kind and obstacle_strength Choices were cut on
+//    2026-10-01: below their majority-class baseline on both checkpoints
+//    (scripts/evaluate_laya_buyer_detail.py).
 //
 // Deal size is not a model question: the CRM value is already a number, and
 // lead-scoring.ts buckets it in code.
@@ -74,10 +76,7 @@ export const LAYA_ALL_FROZEN_QUESTIONS = frozenSet('terminal') as unknown as Pic
   Questions,
   | 'buyer_response'
   | 'next_step_commitment'
-  | 'sample_trial_report'
   | 'commercial_info_request'
-  | 'obstacle_kind'
-  | 'obstacle_strength'
 >;
 
 /**
@@ -132,16 +131,47 @@ export function buildLayaProspectFitInput(account: {
   return { state: `${parts.join('; ')}.`, questions: LAYA_FIT_FROZEN_QUESTIONS };
 }
 
+// last_outcome is an append-only activity log ("\n---\n"-separated, oldest first):
+// timestamps, workflow/system lines, internal notes and, sometimes, a logged client
+// reply. Only the reply entries are buyer evidence, written in exactly two forms:
+//   💬 Client replied — <sentiment>: <summary>          (lane-gate.ts, deal-board.ts)
+//   💬 Customer reply (<sentiment>): <description>      (interaction-workflow.ts)
+// optionally prefixed with "[<timestamp>] ".
+const LOG_ENTRY_SEPARATOR = /\n---\n/;
+const LOG_TIMESTAMP_PREFIX = /^\[[^\]]*\]\s*/;
+const LOGGED_REPLY_PATTERNS = [
+  /^💬 Client replied — [a-z_]+(?::\s*([\s\S]*))?$/,
+  /^💬 Customer reply \([^)]*\)(?::\s*([\s\S]*))?$/,
+];
+
+/**
+ * The rep's note of the buyer's LATEST logged reply, or null. Only the newest reply
+ * entry counts: when it carries no words, an older reply is not the latest one, so
+ * nothing is returned rather than stale text.
+ */
+export function latestLoggedReplyNote(log: string | null | undefined): string | null {
+  if (!log?.trim()) return null;
+  const entries = log.split(LOG_ENTRY_SEPARATOR);
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index].trim().replace(LOG_TIMESTAMP_PREFIX, '');
+    for (const pattern of LOGGED_REPLY_PATTERNS) {
+      const match = pattern.exec(entry);
+      if (match) return match[1]?.trim() || null;
+    }
+  }
+  return null;
+}
+
 /**
  * Small sentence-form state for the narrow buyer-response question.
  *
- * Prefers `buyer_reply` (verbatim, first-person) and marks the result verbatim;
- * falls back to the paraphrased `last_outcome` note marked verbatim: false so the
- * caller can route those to human review. Returns null when there is no buyer
- * text at all — a needs_evidence safeguard handled in code, never by the model.
- * The complete selected text is preserved; the worker's input-budget guard
+ * Prefers `buyer_reply` (the buyer's words, verbatim) and marks the result verbatim.
+ * Otherwise falls back to the rep's note of the latest LOGGED client reply in the
+ * `last_outcome` log, marked verbatim: false so callers route it to human review.
+ * The rest of the log (system lines, internal notes, older entries) is never sent.
+ * Returns null when neither exists — a needs_evidence safeguard handled in code,
+ * never by the model. Selected text is preserved; the worker's input-budget guard
  * refuses oversized input instead of cutting it.
- *
  */
 export function buildLayaBuyerResponseInput(input: {
   deal: {
@@ -152,7 +182,6 @@ export function buildLayaBuyerResponseInput(input: {
 }): LayaBuyerResponseInput | null {
   const product = input.deal.product?.trim() || 'our products';
   const reply = input.deal.buyer_reply?.trim();
-  const note = input.deal.last_outcome?.trim();
 
   if (reply) {
     return {
@@ -161,9 +190,10 @@ export function buildLayaBuyerResponseInput(input: {
       verbatim: true,
     };
   }
+  const note = latestLoggedReplyNote(input.deal.last_outcome);
   if (note) {
     return {
-      state: `We supply ${product} to this account. The latest recorded outcome note says: "${note}"`,
+      state: `We supply ${product} to this account. Our note of the buyer's latest reply: "${note}"`,
       questions: BUYER_RESPONSE_QUESTION,
       verbatim: false,
     };

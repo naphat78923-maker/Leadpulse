@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import laya_coreml as laya  # noqa: E402
 from laya_input import InputRejected, check_input_budget, has_explicit_contact_opt_out  # noqa: E402
 
-DEFAULT_MODEL = "/Users/pat/laya-coreml/models/multilingual-1024"
+DEFAULT_MODEL = "/Users/pat/laya-coreml/models/typed-decisions"
 
 OLD_QUESTION = {"attention": {
     "type": "choice", "instructions": "Best sales attention?",

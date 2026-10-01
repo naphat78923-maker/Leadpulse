@@ -37,17 +37,6 @@ const buyerProbabilities = {
   requested_next_step: 0.4, deferred: 0.2, declined: 0.2, no_commitment: 0.1, unclear: 0.1,
 };
 
-// Uniform probabilities across a choice's frozen criteria: valid by
-// construction whatever the option count is.
-function uniform(criteria: object): Record<string, number> {
-  const keys = Object.keys(criteria);
-  return Object.fromEntries(keys.map((key) => [key, 1 / keys.length]));
-}
-
-const obstacleStrengthLegend = Object.fromEntries(
-  LAYA_ALL_FROZEN_QUESTIONS.obstacle_strength.criteria.map((text, index) => [String(index), text]),
-);
-
 // The subset of the /score payload the corruption cases mutate. Deep leaves
 // stay `unknown` so a test can put anything there — including something wrong.
 interface MutableScorePayload {
@@ -56,7 +45,7 @@ interface MutableScorePayload {
 }
 
 // The worker echoes every answer — the exact /score shape for the combined
-// seven-question run.
+// three-question run.
 // `mutate` corrupts a copy so one payload shape covers every rejection case.
 const success = (mutate?: (payload: MutableScorePayload) => void) => ({
   ok: true,
@@ -69,29 +58,11 @@ const success = (mutate?: (payload: MutableScorePayload) => void) => ({
         buyer_response: {
           choice: 'requested_next_step',
           confidence: 0.4,
-          probabilities: buyerProbabilities,
+          // A copy per payload: corruption cases mutate it.
+          probabilities: { ...buyerProbabilities },
         },
         next_step_commitment: { type: 'noul', noul: 0.7, confidence: 0.7 },
-        sample_trial_report: {
-          type: 'choice',
-          choice: 'testing_planned',
-          confidence: 0.55,
-          probabilities: uniform(LAYA_ALL_FROZEN_QUESTIONS.sample_trial_report.criteria),
-        },
         commercial_info_request: { type: 'noul', noul: 0.62, confidence: 0.62 },
-        obstacle_kind: {
-          type: 'choice',
-          choice: 'price_terms',
-          confidence: 0.42,
-          probabilities: uniform(LAYA_ALL_FROZEN_QUESTIONS.obstacle_kind.criteria),
-        },
-        obstacle_strength: {
-          type: 'score',
-          score: 1.3,
-          confidence: 0.5,
-          legend: obstacleStrengthLegend,
-          probabilities: { '0': 0.1, '1': 0.6, '2': 0.2, '3': 0.1 },
-        },
       },
       usage: { input_tokens: 93, output_tokens: 0 },
       trace: {
@@ -205,47 +176,37 @@ describe('Laya terminal', () => {
     expect(JSON.stringify(body.questions)).toBe(JSON.stringify(LAYA_ALL_FROZEN_QUESTIONS));
   });
 
-  it('renders all five buyer-detail rows from the one combined run', async () => {
+  it('renders both buyer-detail rows from the one combined run', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(success()));
     openPanel();
     typeStateAndRun(built.state);
 
     await screen.findByTestId('laya-terminal-result-buyer_response');
     const rows: Record<string, string> = {};
-    for (const id of [
-      'next_step_commitment',
-      'sample_trial_report',
-      'commercial_info_request',
-      'obstacle_kind',
-      'obstacle_strength',
-    ]) {
+    for (const id of ['next_step_commitment', 'commercial_info_request']) {
       rows[id] = screen.getByTestId(`laya-terminal-result-${id}`).textContent ?? '';
     }
     // Noul rows show the raw value and both sides — never a decision.
     expect(rows.next_step_commitment).toContain('noul 0.7000');
     expect(rows.next_step_commitment).toContain('true 70% / false 30%');
     expect(rows.commercial_info_request).toContain('noul 0.6200');
-    // Choice rows show the pretty option label from the frozen criteria.
-    expect(rows.sample_trial_report).toContain('Testing planned');
-    expect(rows.sample_trial_report).toContain('Not established');
-    expect(rows.obstacle_kind).toContain('Price / terms');
-    expect(rows.obstacle_kind).toContain('No obstacle stated');
-    // The score row names the winning rubric level and the scale.
-    expect(rows.obstacle_strength).toContain('Minor friction');
-    expect(rows.obstacle_strength).toContain('expected score 1.3 on a 0–3 scale');
-    expect(rows.obstacle_strength).toContain('Explicit blocker');
+    // The cut Choice questions are gone.
+    for (const id of ['sample_trial_report', 'obstacle_kind', 'obstacle_strength']) {
+      expect(screen.queryByTestId(`laya-terminal-result-${id}`)).toBeNull();
+    }
   });
 
   it('never renders a payload with a missing, extra, unknown, or malformed answer', async () => {
     const corruptions: Array<[string, (payload: MutableScorePayload) => void]> = [
       ['missing answer', (p) => { delete p.answers.next_step_commitment; }],
       ['extra answer', (p) => { p.answers.stray_question = { noul: 0.1, confidence: 0.9 }; }],
-      ['unknown choice option', (p) => { p.answers.sample_trial_report.choice = 'loved_it'; }],
+      ['unknown choice option', (p) => { p.answers.buyer_response.choice = 'loved_it'; }],
       ['noul confidence off its value', (p) => { p.answers.next_step_commitment.confidence = 0.9; }],
       ['choice probability key missing',
-        (p) => { delete (p.answers.obstacle_kind.probabilities as Record<string, unknown>).timing; }],
-      ['score out of step with its legend', (p) => { p.answers.obstacle_strength.score = 3; }],
-      ['frozen question removed from the trace', (p) => { delete p.trace.scored_input.questions.obstacle_kind; }],
+        (p) => { delete (p.answers.buyer_response.probabilities as Record<string, unknown>).unclear; }],
+      ['noul out of range', (p) => { p.answers.commercial_info_request.noul = 1.5; }],
+      ['frozen question removed from the trace',
+        (p) => { delete p.trace.scored_input.questions.commercial_info_request; }],
     ];
 
     for (const [name, corrupt] of corruptions) {
@@ -257,7 +218,7 @@ describe('Laya terminal', () => {
       const alert = await screen.findByRole('alert');
       expect(alert.textContent, name).toContain('invalid score');
       expect(screen.queryByTestId('laya-terminal-result-buyer_response'), name).toBeNull();
-      expect(screen.queryByTestId('laya-terminal-result-obstacle_kind'), name).toBeNull();
+      expect(screen.queryByTestId('laya-terminal-result-commercial_info_request'), name).toBeNull();
     }
   });
 

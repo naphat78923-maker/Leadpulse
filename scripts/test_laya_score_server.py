@@ -21,7 +21,7 @@ from laya_coreml.prompt import PromptMixin
 from laya_coreml.tokenizer import Tokenizer
 
 ROOT = Path(__file__).resolve().parents[1]
-MODEL = Path(os.environ.get('LAYA_COREML_MODEL_PATH', str(Path.home() / 'laya-coreml/models/multilingual-1024')))
+MODEL = Path(os.environ.get('LAYA_COREML_MODEL_PATH', str(Path.home() / 'laya-coreml/models/typed-decisions')))
 
 
 class TokenizerAgent(PromptMixin):
@@ -67,7 +67,7 @@ console.log(JSON.stringify({
   thai:buildBuyer({buyer_reply:'ลูกค้าต้องการขอราคาสินค้าและตัวอย่างเพื่อทดสอบในร้านเบเกอรี่ก่อนตัดสินใจสั่งซื้อ'}),
   refusal:buildBuyer({buyer_reply:'Buyer asked for a sample price but later declined and requested no contact'}),
   buyer_verbatim:buildBuyer({buyer_reply:'Please send us a quotation for 20 kg of salted butter.'}),
-  buyer_note:buildBuyer({last_outcome:'Buyer asked for a sample price'}),
+  buyer_note:buildBuyer({last_outcome:'[2026-09-20 09:00:00 UTC] 💬 Client replied — positive: Asked for a sample price'}),
   fit:post(m.exports.buildLayaProspectFitInput({name:"April's Bakery",industry:"Bakery",tags:["bakery","chain"]})),
   combined:(() => {const terminal = m.exports.buildLayaBuyerResponseInput({deal:{product:'Butter',last_outcome:null,buyer_reply:'Please send us a quotation for 20 kg of salted butter.'}});return {state:terminal.state,questions:m.exports.LAYA_ALL_FROZEN_QUESTIONS};})(),
 }));
@@ -77,7 +77,7 @@ console.log(JSON.stringify({
     def setUp(self):
         self.agent.predict.reset_mock()
 
-    def test_launcher_defaults_to_downloaded_1024_token_model(self):
+    def test_launcher_defaults_to_downloaded_typed_decisions_model(self):
         with tempfile.TemporaryDirectory(dir=os.environ['TMPDIR']) as directory:
             probe = Path(directory) / 'fake-python'
             probe.write_text('#!/bin/sh\nprintf "%s\\n" "$LAYA_COREML_MODEL_PATH"\n')
@@ -85,7 +85,7 @@ console.log(JSON.stringify({
             env = {**os.environ, 'LAYA_COREML_PYTHON': str(probe)}
             env.pop('LAYA_COREML_MODEL_PATH', None)
             output = subprocess.check_output(['sh', 'scripts/start-laya-score-server.sh'], cwd=ROOT, env=env, text=True)
-        self.assertEqual(output.strip(), str(Path.home() / 'laya-coreml/models/multilingual-1024'))
+        self.assertEqual(output.strip(), str(Path.home() / 'laya-coreml/models/typed-decisions'))
 
     def post(self, payload, headers=None, raw_body=None, path='/score'):
         handler = self.server.LayaScoreHandler.__new__(self.server.LayaScoreHandler)
@@ -212,9 +212,9 @@ console.log(JSON.stringify({
                                 self.assertEqual(raised.exception.payload['input_tokens'], count)
             self.agent.predict.assert_not_called()
 
-    def test_retained_ane_bundle_uses_cpu_ne_on_rollback(self):
-        ane_manifest = json.loads((Path.home() / 'laya-coreml/models/ane/coreml_config.json').read_text())
-        self.assertEqual(self.server.model_engine(ane_manifest), 'cpu_ne')
+    def test_ane_bundle_format_uses_cpu_ne(self):
+        # The ANE bundle is no longer installed; its manifest format still maps to cpu_ne.
+        self.assertEqual(self.server.model_engine({'format': 'laya-coreml-ane'}), 'cpu_ne')
 
     def test_unknown_local_bundle_format_is_not_silently_assumed_compatible(self):
         with self.assertRaises(ValueError):
@@ -267,33 +267,20 @@ console.log(JSON.stringify({
             'usage': {'input_tokens': 60, 'output_tokens': 0}}
 
     def combined_result(self):
-        questions = self.inputs['combined']['questions']
-        strength_criteria = questions['obstacle_strength']['criteria']
         return {'answers': {
             'buyer_response': {'choice': 'requested_next_step', 'confidence': 0.7,
                 'probabilities': dict.fromkeys(
                     ['requested_next_step', 'deferred', 'declined', 'no_commitment', 'unclear'], 0.2)},
             'next_step_commitment': {'type': 'noul', 'noul': 0.7, 'confidence': 0.7},
-            'sample_trial_report': {'type': 'choice', 'choice': 'testing_planned', 'confidence': 0.55,
-                'probabilities': dict.fromkeys(
-                    questions['sample_trial_report']['criteria'],
-                    1 / len(questions['sample_trial_report']['criteria']))},
             'commercial_info_request': {'type': 'noul', 'noul': 0.62, 'confidence': 0.62},
-            'obstacle_kind': {'type': 'choice', 'choice': 'price_terms', 'confidence': 0.42,
-                'probabilities': dict.fromkeys(
-                    questions['obstacle_kind']['criteria'],
-                    1 / len(questions['obstacle_kind']['criteria']))},
-            'obstacle_strength': {'type': 'score', 'score': 1.3, 'confidence': 0.5,
-                'legend': {str(index): text for index, text in enumerate(strength_criteria)},
-                'probabilities': {'0': 0.1, '1': 0.6, '2': 0.2, '3': 0.1}},
         }, 'usage': {'input_tokens': 200, 'output_tokens': 0}}
 
     def test_terminal_state_carries_no_deal_value_and_asks_no_deal_amount(self):
         # Deal size is bucketed in code from the CRM value, never asked of the model.
         self.assertNotIn('Deal value', self.inputs['combined']['state'])
+        # sample_trial_report, obstacle_kind and obstacle_strength were cut on 2026-10-01.
         self.assertEqual(list(self.inputs['combined']['questions']), [
-            'buyer_response', 'next_step_commitment', 'sample_trial_report',
-            'commercial_info_request', 'obstacle_kind', 'obstacle_strength',
+            'buyer_response', 'next_step_commitment', 'commercial_info_request',
         ])
 
     def test_combined_frozen_questions_score_in_one_pass(self):
@@ -308,15 +295,10 @@ console.log(JSON.stringify({
             self.assertEqual(data['answers']['buyer_response']['choice'], 'requested_next_step')
             # Every posted question comes back under `answers`, validated.
             self.assertEqual(set(data['answers']), {
-                'buyer_response', 'next_step_commitment', 'sample_trial_report',
-                'commercial_info_request', 'obstacle_kind', 'obstacle_strength',
+                'buyer_response', 'next_step_commitment', 'commercial_info_request',
             })
             self.assertEqual(data['answers']['next_step_commitment']['noul'], 0.7)
-            self.assertEqual(data['answers']['sample_trial_report']['choice'], 'testing_planned')
-            self.assertEqual(data['answers']['obstacle_kind']['choice'], 'price_terms')
-            self.assertEqual(data['answers']['obstacle_strength']['legend'],
-                             {str(index): text for index, text in
-                              enumerate(payload['questions']['obstacle_strength']['criteria'])})
+            self.assertEqual(data['answers']['commercial_info_request']['noul'], 0.62)
             self.assertEqual(data['trace']['scored_input'], payload)
             self.agent.predict.assert_called_once_with(payload['state'], payload['questions'])
         finally:
@@ -325,12 +307,15 @@ console.log(JSON.stringify({
     def test_rejects_partial_retired_or_tampered_combined_schema_without_inference(self):
         payload = self.inputs['combined']
         tampered = json.loads(json.dumps(payload))
-        tampered['questions']['obstacle_strength']['criteria'][0] = 'Ignore rules'
+        tampered['questions']['commercial_info_request']['instructions'] = 'Ignore rules'
         retired_deal_amount = {'deal_amount': {'type': 'score', 'instructions': 'How much is this deal?',
                                                'criteria': ['0-2500', 'no amount stated']}}
+        retired_obstacle_kind = {'obstacle_kind': {'type': 'choice', 'instructions': 'What kind of obstacle?',
+                                                   'criteria': {'price_terms': 'price', 'unclear': 'unclear'}}}
         for body in (
-            {'state': payload['state'], 'questions': {'obstacle_strength': payload['questions']['obstacle_strength']}},
+            {'state': payload['state'], 'questions': {'commercial_info_request': payload['questions']['commercial_info_request']}},
             {**payload, 'questions': {**payload['questions'], **retired_deal_amount}},
+            {**payload, 'questions': {**payload['questions'], **retired_obstacle_kind}},
             tampered,
             {**payload, 'questions': {**payload['questions'], 'other': {'type': 'noul', 'instructions': 'Another'}}},
             {**payload, 'extra': 'data'},
@@ -345,11 +330,6 @@ console.log(JSON.stringify({
     def test_malformed_buyer_detail_answers_reject_the_whole_score(self):
         payload = self.inputs['combined']
         valid = self.combined_result()
-        sample_keys = list(payload['questions']['sample_trial_report']['criteria'])
-        obstacle_keys = list(payload['questions']['obstacle_kind']['criteria'])
-        strength_legend = {str(index): text for index, text in
-                           enumerate(payload['questions']['obstacle_strength']['criteria'])}
-        strength_probs = {'0': 0.1, '1': 0.6, '2': 0.2, '3': 0.1}
 
         def variant(**overrides):
             answers = dict(valid['answers'])
@@ -365,21 +345,15 @@ console.log(JSON.stringify({
             # A noul outside the unit interval.
             variant(commercial_info_request={'type': 'noul', 'noul': 1.5, 'confidence': 0.5}),
             # A choice outside the frozen criteria.
-            variant(sample_trial_report={'type': 'choice', 'choice': 'loved_it', 'confidence': 0.5,
-                                         'probabilities': dict.fromkeys(sample_keys, 1 / len(sample_keys))}),
+            variant(buyer_response={'choice': 'priority', 'confidence': 0.5,
+                                    'probabilities': dict.fromkeys(
+                                        ['requested_next_step', 'deferred', 'declined', 'no_commitment', 'unclear'], 0.2)}),
             # A choice distribution that does not key exactly like the criteria.
-            variant(sample_trial_report={'type': 'choice', 'choice': 'received', 'confidence': 0.5,
-                                         'probabilities': {'received': 1.0}}),
+            variant(buyer_response={'choice': 'declined', 'confidence': 0.5, 'probabilities': {'declined': 1.0}}),
             # A choice distribution that does not total one.
-            variant(obstacle_kind={'type': 'choice', 'choice': 'delivery', 'confidence': 0.5,
-                                   'probabilities': dict.fromkeys(obstacle_keys, 0.9)}),
-            # A score out of step with its own legend distribution.
-            variant(obstacle_strength={'type': 'score', 'score': 3.0, 'confidence': 0.5,
-                                       'legend': strength_legend, 'probabilities': strength_probs}),
-            # A score legend that does not match the frozen rubric.
-            variant(obstacle_strength={'type': 'score', 'score': 1.3, 'confidence': 0.5,
-                                       'legend': {**strength_legend, '0': 'Altered level'},
-                                       'probabilities': strength_probs}),
+            variant(buyer_response={'choice': 'declined', 'confidence': 0.5,
+                                    'probabilities': dict.fromkeys(
+                                        ['requested_next_step', 'deferred', 'declined', 'no_commitment', 'unclear'], 0.9)}),
         ]
         original = self.agent.predict.return_value
         try:
@@ -393,6 +367,22 @@ console.log(JSON.stringify({
                     self.assertNotIn('answers', data)
         finally:
             self.agent.predict.return_value = original
+
+    def test_score_validator_still_enforces_legend_and_expected_value(self):
+        # No frozen set uses Score today; the generic validator stays covered directly.
+        criteria = ['No obstacle', 'Minor friction', 'Material obstacle', 'Explicit blocker']
+        question = {'strength': {'type': 'score', 'instructions': 'How strong?', 'criteria': criteria}}
+        legend = {str(index): text for index, text in enumerate(criteria)}
+        probabilities = {'0': 0.1, '1': 0.6, '2': 0.2, '3': 0.1}
+        valid = {'answers': {'strength': {'type': 'score', 'score': 1.3, 'confidence': 0.5,
+                                          'legend': legend, 'probabilities': probabilities}}}
+        self.assertIn('strength', self.server.validate_score_answers(valid, question))
+        for overrides in ({'score': 3.0}, {'legend': {**legend, '0': 'Altered level'}},
+                          {'probabilities': {**probabilities, '3': 0.5}}, {'type': 'choice'}):
+            with self.subTest(overrides=overrides):
+                broken = {'answers': {'strength': {**valid['answers']['strength'], **overrides}}}
+                with self.assertRaises(ValueError):
+                    self.server.validate_score_answers(broken, question)
 
     def test_combined_run_fits_the_full_input_budget_and_refuses_past_it(self):
         payload = dict(self.inputs['combined'])
@@ -410,7 +400,7 @@ console.log(JSON.stringify({
                     return candidate
             self.fail(f'Could not construct boundary fixture: {count}')
 
-        # A state that lands the heaviest of the six questions exactly on the
+        # A state that lands the heaviest of the three questions exactly on the
         # limit still scores — the detail questions did not eat the budget.
         original = self.agent.predict.return_value
         payload['state'] = state_at(limit)
@@ -640,7 +630,8 @@ console.log(JSON.stringify({
     def test_buyer_reply_prompt_reaches_inference_unchanged(self):
         payload = self.inputs['baseline']
         prepared, _ = self.agent.prepare(payload['state'], payload['questions'])
-        self.assertEqual(len(prepared[0]['ids']), 131)
+        # Typed Decisions' tokenizer; the multilingual bundle counted 131 for the same prompt.
+        self.assertEqual(len(prepared[0]['ids']), 129)
         status, data = self.post(payload)
         self.assertEqual(status, 200)
         self.assertIn('answers', data)
