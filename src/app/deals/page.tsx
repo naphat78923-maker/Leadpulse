@@ -39,7 +39,8 @@ import { WORKFLOW_LANES, WORKFLOW_BY_ID, getWorkflowAction, isOnJourneyBoard, is
 import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import { useLayaGrades } from '@/hooks/useLayaReviewList';
-import { BoardAttentionFilter, reviewReasons, REVIEW_LABEL, buildReviewReport, buildReviewFix, filterAndSortBoardDeals, findDealsMatchingSearch, getDoNowCounts, localDateKey } from '@/utils/deal-board';
+import { calculateLeadScore, scoreToTier, type LeadTier } from '@/utils/lead-scoring';
+import { BoardAttentionFilter, BoardSort, capLane, LANE_CARD_CAP, reviewReasons, REVIEW_LABEL, buildReviewReport, buildReviewFix, filterAndSortBoardDeals, findDealsMatchingSearch, getDoNowCounts, localDateKey } from '@/utils/deal-board';
 import type { DealCardPrimaryAction as DealCardPrimaryActionSpec } from '@/utils/deal-card';
 import { buildCloseUpdate } from '@/utils/deal-close';
 import { buildLaneGateDecision } from '@/utils/lane-gate';
@@ -73,6 +74,14 @@ function DealsBoard() {
   const [celebrate, setCelebrate] = useState<{ dealId: string; laneId: DealWorkflowAction } | null>(null);
   const [pickerDeal, setPickerDeal] = useState<Deal | null>(null);
   const [attentionFilter, setAttentionFilter] = useState<BoardAttentionFilter>('all');
+  const [boardSort, setBoardSort] = useState<BoardSort>('do-now');
+  /** lanes showing every card instead of the first LANE_CARD_CAP */
+  const [expandedLanes, setExpandedLanes] = useState<ReadonlySet<string>>(new Set());
+  const toggleLane = (laneId: string) => setExpandedLanes(prev => {
+    const next = new Set(prev);
+    if (next.has(laneId)) next.delete(laneId); else next.add(laneId);
+    return next;
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [productFilter, setProductFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<Deal['priority'] | 'all'>('all');
@@ -132,6 +141,18 @@ function DealsBoard() {
     [layaGrades]
   );
 
+  // "Hottest" sort: Laya's tier when the deal is graded, otherwise the CRM tier; the CRM
+  // score breaks ties within a tier.
+  const hotness = useMemo(() => {
+    const rank: Record<LeadTier, number> = { D: 0, C: 1, B: 2, A: 3, S: 4 };
+    return new Map(actionBoardDeals.map(deal => {
+      const score = calculateLeadScore(deal);
+      const grade = layaGrades.get(deal.id);
+      const tier = grade?.status === 'graded' ? grade.tier : scoreToTier(score);
+      return [deal.id, rank[tier] * 1000 + score];
+    }));
+  }, [actionBoardDeals, layaGrades]);
+
   const doNowCounts = useMemo(
     () => getDoNowCounts(actionBoardDeals, todayStr, layaReviewIds),
     [actionBoardDeals, todayStr, layaReviewIds]
@@ -145,8 +166,10 @@ function DealsBoard() {
       priority: priorityFilter,
       today: todayStr,
       layaReviewIds,
+      sort: boardSort,
+      hotness,
     }),
-    [actionBoardDeals, attentionFilter, searchQuery, productFilter, priorityFilter, todayStr, layaReviewIds]
+    [actionBoardDeals, attentionFilter, searchQuery, productFilter, priorityFilter, todayStr, layaReviewIds, boardSort, hotness]
   );
 
   // Same deals the "Needs review" count uses: lane requirements only apply on the board.
@@ -559,6 +582,8 @@ function DealsBoard() {
             productOptions={productOptions}
             priorityFilter={priorityFilter}
             onPriorityChange={setPriorityFilter}
+            sort={boardSort}
+            onSortChange={setBoardSort}
             filtersActive={filtersActive}
             onClear={clearDoNowFilters}
             visibleCount={visibleActionBoardDeals.length}
@@ -653,6 +678,7 @@ function DealsBoard() {
             {(() => {
               const lane = WORKFLOW_LANES.find(item => item.id === mobileLane)!;
               const laneDeals = dealsByAction[mobileLane];
+              const { shown, hiddenCount } = capLane(laneDeals, expandedLanes.has(lane.id));
               return (
                 <section data-lane-id={lane.id} className="rounded-xl border border-clay-hairline bg-clay-surface p-3">
                   <div data-lane-header className="mb-2 flex flex-wrap items-center gap-2">
@@ -661,7 +687,7 @@ function DealsBoard() {
                     <span data-lane-stats className="whitespace-nowrap text-xs text-clay-muted">{laneDeals.length} · {formatBaht(laneValues[lane.id])}</span>
                   </div>
                   <StaggerList stagger={0.04} className="space-y-2">
-                    {laneDeals.map(d => (
+                    {shown.map(d => (
                       <StaggerItem key={d.id} className="flex flex-wrap items-stretch gap-1.5">
                         <div className="flex-1 min-w-[min(100%,12rem)]">{renderDealCard(d, { compact })}</div>
                         <button
@@ -674,6 +700,8 @@ function DealsBoard() {
                         </button>
                       </StaggerItem>
                     ))}
+                    <LaneShowAll laneLabel={lane.shortLabel} total={laneDeals.length} hiddenCount={hiddenCount}
+                      expanded={expandedLanes.has(lane.id)} onToggle={() => toggleLane(lane.id)} />
                     {laneDeals.length === 0 && (
                       <div className="border border-dashed border-clay-hairline rounded-xl px-3 py-8 text-center text-sm text-clay-muted-soft flex flex-col items-center gap-2">
                         <Blob state={LANE_BLOB_STATE[lane.id]} size={40} aria-label="" />
@@ -697,7 +725,7 @@ function DealsBoard() {
                       <span data-lane-stats className="shrink-0 whitespace-nowrap text-[11px] text-clay-muted">{dealsByAction[lane.id].length} · {formatBaht(laneValues[lane.id])}</span>
                     </div>
                     <StaggerList stagger={0.04} className="space-y-2 flex-1 pr-0.5">
-                      {dealsByAction[lane.id].map(deal => (
+                      {capLane(dealsByAction[lane.id], expandedLanes.has(lane.id)).shown.map(deal => (
                         <StaggerItem key={deal.id}>
                           <DraggableCard
                             deal={deal}
@@ -709,6 +737,9 @@ function DealsBoard() {
                           </DraggableCard>
                         </StaggerItem>
                       ))}
+                      <LaneShowAll laneLabel={lane.shortLabel} total={dealsByAction[lane.id].length}
+                        hiddenCount={capLane(dealsByAction[lane.id], expandedLanes.has(lane.id)).hiddenCount}
+                        expanded={expandedLanes.has(lane.id)} onToggle={() => toggleLane(lane.id)} />
                       {dealsByAction[lane.id].length === 0 && (
                         lane.id === 'parked' ? (
                           <div className="text-center py-6 rounded-lg border-2 border-dashed border-clay-hairline flex flex-col items-center gap-2 opacity-90">
@@ -895,5 +926,24 @@ function DealsBoard() {
         initialValues={dealPrefill}
       />
     </PageTransition>
+  );
+}
+
+/** "Show all N" under a capped lane, and "Show fewer" once expanded. Nothing for a short lane. */
+function LaneShowAll({ laneLabel, total, hiddenCount, expanded, onToggle }: {
+  laneLabel: string; total: number; hiddenCount: number; expanded: boolean; onToggle: () => void;
+}) {
+  if (!expanded && hiddenCount === 0) return null;
+  if (expanded && total <= LANE_CARD_CAP) return null;
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      data-lane-show-all
+      aria-label={expanded ? `Show fewer ${laneLabel} deals` : `Show all ${total} ${laneLabel} deals`}
+      className="w-full rounded-lg border border-dashed border-clay-hairline py-2 text-xs font-medium text-clay-muted transition-colors hover:border-clay-ink/30 hover:text-clay-ink"
+    >
+      {expanded ? 'Show fewer' : `Show all ${total} · ${hiddenCount} more`}
+    </button>
   );
 }

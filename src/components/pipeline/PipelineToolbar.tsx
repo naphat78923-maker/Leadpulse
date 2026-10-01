@@ -3,7 +3,7 @@
 import clsx from 'clsx';
 import { Search, X } from 'lucide-react';
 import type { Deal } from '@/types/crm';
-import type { BoardAttentionFilter } from '@/utils/deal-board';
+import type { BoardAttentionFilter, BoardSort } from '@/utils/deal-board';
 import { formatBaht } from '@/utils/format';
 
 interface PipelineToolbarProps {
@@ -17,6 +17,8 @@ interface PipelineToolbarProps {
   productOptions: readonly string[];
   priorityFilter: Deal['priority'] | 'all';
   onPriorityChange: (value: Deal['priority'] | 'all') => void;
+  sort: BoardSort;
+  onSortChange: (value: BoardSort) => void;
   filtersActive: boolean;
   onClear: () => void;
   visibleCount: number;
@@ -39,6 +41,8 @@ export default function PipelineToolbar({
   productOptions,
   priorityFilter,
   onPriorityChange,
+  sort,
+  onSortChange,
   filtersActive,
   onClear,
   visibleCount,
@@ -118,6 +122,19 @@ export default function PipelineToolbar({
           <option value="high">High</option>
           <option value="medium">Medium</option>
           <option value="low">Low</option>
+        </select>
+      </label>
+
+      <label>
+        <span className="sr-only">Sort cards in each lane</span>
+        <select
+          value={sort}
+          onChange={event => onSortChange(event.target.value as BoardSort)}
+          title="Do now: overdue first, then by due date. Hottest: highest tier first (Laya's tier where graded)."
+          className="h-9 rounded-lg border border-clay-hairline bg-white px-2.5 text-base text-clay-body focus:outline-none focus:ring-2 focus:ring-clay-lavender/40 dark:bg-clay-card md:text-sm"
+        >
+          <option value="do-now">Sort: Do now</option>
+          <option value="hottest">Sort: Hottest</option>
         </select>
       </label>
 
