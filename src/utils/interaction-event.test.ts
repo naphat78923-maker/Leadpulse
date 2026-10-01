@@ -3,6 +3,7 @@ import type { Meeting } from '@/types/crm';
 import {
   ACTIVE_CHASE_POLICY_ID,
   CHASE_COUNTING_POLICIES,
+  chasesSinceLastReply,
   UNANSWERED_CHASE_CHANNELS,
   countsTowardUnansweredChase,
   defaultEventKind,
@@ -150,5 +151,40 @@ describe('unanswered chase counting', () => {
     expect(unansweredChaseCount(once, 'deal-1')).toBe(1);
     // A retry that reuses the saved interaction row does not add a second row.
     expect(unansweredChaseCount(once, 'deal-1')).toBe(1);
+  });
+});
+
+describe('chasesSinceLastReply', () => {
+  const row = (date: string, direction: string, type = 'call', outcome: string | null = null, deal_id = 'd1') =>
+    ({ deal_id, type, direction, outcome, date, created_at: `${date}T00:00:00Z` });
+
+  it('counts outbound chases after the last buyer reply, in date order', () => {
+    const meetings = [
+      row('2026-09-05', 'outbound'),
+      row('2026-09-01', 'outbound', 'email'),
+      row('2026-09-03', 'inbound', 'dm'),
+      row('2026-09-08', 'outbound', 'dm'),
+    ];
+    expect(chasesSinceLastReply(meetings, 'd1')).toBe(2);
+  });
+
+  it('resets on a row carrying a recorded client response', () => {
+    const meetings = [row('2026-09-01', 'outbound'), row('2026-09-02', 'outbound'), row('2026-09-03', 'outbound', 'call', 'positive')];
+    expect(chasesSinceLastReply(meetings, 'd1')).toBe(0);
+  });
+
+  it('ignores other deals, internal notes, unknown direction and non-chase channels', () => {
+    const meetings = [
+      row('2026-09-01', 'outbound', 'call', null, 'd2'),
+      row('2026-09-02', 'internal', 'note'),
+      row('2026-09-03', 'unknown'),
+      row('2026-09-04', 'outbound', 'sample_sent'),
+      row('2026-09-05', 'outbound', 'email'),
+    ];
+    expect(chasesSinceLastReply(meetings, 'd1')).toBe(1);
+  });
+
+  it('is zero with no rows', () => {
+    expect(chasesSinceLastReply([], 'd1')).toBe(0);
   });
 });
