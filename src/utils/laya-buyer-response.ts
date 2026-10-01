@@ -26,7 +26,7 @@
 // Evidence: scripts/eval_results/2026-09-23-buyer-response-eval-report.md,
 //           scripts/evaluate_laya_prospect_fit.py (fit Nouls)
 
-import LAYA_QUESTIONS from './laya-questions.json';
+import LAYA_QUESTIONS from './laya-questions.json' with { type: 'json' };
 
 export type LayaBuyerResponseLevel =
   | 'requested_next_step'

@@ -74,7 +74,7 @@ describe('rules module constraints', () => {
     const runtimeImports = rulesSource.split('\n').filter(
       line => /^\s*import\s/.test(line) && !/^\s*import\s+type\s/.test(line),
     );
-    expect(runtimeImports).toEqual(["import LAYA_QUESTIONS from './laya-questions.json';"]);
+    expect(runtimeImports).toEqual(["import LAYA_QUESTIONS from './laya-questions.json' with { type: 'json' };"]);
   });
 
   it('no longer declares the retired attention schema the worker rejects', () => {

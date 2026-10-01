@@ -10,7 +10,7 @@
 //   • `answers` has one entry per sent question and nothing else,
 //   • each answer fits its question's own type and options.
 
-import { LAYA_PUBLISHED_ARCHETYPES, type LayaFitAnswers, type LayaPublishedArchetype } from './laya-buyer-response';
+import { LAYA_PUBLISHED_ARCHETYPES, type LayaFitAnswers, type LayaPublishedArchetype } from './laya-buyer-response.ts';
 
 export type LayaChoiceAnswer = {
   type: 'choice';

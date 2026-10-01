@@ -86,7 +86,23 @@ and compares it with the latest row:
 - **`not_scored`** → show the refusal (for example "possible no-contact request —
   review manually"), never a grade.
 
-## Worker loop (not built yet)
+## Worker loop (built 2026-10-01: `scripts/laya-judgment-worker.ts`)
+
+Written in TypeScript so it reuses the app's own builder, question set and answer parser
+(`src/utils/laya-worker.ts` holds the tested pure parts). Run it next to the score server:
+
+```bash
+node scripts/laya-judgment-worker.ts --dry-run          # score, write nothing (no key needed)
+node scripts/laya-judgment-worker.ts                    # one pass, saves rows
+node scripts/laya-judgment-worker.ts --watch 300        # a pass every 5 minutes
+```
+
+It skips Thai replies (they route to Pat in `grade.ts`), and deals already judged for the same
+input and model package. A Typed Decisions pass takes about 7 s per deal for the 11-question
+set. Smoke test 2026-10-01 on the 30-reply holdout fixture: 22 English replies scored and
+validated, 8 Thai skipped, nothing written. The original design notes follow.
+
+### Original design
 
 `scripts/laya_judgment_worker.py`, run on the Mac next to the score server.
 
