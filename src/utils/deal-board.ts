@@ -6,7 +6,7 @@ import { getWorkflowAction, isOnJourneyBoard } from './deal-workflow.ts';
 import { daysBetween, inRetentionSystem, type ISODate } from './retentionCadence.ts';
 import { businessDateKey } from './business-time.ts';
 
-export type BoardAttentionFilter = 'all' | 'overdue' | 'today' | 'needs-review';
+export type BoardAttentionFilter = 'all' | 'overdue' | 'today' | 'needs-review' | 'laya-review';
 
 export interface DealBoardFilters {
   attention: BoardAttentionFilter;
@@ -14,6 +14,8 @@ export interface DealBoardFilters {
   product: string | 'all';
   priority: Deal['priority'] | 'all';
   today: string;
+  /** deal ids Laya routed to Pat (grade.ts needs_review); used by the 'laya-review' filter */
+  layaReviewIds?: ReadonlySet<string>;
 }
 
 export interface DoNowCounts {
@@ -21,6 +23,7 @@ export interface DoNowCounts {
   overdue: number;
   today: number;
   needsReview: number;
+  layaReview: number;
 }
 
 /**
@@ -211,6 +214,7 @@ export function filterAndSortBoardDeals(deals: Deal[], filters: DealBoardFilters
     if (filters.attention === 'overdue' && dueState !== 'overdue') return false;
     if (filters.attention === 'today' && dueState !== 'today') return false;
     if (filters.attention === 'needs-review' && !dealNeedsReview(deal)) return false;
+    if (filters.attention === 'laya-review' && !filters.layaReviewIds?.has(deal.id)) return false;
 
     if (search) {
       const searchable = `${deal.client} ${deal.title}`.toLocaleLowerCase();
@@ -242,15 +246,16 @@ export function findDealsMatchingSearch(deals: Deal[], search: string, today: st
   });
 }
 
-export function getDoNowCounts(deals: Deal[], today: string): DoNowCounts {
+export function getDoNowCounts(deals: Deal[], today: string, layaReviewIds?: ReadonlySet<string>): DoNowCounts {
   return deals.reduce<DoNowCounts>((counts, deal) => {
     const dueState = dealDueState(deal, today);
     counts.all += 1;
     if (dueState === 'overdue') counts.overdue += 1;
     if (dueState === 'today') counts.today += 1;
     if (dealNeedsReview(deal)) counts.needsReview += 1;
+    if (layaReviewIds?.has(deal.id)) counts.layaReview += 1;
     return counts;
-  }, { all: 0, overdue: 0, today: 0, needsReview: 0 });
+  }, { all: 0, overdue: 0, today: 0, needsReview: 0, layaReview: 0 });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

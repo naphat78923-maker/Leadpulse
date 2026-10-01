@@ -64,7 +64,7 @@ describe('card primary action and actionable empty state', () => {
     const testing = primaryCardAction({ ...baseDeal, workflow_action: 'testing' });
 
     expect(outreach.label).toBe('Log outreach');
-    expect(reply.label).toBe('Record reply');
+    expect(reply.label).toBe('Paste reply');
     expect(testing.label).toBe('Log follow-up');
     for (const action of [outreach, reply, testing]) {
       expect(action.opensLogForm).toBe(true);

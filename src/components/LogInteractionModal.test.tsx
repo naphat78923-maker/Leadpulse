@@ -265,6 +265,46 @@ describe('LogInteractionModal save recovery', () => {
     }));
   });
 
+  it('"Paste reply" opens on They replied with the exact-words box first and focused', () => {
+    render(
+      <LogInteractionModal isOpen onClose={vi.fn()} onSave={vi.fn()} deals={[deal]} contacts={[]} companies={[]}
+        selectedDealId={deal.id} initialKind="customer_response" pasteReplyFirst />
+    );
+    expect(screen.getByRole('radio', { name: /They replied/i }).getAttribute('aria-checked')).toBe('true');
+    const words = screen.getByLabelText('Their exact words');
+    const notes = screen.getByLabelText('What happened');
+    expect(document.activeElement).toBe(words);
+    // The words come before the summary, and the summary is labelled optional.
+    expect(words.compareDocumentPosition(notes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(notes.getAttribute('placeholder')).toBe('Your summary (optional)');
+    expect(screen.getByText('Their exact words')).toBeTruthy();
+  });
+
+  it('saves pasted words from "Paste reply" with no summary typed', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    crmMocks.updateDealIfUnchanged.mockResolvedValue({ ...deal, buyer_reply: 'Please quote 20 kg.' });
+    render(
+      <LogInteractionModal isOpen onClose={onClose} onSave={onSave} deals={[deal]} contacts={[]} companies={[]}
+        selectedDealId={deal.id} initialKind="customer_response" pasteReplyFirst />
+    );
+    fireEvent.change(screen.getByLabelText('Their exact words'), { target: { value: 'Please quote 20 kg.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ direction: 'inbound', description: 'They replied by phone' }));
+    expect(crmMocks.updateDealIfUnchanged).toHaveBeenCalledWith(deal.id, deal.updated_at, { buyer_reply: 'Please quote 20 kg.' });
+  });
+
+  it('resets to a plain log when re-opened for another deal without "Paste reply"', () => {
+    const other = { ...deal, id: 'deal-2', client: 'Bravo Cafe' };
+    const props = { isOpen: true, onClose: vi.fn(), onSave: vi.fn(), deals: [deal, other], contacts: [], companies: [] };
+    const { rerender } = render(<LogInteractionModal {...props} selectedDealId={deal.id} initialKind="customer_response" pasteReplyFirst />);
+    expect(screen.getByRole('radio', { name: /They replied/i }).getAttribute('aria-checked')).toBe('true');
+    rerender(<LogInteractionModal {...props} selectedDealId={other.id} />);
+    expect(screen.getByRole('radio', { name: /I reached out/i }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.queryByLabelText('Their exact words')).toBeNull();
+  });
+
   it('does not ask how it went', () => {
     render(
       <LogInteractionModal

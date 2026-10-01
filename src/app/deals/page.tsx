@@ -38,6 +38,7 @@ import { calculateWeightedForecast, calculateSourcePerformance } from '@/utils/a
 import { WORKFLOW_LANES, WORKFLOW_BY_ID, getWorkflowAction, isOnJourneyBoard, isJourneyLane, deriveNudge, formatDerivedNudgeBadge, outboundSendCountForDeal } from '@/utils/deal-workflow';
 import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
 import LogInteractionModal from '@/components/LogInteractionModal';
+import { useLayaGrades } from '@/hooks/useLayaReviewList';
 import { BoardAttentionFilter, reviewReasons, REVIEW_LABEL, buildReviewReport, buildReviewFix, filterAndSortBoardDeals, findDealsMatchingSearch, getDoNowCounts, localDateKey } from '@/utils/deal-board';
 import type { DealCardPrimaryAction as DealCardPrimaryActionSpec } from '@/utils/deal-card';
 import { buildCloseUpdate } from '@/utils/deal-close';
@@ -124,9 +125,16 @@ function DealsBoard() {
     [deals]
   );
 
+  // Laya's grades for deals with a pasted reply; review ids drive the "Laya review" filter.
+  const { grades: layaGrades } = useLayaGrades(actionBoardDeals, dbMeetings || []);
+  const layaReviewIds = useMemo(
+    () => new Set([...layaGrades].filter(([, grade]) => grade.status === 'needs_review').map(([id]) => id)),
+    [layaGrades]
+  );
+
   const doNowCounts = useMemo(
-    () => getDoNowCounts(actionBoardDeals, todayStr),
-    [actionBoardDeals, todayStr]
+    () => getDoNowCounts(actionBoardDeals, todayStr, layaReviewIds),
+    [actionBoardDeals, todayStr, layaReviewIds]
   );
 
   const visibleActionBoardDeals = useMemo(
@@ -136,8 +144,9 @@ function DealsBoard() {
       product: productFilter,
       priority: priorityFilter,
       today: todayStr,
+      layaReviewIds,
     }),
-    [actionBoardDeals, attentionFilter, searchQuery, productFilter, priorityFilter, todayStr]
+    [actionBoardDeals, attentionFilter, searchQuery, productFilter, priorityFilter, todayStr, layaReviewIds]
   );
 
   // Same deals the "Needs review" count uses: lane requirements only apply on the board.
@@ -181,6 +190,8 @@ function DealsBoard() {
 
   const [exitModal, setExitModal] = useState<{ deal: Deal; kind: 'won' | 'lost' | 'park' } | null>(null);
   const [logDealId, setLogDealId] = useState<string | null>(null);
+  /** true when the log form opens from "Paste reply": They replied, exact words first */
+  const [logPasteReply, setLogPasteReply] = useState(false);
 
   const stats = useMemo(() => {
     return {
@@ -231,6 +242,7 @@ function DealsBoard() {
   // and "Set next action" opens the deal instead of inventing a step.
   const handleCardPrimaryAction = (deal: Deal, action: DealCardPrimaryActionSpec) => {
     if (action.opensLogForm) {
+      setLogPasteReply(action.id === 'record-reply');
       setLogDealId(deal.id);
       return;
     }
@@ -474,6 +486,7 @@ function DealsBoard() {
             nudgeStage={nudgeStage}
             compact={isCompact}
             showGrip={opts?.grip}
+            layaGrade={layaGrades.get(deal.id)}
           />
           <p className="sr-only">Open {deal.client} in {lane.label}</p>
         </motion.button>
@@ -867,6 +880,8 @@ function DealsBoard() {
           contacts={contacts}
           companies={companies}
           selectedDealId={logDealId}
+          initialKind={logPasteReply ? 'customer_response' : undefined}
+          pasteReplyFirst={logPasteReply}
         />
       )}
 

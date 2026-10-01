@@ -6,6 +6,8 @@ import { nudgeColorClass } from '@/utils/deal-workflow';
 import { isConcreteNextAction, nudgeChipLabel } from '@/utils/deal-card';
 import { formatBaht } from '@/utils/format';
 import CompanyLogo from '@/components/CompanyLogo';
+import LayaGradeChip from '@/components/LayaGradeChip';
+import type { DealGrade } from '@/utils/grade';
 
 interface DealCardContentProps {
   deal: Deal;
@@ -16,6 +18,8 @@ interface DealCardContentProps {
   nudgeStage?: NudgeStage | null;
   compact?: boolean;
   showGrip?: boolean;
+  /** Laya's grade for this deal, when it has a reply to grade */
+  layaGrade?: DealGrade;
 }
 
 export default function DealCardContent({
@@ -27,6 +31,7 @@ export default function DealCardContent({
   nudgeStage = null,
   compact = false,
   showGrip = false,
+  layaGrade,
 }: DealCardContentProps) {
   const { contact, companyName, companyLogoUrl, product, nextAction, timing } = presentation;
   const hasConcreteNextAction = isConcreteNextAction(deal.next_action);
@@ -89,6 +94,7 @@ export default function DealCardContent({
             {nudgeText}
           </span>
         )}
+        <LayaGradeChip grade={layaGrade} />
         {reviewLabels.length > 0 && (
           <span title={reviewLabels.join(' · ')} className="inline-flex items-center gap-1 rounded bg-clay-lavender/20 px-1.5 py-0.5 text-[10px] font-medium text-clay-ink">
             <AlertCircle className="h-3 w-3" aria-hidden="true" /> Needs review
