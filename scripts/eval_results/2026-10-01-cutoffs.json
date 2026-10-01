@@ -1,0 +1,342 @@
+{
+  "model": "aac6fef/laya-typed-decisions-coreml @ f9ab0b22 (package 517a8071)",
+  "grid": [
+    0.05,
+    0.1,
+    0.15,
+    0.2,
+    0.25,
+    0.3,
+    0.35,
+    0.4,
+    0.45,
+    0.5,
+    0.55,
+    0.6,
+    0.65,
+    0.7,
+    0.75,
+    0.8,
+    0.85,
+    0.9,
+    0.95
+  ],
+  "fit": {
+    "wording": {
+      "plant_based_restaurant_cafe": "Is this account a vegan or plant-based restaurant or cafe?",
+      "modern_trade_specialty_retail": "Is this account a grocery retailer?",
+      "bakery_patisserie_brands": "Is this account a bakery, patisserie, or dessert maker?"
+    },
+    "cutoff": 0.35,
+    "dev_correct": 18,
+    "dev_n": 22,
+    "holdout_correct": 18,
+    "holdout_n": 24,
+    "holdout_misses": [
+      "h-jay-kitchen=no_fit",
+      "h-supermarket-chain=no_fit",
+      "h-health-store=no_fit",
+      "h-vegan-bakery=plant_based_restaurant_cafe",
+      "h-dairy-importer=modern_trade_specialty_retail",
+      "h-name-only=bakery_patisserie_brands"
+    ]
+  },
+  "buyer": {
+    "commercial_info_request": {
+      "form": "plain",
+      "question": {
+        "type": "noul",
+        "instructions": "Does the buyer ask about price, a quotation, minimum order, stock, pack size, or ordering terms?"
+      },
+      "cutoff": 0.2,
+      "dev_auc": 0.878,
+      "dev_balanced_accuracy": 0.762,
+      "dev_positives": 9,
+      "dev_n": 30,
+      "holdout_auc": 0.752,
+      "holdout_balanced_accuracy": 0.717,
+      "holdout_accuracy": "17/30",
+      "holdout_positives": 7,
+      "holdout_misses": [
+        "h_purchasing_signoff=0.43",
+        "h_delivery_fee_costly=0.22",
+        "h_transfer_tomorrow=0.37",
+        "h_too_pricey_stay=0.44",
+        "h_partners_friday=0.26",
+        "h_just_checking=0.25",
+        "h_pattaya_reliable=0.45",
+        "h_th_over_budget=0.25",
+        "h_th_head_chef_approval=0.32",
+        "h_th_delivery_too_slow=0.45",
+        "h_th_try_tomorrow=0.22",
+        "h_th_after_songkran=0.22",
+        "h_th_not_fragrant=0.30"
+      ],
+      "holdout_accuracy_en": "15/22",
+      "holdout_accuracy_th": "2/8"
+    },
+    "next_step_commitment": {
+      "form": "plain",
+      "question": {
+        "type": "noul",
+        "instructions": "Does the buyer say they will do something next, such as test, order, pay, visit, or reply by a certain time?"
+      },
+      "cutoff": 0.6,
+      "dev_auc": 0.809,
+      "dev_balanced_accuracy": 0.813,
+      "dev_positives": 5,
+      "dev_n": 28,
+      "holdout_auc": 0.827,
+      "holdout_balanced_accuracy": 0.587,
+      "holdout_accuracy": "25/30",
+      "holdout_positives": 4,
+      "holdout_misses": [
+        "h_bake_weekend_report_monday=0.48",
+        "h_team_loved_first_order=0.60",
+        "h_partners_friday=0.60",
+        "h_th_head_chef_approval=0.63",
+        "h_th_try_tomorrow=0.56"
+      ],
+      "holdout_accuracy_en": "19/22",
+      "holdout_accuracy_th": "6/8"
+    },
+    "trial_reported": {
+      "form": "criteria",
+      "question": {
+        "type": "noul",
+        "instructions": "Does the buyer say they received, are testing, or tested our sample?",
+        "criteria": {
+          "false": "the buyer says nothing about receiving or testing a sample",
+          "true": "the buyer reports on our sample"
+        }
+      },
+      "cutoff": 0.55,
+      "dev_auc": 0.865,
+      "dev_balanced_accuracy": 0.825,
+      "dev_positives": 10,
+      "dev_n": 30,
+      "holdout_auc": 0.9,
+      "holdout_balanced_accuracy": 0.825,
+      "holdout_accuracy": "25/30",
+      "holdout_positives": 10,
+      "holdout_misses": [
+        "h_tuesday_huahin=0.58",
+        "h_delivery_stock_question=0.58",
+        "h_th_delivery_too_slow=0.55",
+        "h_th_try_tomorrow=0.54",
+        "h_th_not_fragrant=0.48"
+      ],
+      "holdout_accuracy_en": "20/22",
+      "holdout_accuracy_th": "5/8"
+    },
+    "trial_positive": {
+      "form": "criteria",
+      "question": {
+        "type": "noul",
+        "instructions": "Does the buyer say our sample worked well in their test?",
+        "criteria": {
+          "false": "the buyer reports no good test result",
+          "true": "the buyer reports a good test result"
+        }
+      },
+      "cutoff": 0.6,
+      "dev_auc": 0.93,
+      "dev_balanced_accuracy": 0.875,
+      "dev_positives": 4,
+      "dev_n": 29,
+      "holdout_auc": 0.987,
+      "holdout_balanced_accuracy": 0.833,
+      "holdout_accuracy": "28/29",
+      "holdout_positives": 3,
+      "holdout_misses": [
+        "h_th_texture_wholesale=0.47"
+      ],
+      "holdout_accuracy_en": "21/21",
+      "holdout_accuracy_th": "7/8"
+    },
+    "trial_negative": {
+      "form": "plain",
+      "question": {
+        "type": "noul",
+        "instructions": "Does the buyer say our sample did not work well in their test?"
+      },
+      "cutoff": 0.25,
+      "dev_auc": 0.907,
+      "dev_balanced_accuracy": 0.833,
+      "dev_positives": 2,
+      "dev_n": 29,
+      "holdout_auc": 0.962,
+      "holdout_balanced_accuracy": 0.808,
+      "holdout_accuracy": "19/29",
+      "holdout_positives": 3,
+      "holdout_misses": [
+        "h_purchasing_signoff=0.30",
+        "h_march_menu=0.30",
+        "h_partners_friday=0.26",
+        "h_received_not_tried=0.31",
+        "h_th_texture_wholesale=0.38",
+        "h_th_over_budget=0.38",
+        "h_th_head_chef_approval=0.31",
+        "h_th_delivery_too_slow=0.27",
+        "h_th_try_tomorrow=0.28",
+        "h_th_after_songkran=0.46"
+      ],
+      "holdout_accuracy_en": "17/21",
+      "holdout_accuracy_th": "2/8"
+    },
+    "concern_price": {
+      "form": "criteria",
+      "question": {
+        "type": "noul",
+        "instructions": "Is the buyer concerned about price or payment terms?",
+        "criteria": {
+          "false": "the buyer raises no price concern",
+          "true": "the buyer raises a price concern"
+        }
+      },
+      "cutoff": 0.45,
+      "dev_auc": 0.841,
+      "dev_balanced_accuracy": 0.81,
+      "dev_positives": 3,
+      "dev_n": 24,
+      "holdout_auc": 0.933,
+      "holdout_balanced_accuracy": 0.856,
+      "holdout_accuracy": "28/30",
+      "holdout_positives": 4,
+      "holdout_misses": [
+        "h_purchasing_signoff=0.51",
+        "h_th_over_budget=0.31"
+      ],
+      "holdout_accuracy_en": "21/22",
+      "holdout_accuracy_th": "7/8"
+    },
+    "concern_technical": {
+      "form": "criteria",
+      "question": {
+        "type": "noul",
+        "instructions": "Is the buyer concerned about how the product performs, tastes, or works in their recipes?",
+        "criteria": {
+          "false": "the buyer raises no product performance concern",
+          "true": "the buyer raises a product performance concern"
+        }
+      },
+      "cutoff": 0.35,
+      "dev_auc": 0.81,
+      "dev_balanced_accuracy": 0.833,
+      "dev_positives": 3,
+      "dev_n": 24,
+      "holdout_auc": 0.933,
+      "holdout_balanced_accuracy": 0.904,
+      "holdout_accuracy": "25/30",
+      "holdout_positives": 4,
+      "holdout_misses": [
+        "h_purchasing_signoff=0.44",
+        "h_just_checking=0.39",
+        "h_th_texture_wholesale=0.36",
+        "h_th_delivery_too_slow=0.51",
+        "h_th_after_songkran=0.37"
+      ],
+      "holdout_accuracy_en": "20/22",
+      "holdout_accuracy_th": "5/8"
+    },
+    "concern_delivery": {
+      "form": "plain",
+      "question": {
+        "type": "noul",
+        "instructions": "Is the buyer concerned about delivery, stock, or lead time?"
+      },
+      "cutoff": 0.55,
+      "dev_auc": 0.955,
+      "dev_balanced_accuracy": 0.977,
+      "dev_positives": 2,
+      "dev_n": 24,
+      "holdout_auc": 0.865,
+      "holdout_balanced_accuracy": 0.481,
+      "holdout_accuracy": "25/30",
+      "holdout_positives": 4,
+      "holdout_misses": [
+        "h_tuesday_huahin=0.43",
+        "h_delivery_fee_costly=0.53",
+        "h_delivery_stock_question=0.60",
+        "h_pattaya_reliable=0.40",
+        "h_th_delivery_too_slow=0.42"
+      ],
+      "holdout_accuracy_en": "18/22",
+      "holdout_accuracy_th": "7/8"
+    },
+    "concern_approval": {
+      "form": "criteria",
+      "question": {
+        "type": "noul",
+        "instructions": "Does the buyer need someone else's approval before going ahead?",
+        "criteria": {
+          "false": "the buyer does not mention needing approval",
+          "true": "the buyer needs someone else's approval"
+        }
+      },
+      "cutoff": 0.5,
+      "dev_auc": 0.841,
+      "dev_balanced_accuracy": 0.886,
+      "dev_positives": 2,
+      "dev_n": 24,
+      "holdout_auc": 0.721,
+      "holdout_balanced_accuracy": 0.635,
+      "holdout_accuracy": "22/30",
+      "holdout_positives": 4,
+      "holdout_misses": [
+        "h_owner_travelling=0.38",
+        "h_partners_friday=0.43",
+        "h_just_checking=0.52",
+        "h_th_texture_wholesale=0.53",
+        "h_th_delivery_too_slow=0.56",
+        "h_th_try_tomorrow=0.56",
+        "h_th_after_songkran=0.52",
+        "h_th_not_fragrant=0.54"
+      ],
+      "holdout_accuracy_en": "19/22",
+      "holdout_accuracy_th": "3/8"
+    },
+    "concern_timing": {
+      "form": "plain",
+      "question": {
+        "type": "noul",
+        "instructions": "Does the buyer say now is not the right time, or ask to wait until later?"
+      },
+      "cutoff": 0.45,
+      "dev_auc": 0.952,
+      "dev_balanced_accuracy": 0.929,
+      "dev_positives": 3,
+      "dev_n": 24,
+      "holdout_auc": 0.864,
+      "holdout_balanced_accuracy": 0.62,
+      "holdout_accuracy": "23/30",
+      "holdout_positives": 5,
+      "holdout_misses": [
+        "h_not_this_year=0.33",
+        "h_owner_travelling=0.44",
+        "h_partners_friday=0.49",
+        "h_th_head_chef_approval=0.46",
+        "h_th_try_tomorrow=0.49",
+        "h_th_after_songkran=0.44",
+        "h_th_not_fragrant=0.49"
+      ],
+      "holdout_accuracy_en": "19/22",
+      "holdout_accuracy_th": "4/8"
+    }
+  },
+  "buyer_response": {
+    "P(requested_next_step)": {
+      "holdout_auc": 0.869,
+      "positives": 9
+    },
+    "P(declined)": {
+      "holdout_auc": 0.892,
+      "positives": 4
+    },
+    "P(deferred)": {
+      "holdout_auc": 0.87,
+      "positives": 3
+    },
+    "pick_correct": "11/26"
+  }
+}

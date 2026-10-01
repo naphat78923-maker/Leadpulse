@@ -273,14 +273,24 @@ console.log(JSON.stringify({
                     ['requested_next_step', 'deferred', 'declined', 'no_commitment', 'unclear'], 0.2)},
             'next_step_commitment': {'type': 'noul', 'noul': 0.7, 'confidence': 0.7},
             'commercial_info_request': {'type': 'noul', 'noul': 0.62, 'confidence': 0.62},
+            'trial_reported': {'type': 'noul', 'noul': 0.2, 'confidence': 0.8},
+            'trial_positive': {'type': 'noul', 'noul': 0.2, 'confidence': 0.8},
+            'trial_negative': {'type': 'noul', 'noul': 0.2, 'confidence': 0.8},
+            'concern_price': {'type': 'noul', 'noul': 0.2, 'confidence': 0.8},
+            'concern_technical': {'type': 'noul', 'noul': 0.2, 'confidence': 0.8},
+            'concern_delivery': {'type': 'noul', 'noul': 0.2, 'confidence': 0.8},
+            'concern_approval': {'type': 'noul', 'noul': 0.2, 'confidence': 0.8},
+            'concern_timing': {'type': 'noul', 'noul': 0.2, 'confidence': 0.8},
         }, 'usage': {'input_tokens': 200, 'output_tokens': 0}}
 
     def test_terminal_state_carries_no_deal_value_and_asks_no_deal_amount(self):
         # Deal size is bucketed in code from the CRM value, never asked of the model.
         self.assertNotIn('Deal value', self.inputs['combined']['state'])
-        # sample_trial_report, obstacle_kind and obstacle_strength were cut on 2026-10-01.
+        # The tuned deal set (2026-10-01); the three Choice questions were cut the same day.
         self.assertEqual(list(self.inputs['combined']['questions']), [
-            'buyer_response', 'next_step_commitment', 'commercial_info_request',
+            'buyer_response', 'commercial_info_request', 'next_step_commitment',
+            'trial_reported', 'trial_positive', 'trial_negative', 'concern_price',
+            'concern_technical', 'concern_delivery', 'concern_approval', 'concern_timing',
         ])
 
     def test_combined_frozen_questions_score_in_one_pass(self):
@@ -295,7 +305,9 @@ console.log(JSON.stringify({
             self.assertEqual(data['answers']['buyer_response']['choice'], 'requested_next_step')
             # Every posted question comes back under `answers`, validated.
             self.assertEqual(set(data['answers']), {
-                'buyer_response', 'next_step_commitment', 'commercial_info_request',
+                'buyer_response', 'commercial_info_request', 'next_step_commitment',
+                'trial_reported', 'trial_positive', 'trial_negative', 'concern_price',
+                'concern_technical', 'concern_delivery', 'concern_approval', 'concern_timing',
             })
             self.assertEqual(data['answers']['next_step_commitment']['noul'], 0.7)
             self.assertEqual(data['answers']['commercial_info_request']['noul'], 0.62)
@@ -400,7 +412,7 @@ console.log(JSON.stringify({
                     return candidate
             self.fail(f'Could not construct boundary fixture: {count}')
 
-        # A state that lands the heaviest of the three questions exactly on the
+        # A state that lands the heaviest of the eleven questions exactly on the
         # limit still scores — the detail questions did not eat the budget.
         original = self.agent.predict.return_value
         payload['state'] = state_at(limit)

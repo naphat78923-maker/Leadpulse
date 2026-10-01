@@ -45,7 +45,7 @@ interface MutableScorePayload {
 }
 
 // The worker echoes every answer — the exact /score shape for the combined
-// three-question run.
+// eleven-question deal run.
 // `mutate` corrupts a copy so one payload shape covers every rejection case.
 const success = (mutate?: (payload: MutableScorePayload) => void) => ({
   ok: true,
@@ -63,6 +63,14 @@ const success = (mutate?: (payload: MutableScorePayload) => void) => ({
         },
         next_step_commitment: { type: 'noul', noul: 0.7, confidence: 0.7 },
         commercial_info_request: { type: 'noul', noul: 0.62, confidence: 0.62 },
+        trial_reported: { type: 'noul', noul: 0.2, confidence: 0.8 },
+        trial_positive: { type: 'noul', noul: 0.2, confidence: 0.8 },
+        trial_negative: { type: 'noul', noul: 0.2, confidence: 0.8 },
+        concern_price: { type: 'noul', noul: 0.2, confidence: 0.8 },
+        concern_technical: { type: 'noul', noul: 0.2, confidence: 0.8 },
+        concern_delivery: { type: 'noul', noul: 0.2, confidence: 0.8 },
+        concern_approval: { type: 'noul', noul: 0.2, confidence: 0.8 },
+        concern_timing: { type: 'noul', noul: 0.2, confidence: 0.8 },
       },
       usage: { input_tokens: 93, output_tokens: 0 },
       trace: {
@@ -176,20 +184,21 @@ describe('Laya terminal', () => {
     expect(JSON.stringify(body.questions)).toBe(JSON.stringify(LAYA_ALL_FROZEN_QUESTIONS));
   });
 
-  it('renders both buyer-detail rows from the one combined run', async () => {
+  it('renders every buyer-detail row from the one combined run', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(success()));
     openPanel();
     typeStateAndRun(built.state);
 
     await screen.findByTestId('laya-terminal-result-buyer_response');
     const rows: Record<string, string> = {};
-    for (const id of ['next_step_commitment', 'commercial_info_request']) {
+    for (const id of ['next_step_commitment', 'commercial_info_request', 'trial_reported', 'trial_positive', 'trial_negative', 'concern_price', 'concern_technical', 'concern_delivery', 'concern_approval', 'concern_timing']) {
       rows[id] = screen.getByTestId(`laya-terminal-result-${id}`).textContent ?? '';
     }
     // Noul rows show the raw value and both sides — never a decision.
     expect(rows.next_step_commitment).toContain('noul 0.7000');
     expect(rows.next_step_commitment).toContain('true 70% / false 30%');
     expect(rows.commercial_info_request).toContain('noul 0.6200');
+    expect(rows.concern_price).toContain('noul 0.2000');
     // The cut Choice questions are gone.
     for (const id of ['sample_trial_report', 'obstacle_kind', 'obstacle_strength']) {
       expect(screen.queryByTestId(`laya-terminal-result-${id}`)).toBeNull();

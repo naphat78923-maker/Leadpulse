@@ -342,7 +342,7 @@ describe('Prospects review queue', () => {
         status: 200,
         json: async () => ({
           answers: {
-            fit_plant_based_restaurant_cafe: { noul: 0.3, confidence: 0.7 },
+            fit_plant_based_restaurant_cafe: { noul: 0.2, confidence: 0.8 },
             fit_modern_trade_specialty_retail: { noul: 0.1, confidence: 0.9 },
             fit_bakery_patisserie_brands: { noul: 0.05, confidence: 0.95 },
           },

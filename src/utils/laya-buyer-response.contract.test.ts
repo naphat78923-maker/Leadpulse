@@ -6,6 +6,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import LAYA_QUESTIONS from './laya-questions.json';
+import LAYA_CUTOFFS from './laya-cutoffs.json';
+import { FIT_THRESHOLD } from './prospectFit';
 import {
   LAYA_ALL_FROZEN_QUESTIONS,
   LAYA_BUYER_FROZEN_QUESTIONS,
@@ -33,6 +35,37 @@ describe('frozen question source', () => {
   it('the worker loads the same file and declares no question text of its own', () => {
     expect(workerSource).toContain('src/utils/laya-questions.json');
     expect(workerSource).not.toMatch(/"instructions":/);
+  });
+});
+
+describe('cut-offs file', () => {
+  const deal = LAYA_CUTOFFS.deal as Record<string, { tier: string; cutoff?: number }>;
+
+  it('covers exactly the deal set, with a known tier for every question', () => {
+    expect(Object.keys(deal).sort()).toEqual([...LAYA_QUESTIONS.sets.terminal].sort());
+    for (const [id, entry] of Object.entries(deal)) {
+      expect(Object.keys(LAYA_CUTOFFS.tiers), id).toContain(entry.tier);
+    }
+  });
+
+  it('gives every signal-tier question a cut-off inside (0, 1), and no other tier one', () => {
+    for (const [id, entry] of Object.entries(deal)) {
+      if (entry.tier === 'signal') {
+        expect(entry.cutoff, id).toBeGreaterThan(0);
+        expect(entry.cutoff, id).toBeLessThan(1);
+      } else {
+        expect(entry.cutoff, id).toBeUndefined();
+      }
+    }
+  });
+
+  it('keeps the fit cut-off and prospectFit.ts in step', () => {
+    expect(LAYA_CUTOFFS.fit.cutoff).toBe(FIT_THRESHOLD);
+  });
+
+  it('routes Thai replies to Pat and does not judge name-only accounts', () => {
+    expect(LAYA_CUTOFFS.routing.thai_script).toBe('owner_review');
+    expect(LAYA_CUTOFFS.routing.name_only_account).toBe('not_judged');
   });
 });
 

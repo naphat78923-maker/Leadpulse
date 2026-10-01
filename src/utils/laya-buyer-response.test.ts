@@ -3,6 +3,7 @@ import {
   buildLayaBuyerResponseInput,
   buildLayaProspectFitInput,
   buyerResponseSignal,
+  hasThaiScript,
   LAYA_PUBLISHED_ARCHETYPES,
   latestLoggedReplyNote,
 } from './laya-buyer-response';
@@ -109,6 +110,26 @@ describe('buildLayaBuyerResponseInput', () => {
   });
 });
 
+describe('Thai routing', () => {
+  it('detects Thai script', () => {
+    expect(hasThaiScript('ขอใบเสนอราคา 15 กิโลครับ')).toBe(true);
+    expect(hasThaiScript('Please quote 15 kg, ขอบคุณครับ')).toBe(true);
+    expect(hasThaiScript('Please quote 15 kg.')).toBe(false);
+    expect(hasThaiScript(null)).toBe(false);
+  });
+
+  it('marks a Thai reply on the built input', () => {
+    expect(buildLayaBuyerResponseInput({ deal: { product: 'Butter', buyer_reply: 'แพงไปครับ' } })!.thai).toBe(true);
+    expect(buildLayaBuyerResponseInput({ deal: { product: 'Butter', buyer_reply: 'Too pricey.' } })!.thai).toBe(false);
+  });
+
+  it('routes a Thai reply to Pat, never to the buyer-request cue', () => {
+    expect(buyerResponseSignal('requested_next_step', true, true)).toBe('owner_review');
+    expect(buyerResponseSignal('declined', true, true)).toBe('owner_review');
+    expect(buyerResponseSignal('requested_next_step', true, false)).toBe('buyer_requested');
+  });
+});
+
 describe('latestLoggedReplyNote', () => {
   it('reads both logged reply forms, with or without a timestamp', () => {
     expect(latestLoggedReplyNote('💬 Client replied — negative: Price too high')).toBe('Price too high');
@@ -195,8 +216,14 @@ describe('buildLayaProspectFitInput', () => {
     expect(buildLayaProspectFitInput({ name: '  ', industry: null, tags: [] })).toBeNull();
   });
 
+  it('returns null for a name alone — a bare name is not evidence of a business type', () => {
+    expect(buildLayaProspectFitInput({ name: 'Siam Golden Trading Co.', industry: null, tags: [] })).toBeNull();
+    expect(buildLayaProspectFitInput({ name: 'Siam Golden Trading Co.', industry: '  ', tags: [' '] })).toBeNull();
+    expect(buildLayaProspectFitInput({ name: 'Siam Golden Trading Co.', tags: ['bakery'] })).not.toBeNull();
+  });
+
   it('preserves multilingual identity text without shortening', () => {
     const name = 'ร้านขนมเบเกอรี่ไทย'.repeat(20);
-    expect(buildLayaProspectFitInput({ name })!.state).toContain(name);
+    expect(buildLayaProspectFitInput({ name, industry: 'Bakery' })!.state).toContain(name);
   });
 });

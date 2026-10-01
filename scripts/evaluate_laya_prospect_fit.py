@@ -27,7 +27,7 @@ from laya_input import check_input_budget  # noqa: E402
 
 DEFAULT_MODEL = "/Users/pat/laya-coreml/models/typed-decisions"
 ARCHETYPES = ["plant_based_restaurant_cafe", "modern_trade_specialty_retail", "bakery_patisserie_brands"]
-FIT_THRESHOLD = 0.5
+FIT_THRESHOLD = 0.3  # = fit.cutoff in src/utils/laya-cutoffs.json
 
 OLD_QUESTIONS = {
     "archetype_select": {

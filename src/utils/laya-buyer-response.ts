@@ -37,6 +37,8 @@ export type LayaBuyerResponseLevel =
 
 export interface LayaBuyerResponseInput {
   state: string;
+  /** true when the buyer text contains Thai script — routed to Pat, not graded */
+  thai: boolean;
   questions: {
     buyer_response: {
       type: 'choice';
@@ -75,8 +77,16 @@ export const LAYA_BUYER_FROZEN_QUESTIONS: LayaBuyerResponseInput['questions'] = 
 export const LAYA_ALL_FROZEN_QUESTIONS = frozenSet('terminal') as unknown as Pick<
   Questions,
   | 'buyer_response'
-  | 'next_step_commitment'
   | 'commercial_info_request'
+  | 'next_step_commitment'
+  | 'trial_reported'
+  | 'trial_positive'
+  | 'trial_negative'
+  | 'concern_price'
+  | 'concern_technical'
+  | 'concern_delivery'
+  | 'concern_approval'
+  | 'concern_timing'
 >;
 
 /**
@@ -111,8 +121,9 @@ export interface LayaFitAnswers {
  * not list archetype names — measured on the dev set, naming them in the state
  * made every support Noul answer "yes".
  *
- * Returns null when the account states nothing at all: a needs_evidence
- * safeguard handled in code, never by the model.
+ * Returns null when the account states no industry and no tags: a name alone is
+ * not evidence of a business type (a bare trading-company name was judged a
+ * bakery), so it is a needs_evidence safeguard handled in code, never by the model.
  */
 export function buildLayaProspectFitInput(account: {
   name?: string | null;
@@ -127,7 +138,7 @@ export function buildLayaProspectFitInput(account: {
   if (name) parts.push(`The account is named "${name}"`);
   if (industry) parts.push(`its industry is "${industry}"`);
   if (tags.length > 0) parts.push(`its tags are "${tags.join(', ')}"`);
-  if (parts.length === 0) return null;
+  if (!industry && tags.length === 0) return null;
   return { state: `${parts.join('; ')}.`, questions: LAYA_FIT_FROZEN_QUESTIONS };
 }
 
@@ -188,6 +199,7 @@ export function buildLayaBuyerResponseInput(input: {
       state: `We supply ${product} to this account. The buyer's latest reply: "${reply}"`,
       questions: BUYER_RESPONSE_QUESTION,
       verbatim: true,
+      thai: hasThaiScript(reply),
     };
   }
   const note = latestLoggedReplyNote(input.deal.last_outcome);
@@ -196,6 +208,7 @@ export function buildLayaBuyerResponseInput(input: {
       state: `We supply ${product} to this account. Our note of the buyer's latest reply: "${note}"`,
       questions: BUYER_RESPONSE_QUESTION,
       verbatim: false,
+      thai: hasThaiScript(note),
     };
   }
   return null;
@@ -208,13 +221,25 @@ export function buildLayaBuyerResponseInput(input: {
 // Paraphrased notes never raise it (the same question measured 2/8 on
 // third-person notes). Everything else routes to manual triage with no label.
 
-export type LayaBuyerSignal = 'buyer_requested' | 'manual_triage';
+export type LayaBuyerSignal = 'buyer_requested' | 'manual_triage' | 'owner_review';
 
 export const LAYA_BUYER_REQUEST_LABEL = 'Buyer-request signal — review this deal';
+export const LAYA_OWNER_REVIEW_LABEL = 'Thai reply — review it yourself; Laya is unreliable on Thai';
+
+// Thai script block (U+0E00–U+0E7F). Typed Decisions has an English tokenizer: on
+// Thai replies its scores bunch around 0.3–0.55 whatever the reply says, so any
+// Thai text routes to Pat (laya-cutoffs.json routing.thai_script).
+const THAI_SCRIPT = /[\u0E00-\u0E7F]/;
+
+export function hasThaiScript(text: string | null | undefined): boolean {
+  return !!text && THAI_SCRIPT.test(text);
+}
 
 export function buyerResponseSignal(
   level: LayaBuyerResponseLevel,
   verbatim: boolean,
+  thai = false,
 ): LayaBuyerSignal {
+  if (thai) return 'owner_review';
   return verbatim && level === 'requested_next_step' ? 'buyer_requested' : 'manual_triage';
 }

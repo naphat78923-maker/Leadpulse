@@ -123,8 +123,12 @@ function rowGaps(row: ProspectSourceRow): string[] {
   return gaps;
 }
 
-/** A fit Noul at or above this counts as the account being that archetype. */
-export const FIT_THRESHOLD = 0.5;
+/**
+ * A fit Noul at or above this counts as the account being that archetype. Tuned for
+ * Typed Decisions on 2026-10-01 (it answers fit questions lower than the multilingual
+ * model did); must equal fit.cutoff in laya-cutoffs.json.
+ */
+export const FIT_THRESHOLD = 0.3;
 
 /**
  * Turn one validated Laya fit run into a session judgment. Policy lives here, in

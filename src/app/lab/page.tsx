@@ -275,7 +275,7 @@ function CandidateDetail({
             </>
           ) : (
             <p className="mt-2 text-xs text-clay-muted">
-              Nothing would be sent: this account states no name, industry or tags to judge.
+              Nothing would be sent: this account states no industry or tags, and a name alone is not judged.
             </p>
           )}
         </div>
@@ -540,7 +540,7 @@ export default function ProspectsPage() {
         industry: candidate.industry,
         tags: candidate.tags,
       });
-      if (!fitInput) return 'Nothing to send: this account states no name, industry or tags.';
+      if (!fitInput) return 'Nothing to send: add an industry or tags first; a name alone is not judged.';
       try {
         const sent = { state: fitInput.state, questions: fitInput.questions };
         const { ok, status, payload } = await requestLocalLaya('/score', {
