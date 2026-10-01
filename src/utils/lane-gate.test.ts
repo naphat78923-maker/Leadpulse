@@ -87,3 +87,44 @@ describe('other lane moves', () => {
     expect(updates).toMatchObject({ workflow_action: 'reschedule', followup_date: '2026-09-20' });
   });
 });
+
+describe('dragging into Waiting on reply — the buyer\'s exact words', () => {
+  it('saves pasted words to buyer_reply for a real reply', () => {
+    const { updates } = buildLaneGateDecision(
+      deal,
+      { target: 'reply', channel: 'dm', reply_outcome: 'positive', reply_summary: 'Wants a quote', buyer_reply: ' Please quote 20 kg. ' },
+      opts
+    );
+    expect(updates.buyer_reply).toBe('Please quote 20 kg.');
+    // The summary still goes to the log; the words never do.
+    expect(updates.last_outcome).toMatch(/Client replied — positive: Wants a quote/);
+    expect(updates.last_outcome).not.toMatch(/Please quote 20 kg/);
+  });
+
+  it('clears an out-of-date saved reply when a new real reply comes without words', () => {
+    const { updates } = buildLaneGateDecision(
+      { ...deal, buyer_reply: 'Old reply from August' },
+      { target: 'reply', channel: 'call', reply_outcome: 'negative', reply_summary: 'Chose another supplier' },
+      opts
+    );
+    expect(updates.buyer_reply).toBeNull();
+  });
+
+  it('never touches buyer_reply when nothing came back', () => {
+    const { updates } = buildLaneGateDecision(
+      { ...deal, buyer_reply: 'Old reply from August' },
+      { target: 'reply', channel: 'call', reply_outcome: 'no_response', buyer_reply: 'typed by mistake' },
+      opts
+    );
+    expect('buyer_reply' in updates).toBe(false);
+  });
+
+  it('never touches buyer_reply on other lanes', () => {
+    const { updates } = buildLaneGateDecision(
+      { ...deal, buyer_reply: 'Old reply' },
+      { target: 'sample', sample_status: 'sent', buyer_reply: 'ignored' },
+      opts
+    );
+    expect('buyer_reply' in updates).toBe(false);
+  });
+});

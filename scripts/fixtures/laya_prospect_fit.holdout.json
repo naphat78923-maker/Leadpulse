@@ -1,0 +1,296 @@
+{
+  "note": "Synthetic HOLDOUT set for prospect fit, written 2026-10-01 before any inference and never used to choose wording or cut-offs. Scored once with the final choices. Same label meaning as the dev set: `supported` lists every archetype the name, industry and tags establish on their own; `archetype` is the expected fit. Relabelled 2026-10-01 from Pat's review after the first scoring: health-food store is no_fit; a vegan bakery counts as plant_based_restaurant_cafe; a dairy importer is no_fit for the published archetypes but belongs to a future importer_exporter class. From this point the set has informed a decision and is no longer a clean holdout.",
+  "cases": [
+    {
+      "id": "h-croissant-house",
+      "name": "Le Croissant House",
+      "industry": "Bakery cafe",
+      "tags": [
+        "croissant",
+        "laminated dough"
+      ],
+      "archetype": "bakery_patisserie_brands",
+      "supported": [
+        "bakery_patisserie_brands"
+      ]
+    },
+    {
+      "id": "h-cake-studio",
+      "name": "Sugar & Spoon Cake Studio",
+      "industry": "Cakes and desserts",
+      "tags": [
+        "wedding cakes",
+        "own kitchen"
+      ],
+      "archetype": "bakery_patisserie_brands",
+      "supported": [
+        "bakery_patisserie_brands"
+      ]
+    },
+    {
+      "id": "h-th-bakery-chain",
+      "name": "เบเกอรี่บ้านขนม",
+      "industry": "Bakery",
+      "tags": [
+        "ขนมปัง",
+        "สาขา 5 แห่ง"
+      ],
+      "archetype": "bakery_patisserie_brands",
+      "supported": [
+        "bakery_patisserie_brands"
+      ]
+    },
+    {
+      "id": "h-donut-brand",
+      "name": "Ring Donuts",
+      "industry": "Food manufacturing",
+      "tags": [
+        "donuts",
+        "central kitchen",
+        "kiosks"
+      ],
+      "archetype": "bakery_patisserie_brands",
+      "supported": [
+        "bakery_patisserie_brands"
+      ]
+    },
+    {
+      "id": "h-pastry-school-shop",
+      "name": "Atelier Pâtissier",
+      "industry": "Patisserie",
+      "tags": [
+        "macarons",
+        "tarts"
+      ],
+      "archetype": "bakery_patisserie_brands",
+      "supported": [
+        "bakery_patisserie_brands"
+      ]
+    },
+    {
+      "id": "h-plant-bistro",
+      "name": "Leaf & Lentil Bistro",
+      "industry": "Restaurant",
+      "tags": [
+        "plant-based",
+        "vegan brunch"
+      ],
+      "archetype": "plant_based_restaurant_cafe",
+      "supported": [
+        "plant_based_restaurant_cafe"
+      ]
+    },
+    {
+      "id": "h-vegan-cafe-th",
+      "name": "Veggie Corner Cafe",
+      "industry": "Cafe",
+      "tags": [
+        "vegan",
+        "มังสวิรัติ"
+      ],
+      "archetype": "plant_based_restaurant_cafe",
+      "supported": [
+        "plant_based_restaurant_cafe"
+      ]
+    },
+    {
+      "id": "h-raw-food",
+      "name": "Raw Living",
+      "industry": "Vegan restaurant",
+      "tags": [
+        "raw food",
+        "smoothie bowls"
+      ],
+      "archetype": "plant_based_restaurant_cafe",
+      "supported": [
+        "plant_based_restaurant_cafe"
+      ]
+    },
+    {
+      "id": "h-jay-kitchen",
+      "name": "Jay Kitchen BKK",
+      "industry": "Restaurant",
+      "tags": [
+        "jay food",
+        "vegetarian",
+        "plant-based"
+      ],
+      "archetype": "plant_based_restaurant_cafe",
+      "supported": [
+        "plant_based_restaurant_cafe"
+      ]
+    },
+    {
+      "id": "h-supermarket-chain",
+      "name": "Villa Fresh Market",
+      "industry": "Supermarket",
+      "tags": [
+        "chain",
+        "imported food"
+      ],
+      "archetype": "modern_trade_specialty_retail",
+      "supported": [
+        "modern_trade_specialty_retail"
+      ]
+    },
+    {
+      "id": "h-gourmet-grocer",
+      "name": "Gourmet Larder",
+      "industry": "Specialty grocery",
+      "tags": [
+        "cheese",
+        "butter",
+        "deli"
+      ],
+      "archetype": "modern_trade_specialty_retail",
+      "supported": [
+        "modern_trade_specialty_retail"
+      ]
+    },
+    {
+      "id": "h-online-grocer",
+      "name": "FreshCart Online",
+      "industry": "E-commerce",
+      "tags": [
+        "online grocery",
+        "home delivery"
+      ],
+      "archetype": "modern_trade_specialty_retail",
+      "supported": [
+        "modern_trade_specialty_retail"
+      ]
+    },
+    {
+      "id": "h-th-minimart",
+      "name": "ร้านสะดวกซื้อ ใกล้บ้าน",
+      "industry": "Convenience store",
+      "tags": [
+        "grocery",
+        "retail"
+      ],
+      "archetype": "modern_trade_specialty_retail",
+      "supported": [
+        "modern_trade_specialty_retail"
+      ]
+    },
+    {
+      "id": "h-health-store",
+      "name": "Green Pantry Health Store",
+      "industry": "Health food retail",
+      "tags": [
+        "organic",
+        "plant-based products"
+      ],
+      "archetype": "no_fit",
+      "supported": []
+    },
+    {
+      "id": "h-vegan-bakery",
+      "name": "Bloom Vegan Bakery",
+      "industry": "Bakery",
+      "tags": [
+        "vegan",
+        "plant-based pastries"
+      ],
+      "archetype": "plant_based_restaurant_cafe",
+      "supported": [
+        "bakery_patisserie_brands",
+        "plant_based_restaurant_cafe"
+      ]
+    },
+    {
+      "id": "h-thai-restaurant",
+      "name": "Baan Thai Kitchen",
+      "industry": "Restaurant",
+      "tags": [
+        "Thai cuisine",
+        "family style"
+      ],
+      "archetype": "no_fit",
+      "supported": []
+    },
+    {
+      "id": "h-burger-bar",
+      "name": "Smash Burger Bar",
+      "industry": "Restaurant",
+      "tags": [
+        "burgers",
+        "beer"
+      ],
+      "archetype": "no_fit",
+      "supported": []
+    },
+    {
+      "id": "h-resort",
+      "name": "Koh Samui Beach Resort",
+      "industry": "Hotel",
+      "tags": [
+        "resort",
+        "spa"
+      ],
+      "archetype": "no_fit",
+      "supported": []
+    },
+    {
+      "id": "h-logistics",
+      "name": "Cold Chain Express",
+      "industry": "Logistics",
+      "tags": [
+        "refrigerated transport"
+      ],
+      "archetype": "no_fit",
+      "supported": []
+    },
+    {
+      "id": "h-dairy-importer",
+      "name": "Euro Dairy Imports",
+      "industry": "Food import",
+      "tags": [
+        "wholesale",
+        "dairy"
+      ],
+      "archetype": "no_fit",
+      "supported": [],
+      "future_class": "importer_exporter"
+    },
+    {
+      "id": "h-hospital",
+      "name": "Bangkok General Hospital",
+      "industry": "Healthcare",
+      "tags": [
+        "canteen"
+      ],
+      "archetype": "no_fit",
+      "supported": []
+    },
+    {
+      "id": "h-agency",
+      "name": "Pixel Creative Agency",
+      "industry": "Marketing",
+      "tags": [
+        "branding"
+      ],
+      "archetype": "no_fit",
+      "supported": []
+    },
+    {
+      "id": "h-tea-shop",
+      "name": "Cha Time Tea House",
+      "industry": "Cafe",
+      "tags": [
+        "bubble tea",
+        "drinks"
+      ],
+      "archetype": "no_fit",
+      "supported": []
+    },
+    {
+      "id": "h-name-only",
+      "name": "Siam Golden Trading Co.",
+      "industry": null,
+      "tags": [],
+      "archetype": "no_fit",
+      "supported": []
+    }
+  ]
+}

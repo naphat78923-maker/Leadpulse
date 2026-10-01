@@ -8,6 +8,7 @@
 //   - The date a drag writes is the BUSINESS calendar date, not `toISOString().slice(0,10)`,
 //     which is the previous day for the first seven hours of a Bangkok day.
 import type { Deal, DealWorkflowAction, Meeting, MeetingType, SampleStatus } from '@/types/crm';
+import { buyerReplyUpdate } from '@/utils/buyer-reply';
 import { isCustomerResponseOutcome } from '@/utils/interaction-event';
 
 export interface LaneGateDecisionInput {
@@ -15,6 +16,8 @@ export interface LaneGateDecisionInput {
   channel?: MeetingType | null;
   reply_outcome?: string | null;
   reply_summary?: string | null;
+  /** the buyer's exact words, pasted — written to deals.buyer_reply for Laya */
+  buyer_reply?: string | null;
   next_action?: string | null;
   sample_status?: SampleStatus | null;
   followup_date?: string | null;
@@ -68,6 +71,7 @@ export function buildLaneGateDecision(
         deal.last_outcome,
         timestampedEntry(`💬 Client replied — ${input.reply_outcome}${detail}`)
       );
+      Object.assign(updates, buyerReplyUpdate(deal.buyer_reply, input.buyer_reply));
     } else {
       updates.last_outcome = appendOutcome(
         deal.last_outcome,

@@ -265,6 +265,7 @@ function DealsBoard() {
       stage: deal.stage,
       next_action: deal.next_action,
       last_outcome: deal.last_outcome,
+      buyer_reply: deal.buyer_reply ?? null,
     };
 
     // One pure decision, shared with the event rules: "no response" is a wait, not a reply, and
@@ -276,6 +277,7 @@ function DealsBoard() {
         channel: payload.channel ?? null,
         reply_outcome: payload.reply_outcome ?? null,
         reply_summary: payload.reply_summary ?? null,
+        buyer_reply: payload.buyer_reply ?? null,
         next_action: payload.next_action ?? null,
         sample_status: payload.sample_status ?? null,
         followup_date: payload.followup_date ?? null,

@@ -156,3 +156,33 @@ export function unansweredChaseCount(
 ): number {
   return meetings.filter(m => m.deal_id === dealId && countsTowardUnansweredChase(m, policyId)).length;
 }
+
+/** A meeting row with the ordering fields a since-last-reply count needs. */
+export interface DatedChaseCountableMeeting extends ChaseCountableMeeting {
+  date?: string | null;
+  created_at?: string | null;
+}
+
+/**
+ * Unanswered chases SINCE the buyer's last reply — the grading signal (decided with Pat,
+ * 2026-10-01). It resets whenever the buyer replies, so a deal that came back to life is
+ * not penalised for earlier silence. A reply is an inbound row or any row carrying a
+ * recorded client response; a chase is an explicitly outbound call, email or DM with no
+ * recorded response (unknown direction is never asserted to be outbound). The pipeline's
+ * 4/4 badge keeps its own lifetime count (ACTIVE_CHASE_POLICY_ID); this does not change it.
+ */
+export function chasesSinceLastReply(meetings: DatedChaseCountableMeeting[], dealId: string): number {
+  const rows = meetings
+    .filter(m => m.deal_id === dealId && m.direction !== 'internal')
+    .sort((a, b) =>
+      (a.date ?? '').localeCompare(b.date ?? '') || (a.created_at ?? '').localeCompare(b.created_at ?? ''));
+  let chases = 0;
+  for (const row of rows) {
+    if (row.direction === 'inbound' || isCustomerResponseOutcome(row.outcome)) {
+      chases = 0;
+    } else if (row.direction === 'outbound' && inChaseChannel(row)) {
+      chases += 1;
+    }
+  }
+  return chases;
+}

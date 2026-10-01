@@ -8,7 +8,9 @@ import { getWorkflowAction } from '@/utils/deal-workflow';
 import {
   buildLayaBuyerResponseInput,
   buyerResponseSignal,
+  hasThaiScript,
   LAYA_BUYER_REQUEST_LABEL,
+  LAYA_OWNER_REVIEW_LABEL,
   type LayaBuyerResponseLevel,
 } from '@/utils/laya-buyer-response';
 import { buildLayaSalesEvidence } from '@/utils/laya-evidence';
@@ -178,7 +180,7 @@ function LayaScoreRequest({
     }
   };
 
-  const buyerSignal = result ? buyerResponseSignal(result.recommendation, true) : null;
+  const buyerSignal = result ? buyerResponseSignal(result.recommendation, true, hasThaiScript(buyerReply)) : null;
 
   return (
     <section className="rounded-xl border border-clay-lavender/30 bg-clay-lavender/10 p-3" aria-label="Laya buyer response review">
@@ -216,7 +218,9 @@ function LayaScoreRequest({
             <span className="text-sm font-semibold text-clay-ink">{LABELS[result.recommendation]}</span>
             <span className="text-xs font-medium text-clay-lavender">{Math.round(result.probabilities[result.recommendation] * 100)}%</span>
           </div>
-          {buyerSignal === 'buyer_requested' ? (
+          {buyerSignal === 'owner_review' ? (
+            <p className="rounded-lg border border-clay-ochre/30 bg-clay-ochre/10 px-3 py-2 text-xs font-semibold text-clay-ochre">{LAYA_OWNER_REVIEW_LABEL}</p>
+          ) : buyerSignal === 'buyer_requested' ? (
             <p className="rounded-lg border border-clay-ochre/30 bg-clay-ochre/10 px-3 py-2 text-xs font-semibold text-clay-ochre">{LAYA_BUYER_REQUEST_LABEL}</p>
           ) : (
             <p className="rounded-lg border border-clay-hairline bg-white/60 px-3 py-2 text-xs font-semibold text-clay-muted dark:bg-clay-card">Manual review required — no priority action inferred.</p>

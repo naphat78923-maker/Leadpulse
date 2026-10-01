@@ -14,9 +14,11 @@
 //    sets named there and rejects anything else with 400 "Unsupported scoring
 //    schema". Option order is part of the measured contract: buyer_response keeps
 //    the reversed order (eval variant v_verbatim_revopts, 8/8 requested_next_step
-//    recall on verbatim replies); every buyer-detail question scores in its own
-//    sequence and fits the 1024-token budget (worst case obstacle_kind at 152
-//    tokens of overhead). Edit the JSON only with a fresh eval.
+//    recall on verbatim replies); every question scores in its own sequence and
+//    fits the 1024-token budget. Edit the JSON only with a fresh eval. The
+//    sample_trial_report, obstacle_kind and obstacle_strength Choices were cut on
+//    2026-10-01: below their majority-class baseline on both checkpoints
+//    (scripts/evaluate_laya_buyer_detail.py).
 //
 // Deal size is not a model question: the CRM value is already a number, and
 // lead-scoring.ts buckets it in code.
@@ -24,7 +26,7 @@
 // Evidence: scripts/eval_results/2026-09-23-buyer-response-eval-report.md,
 //           scripts/evaluate_laya_prospect_fit.py (fit Nouls)
 
-import LAYA_QUESTIONS from './laya-questions.json';
+import LAYA_QUESTIONS from './laya-questions.json' with { type: 'json' };
 
 export type LayaBuyerResponseLevel =
   | 'requested_next_step'
@@ -35,6 +37,8 @@ export type LayaBuyerResponseLevel =
 
 export interface LayaBuyerResponseInput {
   state: string;
+  /** true when the buyer text contains Thai script — routed to Pat, not graded */
+  thai: boolean;
   questions: {
     buyer_response: {
       type: 'choice';
@@ -73,11 +77,16 @@ export const LAYA_BUYER_FROZEN_QUESTIONS: LayaBuyerResponseInput['questions'] = 
 export const LAYA_ALL_FROZEN_QUESTIONS = frozenSet('terminal') as unknown as Pick<
   Questions,
   | 'buyer_response'
-  | 'next_step_commitment'
-  | 'sample_trial_report'
   | 'commercial_info_request'
-  | 'obstacle_kind'
-  | 'obstacle_strength'
+  | 'next_step_commitment'
+  | 'trial_reported'
+  | 'trial_positive'
+  | 'trial_negative'
+  | 'concern_price'
+  | 'concern_technical'
+  | 'concern_delivery'
+  | 'concern_approval'
+  | 'concern_timing'
 >;
 
 /**
@@ -112,8 +121,9 @@ export interface LayaFitAnswers {
  * not list archetype names — measured on the dev set, naming them in the state
  * made every support Noul answer "yes".
  *
- * Returns null when the account states nothing at all: a needs_evidence
- * safeguard handled in code, never by the model.
+ * Returns null when the account states no industry and no tags: a name alone is
+ * not evidence of a business type (a bare trading-company name was judged a
+ * bakery), so it is a needs_evidence safeguard handled in code, never by the model.
  */
 export function buildLayaProspectFitInput(account: {
   name?: string | null;
@@ -128,20 +138,51 @@ export function buildLayaProspectFitInput(account: {
   if (name) parts.push(`The account is named "${name}"`);
   if (industry) parts.push(`its industry is "${industry}"`);
   if (tags.length > 0) parts.push(`its tags are "${tags.join(', ')}"`);
-  if (parts.length === 0) return null;
+  if (!industry && tags.length === 0) return null;
   return { state: `${parts.join('; ')}.`, questions: LAYA_FIT_FROZEN_QUESTIONS };
+}
+
+// last_outcome is an append-only activity log ("\n---\n"-separated, oldest first):
+// timestamps, workflow/system lines, internal notes and, sometimes, a logged client
+// reply. Only the reply entries are buyer evidence, written in exactly two forms:
+//   💬 Client replied — <sentiment>: <summary>          (lane-gate.ts, deal-board.ts)
+//   💬 Customer reply (<sentiment>): <description>      (interaction-workflow.ts)
+// optionally prefixed with "[<timestamp>] ".
+const LOG_ENTRY_SEPARATOR = /\n---\n/;
+const LOG_TIMESTAMP_PREFIX = /^\[[^\]]*\]\s*/;
+const LOGGED_REPLY_PATTERNS = [
+  /^💬 Client replied — [a-z_]+(?::\s*([\s\S]*))?$/,
+  /^💬 Customer reply \([^)]*\)(?::\s*([\s\S]*))?$/,
+];
+
+/**
+ * The rep's note of the buyer's LATEST logged reply, or null. Only the newest reply
+ * entry counts: when it carries no words, an older reply is not the latest one, so
+ * nothing is returned rather than stale text.
+ */
+export function latestLoggedReplyNote(log: string | null | undefined): string | null {
+  if (!log?.trim()) return null;
+  const entries = log.split(LOG_ENTRY_SEPARATOR);
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index].trim().replace(LOG_TIMESTAMP_PREFIX, '');
+    for (const pattern of LOGGED_REPLY_PATTERNS) {
+      const match = pattern.exec(entry);
+      if (match) return match[1]?.trim() || null;
+    }
+  }
+  return null;
 }
 
 /**
  * Small sentence-form state for the narrow buyer-response question.
  *
- * Prefers `buyer_reply` (verbatim, first-person) and marks the result verbatim;
- * falls back to the paraphrased `last_outcome` note marked verbatim: false so the
- * caller can route those to human review. Returns null when there is no buyer
- * text at all — a needs_evidence safeguard handled in code, never by the model.
- * The complete selected text is preserved; the worker's input-budget guard
+ * Prefers `buyer_reply` (the buyer's words, verbatim) and marks the result verbatim.
+ * Otherwise falls back to the rep's note of the latest LOGGED client reply in the
+ * `last_outcome` log, marked verbatim: false so callers route it to human review.
+ * The rest of the log (system lines, internal notes, older entries) is never sent.
+ * Returns null when neither exists — a needs_evidence safeguard handled in code,
+ * never by the model. Selected text is preserved; the worker's input-budget guard
  * refuses oversized input instead of cutting it.
- *
  */
 export function buildLayaBuyerResponseInput(input: {
   deal: {
@@ -152,20 +193,22 @@ export function buildLayaBuyerResponseInput(input: {
 }): LayaBuyerResponseInput | null {
   const product = input.deal.product?.trim() || 'our products';
   const reply = input.deal.buyer_reply?.trim();
-  const note = input.deal.last_outcome?.trim();
 
   if (reply) {
     return {
       state: `We supply ${product} to this account. The buyer's latest reply: "${reply}"`,
       questions: BUYER_RESPONSE_QUESTION,
       verbatim: true,
+      thai: hasThaiScript(reply),
     };
   }
+  const note = latestLoggedReplyNote(input.deal.last_outcome);
   if (note) {
     return {
-      state: `We supply ${product} to this account. The latest recorded outcome note says: "${note}"`,
+      state: `We supply ${product} to this account. Our note of the buyer's latest reply: "${note}"`,
       questions: BUYER_RESPONSE_QUESTION,
       verbatim: false,
+      thai: hasThaiScript(note),
     };
   }
   return null;
@@ -178,13 +221,25 @@ export function buildLayaBuyerResponseInput(input: {
 // Paraphrased notes never raise it (the same question measured 2/8 on
 // third-person notes). Everything else routes to manual triage with no label.
 
-export type LayaBuyerSignal = 'buyer_requested' | 'manual_triage';
+export type LayaBuyerSignal = 'buyer_requested' | 'manual_triage' | 'owner_review';
 
 export const LAYA_BUYER_REQUEST_LABEL = 'Buyer-request signal — review this deal';
+export const LAYA_OWNER_REVIEW_LABEL = 'Thai reply — review it yourself; Laya is unreliable on Thai';
+
+// Thai script block (U+0E00–U+0E7F). Typed Decisions has an English tokenizer: on
+// Thai replies its scores bunch around 0.3–0.55 whatever the reply says, so any
+// Thai text routes to Pat (laya-cutoffs.json routing.thai_script).
+const THAI_SCRIPT = /[\u0E00-\u0E7F]/;
+
+export function hasThaiScript(text: string | null | undefined): boolean {
+  return !!text && THAI_SCRIPT.test(text);
+}
 
 export function buyerResponseSignal(
   level: LayaBuyerResponseLevel,
   verbatim: boolean,
+  thai = false,
 ): LayaBuyerSignal {
+  if (thai) return 'owner_review';
   return verbatim && level === 'requested_next_step' ? 'buyer_requested' : 'manual_triage';
 }

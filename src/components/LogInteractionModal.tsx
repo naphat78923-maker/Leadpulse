@@ -11,6 +11,7 @@ import { useCrm } from '@/components/CrmProvider';
 import { useToast } from '@/components/ToastProvider';
 import { SAMPLE_STATUS_OPTIONS, WORKFLOW_BY_ID, addDaysToDateKey, getWorkflowAction } from '@/utils/deal-workflow';
 import { buildInteractionWorkflowUpdate, laneTargetOptions } from '@/utils/interaction-workflow';
+import { buyerReplyUpdate } from '@/utils/buyer-reply';
 import {
   formatScheduleDate,
   scheduleUpdateForIntent,
@@ -132,6 +133,8 @@ export default function LogInteractionModal({
   const [kind, setKind] = useState<InteractionEventKind>('outbound_attempt');
   const [channel, setChannel] = useState<Channel>('call');
   const [notes, setNotes] = useState('');
+  /** The buyer's exact words — written to deals.buyer_reply, the only text Laya judges. */
+  const [buyerWords, setBuyerWords] = useState('');
   const [date, setDate] = useState(localDateKey());
   const [editingDate, setEditingDate] = useState(false);
   const [selectedDeal, setSelectedDeal] = useState(selectedDealId || '');
@@ -172,6 +175,7 @@ export default function LogInteractionModal({
       setFollowupChoice('keep');
       setConfirmSuccess(false);
       setNotes('');
+      setBuyerWords('');
       setDate(localDateKey());
       setEditingDate(false);
       setFollowupDate('');
@@ -228,6 +232,7 @@ export default function LogInteractionModal({
 
   const resetAndClose = () => {
     setNotes('');
+    setBuyerWords('');
     setFollowupDate('');
     setNextActionEdit('');
     setSelectedDeal('');
@@ -244,6 +249,7 @@ export default function LogInteractionModal({
   const handleDealChange = (dealId: string) => {
     const nextDeal = deals.find(item => item.id === dealId);
     setSelectedDeal(dealId);
+    setBuyerWords('');
     setNextWorkflowAction(nextDeal ? getWorkflowAction(nextDeal) : '');
     setSampleStatus('');
     setNextActionEdit('');
@@ -319,6 +325,9 @@ export default function LogInteractionModal({
         ...(deal && typedNextAction && typedNextAction !== (deal.next_action ?? '').trim()
           ? { next_action: typedNextAction }
           : {}),
+        // A logged reply updates the saved verbatim reply: pasted words replace it,
+        // and a reply logged without words clears the now out-of-date one.
+        ...(deal && kind === 'customer_response' ? buyerReplyUpdate(deal.buyer_reply, buyerWords) : {}),
       };
 
       const selectedContacts = contacts.filter(contact => selectedContactIds.includes(contact.id));
@@ -343,13 +352,18 @@ export default function LogInteractionModal({
       interactionSavedThisAttempt = true;
 
       if (deal && Object.keys(dealPatch).length > 0) {
+        const onlyBuyerReply = Object.keys(dealPatch).every(key => key === 'buyer_reply');
         const laneLabel =
           workflowUpdates && selectedAction
             ? `Interaction → ${WORKFLOW_BY_ID[selectedAction].shortLabel}`
-            : 'Interaction schedule updated';
+            : onlyBuyerReply
+              ? 'Buyer reply recorded'
+              : 'Interaction schedule updated';
         const laneDescription = workflowUpdates
           ? `${deal.client} moved after a confirmed interaction`
-          : `${deal.client} follow-up schedule updated by a logged interaction`;
+          : onlyBuyerReply
+            ? `${deal.client} latest buyer reply updated by a logged interaction`
+            : `${deal.client} follow-up schedule updated by a logged interaction`;
         const request = {
           dealId: deal.id,
           dealLabel: deal.client,
@@ -364,6 +378,7 @@ export default function LogInteractionModal({
             followup_date: deal.followup_date,
             next_action: deal.next_action,
             last_outcome: deal.last_outcome,
+            buyer_reply: deal.buyer_reply ?? null,
           },
           label: laneLabel,
           description: laneDescription,
@@ -499,6 +514,27 @@ export default function LogInteractionModal({
             placeholder="What happened? (first line becomes the title)"
             className="w-full resize-none rounded-xl border border-clay-hairline bg-transparent px-3.5 py-3 text-sm text-clay-ink placeholder:text-clay-muted focus:border-clay-ink/40 focus:outline-none focus:ring-2 focus:ring-clay-ink/10"
           />
+
+          {kind === 'customer_response' && deal && (
+            <Row
+              label="Their exact words (optional)"
+              hint="Laya reads only this"
+            >
+              <textarea
+                value={buyerWords}
+                onChange={e => setBuyerWords(e.target.value)}
+                rows={3}
+                aria-label="Their exact words"
+                placeholder="Paste their reply exactly as they wrote it"
+                className="w-full resize-none rounded-xl border border-clay-hairline bg-transparent px-3.5 py-3 text-sm text-clay-ink placeholder:text-clay-muted focus:border-clay-ink/40 focus:outline-none focus:ring-2 focus:ring-clay-ink/10"
+              />
+              {deal.buyer_reply && !buyerWords.trim() && (
+                <p className="mt-1.5 text-xs text-clay-muted">
+                  Leave it empty and the older saved reply is cleared, so Laya never judges an out-of-date message.
+                </p>
+              )}
+            </Row>
+          )}
 
           {!selectedDealId && (
             <Row label="Deal">

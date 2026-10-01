@@ -18,6 +18,7 @@ export interface LaneGatePayload {
   next_action?: string | null;
   reply_outcome?: Meeting['outcome'] | null;
   reply_summary?: string | null;
+  buyer_reply?: string | null;
   channel?: MeetingType | null;
   contact_ids?: string[];
   address_confirmed?: boolean;
@@ -55,6 +56,7 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
   const [channel, setChannel] = useState<MeetingType>('call');
   const [replyOutcome, setReplyOutcome] = useState<Meeting['outcome'] | ''>('');
   const [replySummary, setReplySummary] = useState<string>('');
+  const [buyerWords, setBuyerWords] = useState<string>('');
   const [addressConfirmed, setAddressConfirmed] = useState(false);
   const [outreachLogged, setOutreachLogged] = useState(Boolean(deal.last_outcome?.trim()));
   const [feedbackTouch, setFeedbackTouch] = useState(false);
@@ -109,6 +111,7 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
         next_action: targetLane === 'outreach' && nextAction.trim() ? nextAction.trim() : null,
         reply_outcome: targetLane === 'reply' && replyOutcome ? replyOutcome : null,
         reply_summary: targetLane === 'reply' && replySummary.trim() ? replySummary.trim() : null,
+        buyer_reply: targetLane === 'reply' && isRealReply ? buyerWords : null,
         channel: (targetLane === 'outreach' || targetLane === 'reply') ? channel : null,
         contact_ids: selectedContactIds,
         address_confirmed: addressConfirmed,
@@ -120,6 +123,9 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
       setSaving(false);
     }
   };
+
+  // Only a real reply (not "no response yet") can carry the buyer's words.
+  const isRealReply = replyOutcome === 'positive' || replyOutcome === 'neutral' || replyOutcome === 'negative';
 
   const fieldLabel = (label: string, required: boolean) => (
     <span className="zams-mono text-[10px] uppercase tracking-[0.16px] text-clay-muted">
@@ -321,6 +327,23 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
                   className="w-full mt-2 px-3 py-2.5 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-clay-lavender/40 resize-none"
                 />
               </div>
+              {isRealReply && (
+                <div>
+                  {fieldLabel('Their exact words (optional)', false)}
+                  <p className="mt-1 text-[10px] text-clay-muted">
+                    Paste their message as sent. Laya reads only this, never the summary.
+                    {deal.buyer_reply ? ' Leave it empty and the older saved reply is cleared, so Laya never judges an out-of-date message.' : ''}
+                  </p>
+                  <textarea
+                    value={buyerWords}
+                    onChange={(e) => setBuyerWords(e.target.value)}
+                    rows={3}
+                    aria-label="Their exact words"
+                    placeholder="Paste their reply exactly as they wrote it"
+                    className="w-full mt-2 px-3 py-2.5 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-clay-lavender/40 resize-none"
+                  />
+                </div>
+              )}
             </>
           )}
 

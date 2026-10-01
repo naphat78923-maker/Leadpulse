@@ -3,11 +3,13 @@ import {
   buildLayaBuyerResponseInput,
   buildLayaProspectFitInput,
   buyerResponseSignal,
+  hasThaiScript,
   LAYA_PUBLISHED_ARCHETYPES,
+  latestLoggedReplyNote,
 } from './laya-buyer-response';
 
 describe('buildLayaBuyerResponseInput', () => {
-  const baseDeal = { product: 'Butter', last_outcome: 'Buyer asked for a sample price' };
+  const baseDeal = { product: 'Butter', last_outcome: '[2026-09-20 09:00:00 UTC] 💬 Client replied — positive: Asked for a sample price' };
 
   it('prefers the verbatim buyer reply and marks the state as verbatim', () => {
     const input = buildLayaBuyerResponseInput({
@@ -24,12 +26,38 @@ describe('buildLayaBuyerResponseInput', () => {
     ]);
   });
 
-  it('falls back to the paraphrased outcome note and marks it as not verbatim', () => {
+  it('falls back to the note of the latest logged reply and marks it as not verbatim', () => {
     const input = buildLayaBuyerResponseInput({ deal: baseDeal });
     expect(input!.verbatim).toBe(false);
     expect(input!.state).toBe(
-      'We supply Butter to this account. The latest recorded outcome note says: "Buyer asked for a sample price"',
+      'We supply Butter to this account. Our note of the buyer\'s latest reply: "Asked for a sample price"',
     );
+  });
+
+  it('never sends the rest of the activity log — no system lines, internal notes or older entries', () => {
+    const log = [
+      'Enrich existing company; new deal.',
+      '[2026-08-25 10:24:10 UTC] 💬 Client replied — neutral: Said to call back',
+      '[2026-09-01 08:00:00 UTC] ✅ Outreach logged — waiting on reply',
+      '[2026-09-02 09:35:58 UTC] 💬 Workflow set to Waiting on reply',
+      'Source-backed 2026-09-16',
+    ].join('\n---\n');
+    const state = buildLayaBuyerResponseInput({ deal: { product: 'Butter', last_outcome: log } })!.state;
+    expect(state).toBe('We supply Butter to this account. Our note of the buyer\'s latest reply: "Said to call back"');
+    for (const leaked of ['Enrich', 'Outreach logged', 'Workflow set', 'Source-backed', '2026-']) {
+      expect(state).not.toContain(leaked);
+    }
+  });
+
+  it('returns null when the log holds no logged client reply — no rep note is sent as buyer text', () => {
+    for (const log of [
+      'Buyer asked for a sample price',
+      'Butter sample sent and received; kitchen feedback positive (2026-08-24)',
+      '[2026-09-29 09:35:58 UTC] 💬 Workflow set to Waiting on reply',
+      '[2026-09-09 09:05:26 UTC] 💬 DM — Recieved feedback, on butter consistency',
+    ]) {
+      expect(buildLayaBuyerResponseInput({ deal: { product: 'Butter', last_outcome: log } }), log).toBeNull();
+    }
   });
 
   it('returns null when there is no buyer text — a code-layer needs_evidence safeguard', () => {
@@ -79,6 +107,55 @@ describe('buildLayaBuyerResponseInput', () => {
     expect(buildLayaBuyerResponseInput({ deal })!.state).toBe(
       'We supply Butter to this account. The buyer\'s latest reply: "Please quote 20 kg."',
     );
+  });
+});
+
+describe('Thai routing', () => {
+  it('detects Thai script', () => {
+    expect(hasThaiScript('ขอใบเสนอราคา 15 กิโลครับ')).toBe(true);
+    expect(hasThaiScript('Please quote 15 kg, ขอบคุณครับ')).toBe(true);
+    expect(hasThaiScript('Please quote 15 kg.')).toBe(false);
+    expect(hasThaiScript(null)).toBe(false);
+  });
+
+  it('marks a Thai reply on the built input', () => {
+    expect(buildLayaBuyerResponseInput({ deal: { product: 'Butter', buyer_reply: 'แพงไปครับ' } })!.thai).toBe(true);
+    expect(buildLayaBuyerResponseInput({ deal: { product: 'Butter', buyer_reply: 'Too pricey.' } })!.thai).toBe(false);
+  });
+
+  it('routes a Thai reply to Pat, never to the buyer-request cue', () => {
+    expect(buyerResponseSignal('requested_next_step', true, true)).toBe('owner_review');
+    expect(buyerResponseSignal('declined', true, true)).toBe('owner_review');
+    expect(buyerResponseSignal('requested_next_step', true, false)).toBe('buyer_requested');
+  });
+});
+
+describe('latestLoggedReplyNote', () => {
+  it('reads both logged reply forms, with or without a timestamp', () => {
+    expect(latestLoggedReplyNote('💬 Client replied — negative: Price too high')).toBe('Price too high');
+    expect(latestLoggedReplyNote('[2026-09-04 13:28:50 UTC+07:00] 💬 Customer reply (positive): Wants 20 kg'))
+      .toBe('Wants 20 kg');
+    expect(latestLoggedReplyNote('[2026-09-04 13:28:50 UTC] 💬 Customer reply (sentiment not recorded): Will test Friday'))
+      .toBe('Will test Friday');
+  });
+
+  it('uses only the newest reply entry', () => {
+    const log = '💬 Client replied — positive: Wants a quote\n---\n[2026-09-10 10:00:00 UTC] 💬 Customer reply (negative): Chose another supplier';
+    expect(latestLoggedReplyNote(log)).toBe('Chose another supplier');
+  });
+
+  it('returns null when the newest reply carries no words, rather than an older reply', () => {
+    const log = '💬 Client replied — positive: Wants a quote\n---\n[2026-09-10 10:00:00 UTC] 💬 Client replied — neutral';
+    expect(latestLoggedReplyNote(log)).toBeNull();
+  });
+
+  it('keeps a multi-line note whole', () => {
+    expect(latestLoggedReplyNote('💬 Client replied — positive: Line one\nLine two')).toBe('Line one\nLine two');
+  });
+
+  it('returns null for empty input', () => {
+    expect(latestLoggedReplyNote(null)).toBeNull();
+    expect(latestLoggedReplyNote('   ')).toBeNull();
   });
 });
 
@@ -139,8 +216,14 @@ describe('buildLayaProspectFitInput', () => {
     expect(buildLayaProspectFitInput({ name: '  ', industry: null, tags: [] })).toBeNull();
   });
 
+  it('returns null for a name alone — a bare name is not evidence of a business type', () => {
+    expect(buildLayaProspectFitInput({ name: 'Siam Golden Trading Co.', industry: null, tags: [] })).toBeNull();
+    expect(buildLayaProspectFitInput({ name: 'Siam Golden Trading Co.', industry: '  ', tags: [' '] })).toBeNull();
+    expect(buildLayaProspectFitInput({ name: 'Siam Golden Trading Co.', tags: ['bakery'] })).not.toBeNull();
+  });
+
   it('preserves multilingual identity text without shortening', () => {
     const name = 'ร้านขนมเบเกอรี่ไทย'.repeat(20);
-    expect(buildLayaProspectFitInput({ name })!.state).toContain(name);
+    expect(buildLayaProspectFitInput({ name, industry: 'Bakery' })!.state).toContain(name);
   });
 });

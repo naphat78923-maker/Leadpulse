@@ -1,0 +1,74 @@
+{
+  "_about": "Cut-offs and tiers for grade.ts, tuned 2026-10-01 on dev sets and checked on holdout sets with Typed Decisions. Re-tune when the model package or any question wording changes. Report: scripts/eval_results/2026-10-01-cutoffs-report.md",
+  "model_package_sha256": "517a8071290a29c2f1e19b38356fdc5c59dfdc801711a92606de6bba67596c85",
+  "tiers": {
+    "signal": "yes/no: noul >= cutoff counts as true (holdout AUC >= 0.90, beat baseline on English)",
+    "weight": "use the probability as a weight; no yes/no cut-off (ranks well, cut-off did not transfer)",
+    "display": "show only; do not feed the grade until reworked"
+  },
+  "routing": {
+    "thai_script": "owner_review",
+    "_thai_script": "Replies containing Thai script go to Pat for review: on this English-tokenizer model Thai scores bunch around 0.3-0.55 whatever the reply says.",
+    "name_only_account": "not_judged",
+    "_name_only_account": "An account with no industry and no tags is not sent for a fit judgment."
+  },
+  "fit": {
+    "cutoff": 0.3,
+    "_cutoff": "Highest fit Noul >= cutoff is the fit, else no_fit. Chosen with Pat: catches a Thai jay kitchen and a supermarket chain that 0.35 missed. 41/46 across dev and relabelled holdout."
+  },
+  "deal": {
+    "buyer_response": {
+      "tier": "weight",
+      "use": [
+        "requested_next_step",
+        "declined",
+        "deferred"
+      ],
+      "_note": "Use the probabilities, not the pick (holdout AUC 0.87 / 0.89 / 0.87; pick 11/26)."
+    },
+    "commercial_info_request": {
+      "tier": "display",
+      "holdout_auc": 0.752
+    },
+    "next_step_commitment": {
+      "tier": "weight",
+      "holdout_auc": 0.827
+    },
+    "trial_reported": {
+      "tier": "signal",
+      "holdout_auc": 0.9,
+      "cutoff": 0.55
+    },
+    "trial_positive": {
+      "tier": "signal",
+      "holdout_auc": 0.987,
+      "cutoff": 0.6
+    },
+    "trial_negative": {
+      "tier": "weight",
+      "holdout_auc": 0.962
+    },
+    "concern_price": {
+      "tier": "signal",
+      "holdout_auc": 0.933,
+      "cutoff": 0.45
+    },
+    "concern_technical": {
+      "tier": "signal",
+      "holdout_auc": 0.933,
+      "cutoff": 0.35
+    },
+    "concern_delivery": {
+      "tier": "weight",
+      "holdout_auc": 0.865
+    },
+    "concern_approval": {
+      "tier": "display",
+      "holdout_auc": 0.721
+    },
+    "concern_timing": {
+      "tier": "weight",
+      "holdout_auc": 0.864
+    }
+  }
+}
