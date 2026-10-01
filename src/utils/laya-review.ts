@@ -27,25 +27,35 @@ export interface LayaReviewItem {
 
 const TIER_ORDER: LeadTier[] = ['S', 'A', 'B', 'C', 'D'];
 
-export function buildLayaReviewList(input: {
+export interface LayaGradeInput {
   deals: Deal[];
   meetings: DatedChaseCountableMeeting[];
   judgments: LayaJudgmentRow[];
   /** dealId -> dealInputSha256(deal) for deals with a verbatim reply */
   currentShas: Map<string, string | null>;
-}): LayaReviewItem[] {
+}
+
+/** gradeDeal for every deal with a verbatim reply; deals without one are absent. */
+export function gradeDealsWithReplies(input: LayaGradeInput): Map<string, DealGrade> {
   const byDeal = new Map(input.judgments.map(row => [row.deal_id, row]));
-  const items: LayaReviewItem[] = [];
+  const grades = new Map<string, DealGrade>();
   for (const deal of input.deals) {
     if (!deal.buyer_reply?.trim()) continue;
-    const grade = gradeDeal({
+    grades.set(deal.id, gradeDeal({
       deal,
       judgment: toSavedJudgment(byDeal.get(deal.id), input.currentShas.get(deal.id) ?? null),
       chasesSinceReply: chasesSinceLastReply(input.meetings, deal.id),
-    });
-    if (grade.status === 'needs_review') items.push({ deal, grade });
+    }));
   }
-  // Hottest CRM tier first, then by client name.
+  return grades;
+}
+
+/** The deals Laya routed to Pat, hottest CRM tier first, then by client name. */
+export function buildLayaReviewList(input: LayaGradeInput): LayaReviewItem[] {
+  const grades = gradeDealsWithReplies(input);
+  const items: LayaReviewItem[] = input.deals
+    .filter(deal => grades.get(deal.id)?.status === 'needs_review')
+    .map(deal => ({ deal, grade: grades.get(deal.id)! }));
   return items.sort((a, b) =>
     TIER_ORDER.indexOf(a.grade.baseTier) - TIER_ORDER.indexOf(b.grade.baseTier) ||
     (a.deal.client ?? '').localeCompare(b.deal.client ?? ''));

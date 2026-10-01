@@ -52,8 +52,8 @@ export function primaryCardAction(deal: Deal): DealCardPrimaryAction {
     case 'reply':
       return {
         id: 'record-reply',
-        label: 'Record reply',
-        hint: 'Opens the log form so you can record what they said.',
+        label: 'Paste reply',
+        hint: "Opens the log form with the buyer's exact words first, for Laya to read.",
         opensLogForm: true,
       };
     case 'sample':

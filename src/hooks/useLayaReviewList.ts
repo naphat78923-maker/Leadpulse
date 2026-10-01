@@ -4,22 +4,20 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Deal, Meeting } from '@/types/crm';
 import * as crm from '@/lib/crm';
 import type { LayaJudgmentRow } from '@/lib/crm';
+import type { DealGrade } from '@/utils/grade';
 import { dealInputSha256 } from '@/utils/laya-freshness';
-import { buildLayaReviewList, type LayaReviewItem } from '@/utils/laya-review';
+import { buildLayaReviewList, gradeDealsWithReplies, type LayaReviewItem } from '@/utils/laya-review';
 
 type State =
   | { status: 'loading' }
   | { status: 'error' }
   | { status: 'ready'; judgments: LayaJudgmentRow[]; currentShas: Map<string, string | null> };
 
-/** Open deals Laya routed to Pat, recomputed when deals or their replies change. */
-export function useLayaReviewList(deals: Deal[], meetings: Meeting[]): { items: LayaReviewItem[]; status: State['status'] } {
+/** Saved judgments plus the current input hash of every reply, re-read when replies change. */
+function useLayaJudgmentState(deals: Deal[]): State {
   const [state, setState] = useState<State>({ status: 'loading' });
   const replies = useMemo(() => deals.filter(d => d.buyer_reply?.trim()), [deals]);
-  const key = useMemo(
-    () => JSON.stringify(replies.map(d => [d.id, d.buyer_reply, d.product])),
-    [replies],
-  );
+  const key = useMemo(() => JSON.stringify(replies.map(d => [d.id, d.buyer_reply, d.product])), [replies]);
 
   useEffect(() => {
     let cancelled = false;
@@ -39,7 +37,24 @@ export function useLayaReviewList(deals: Deal[], meetings: Meeting[]): { items: 
     // `key` covers the reply fields the hashes are built from.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
+  return state;
+}
 
+/** Laya's grade for every deal with a verbatim reply (absent = no reply to grade). */
+export function useLayaGrades(deals: Deal[], meetings: Meeting[]): { grades: Map<string, DealGrade>; status: State['status'] } {
+  const state = useLayaJudgmentState(deals);
+  const grades = useMemo(
+    () => (state.status === 'ready'
+      ? gradeDealsWithReplies({ deals, meetings, judgments: state.judgments, currentShas: state.currentShas })
+      : new Map<string, DealGrade>()),
+    [state, deals, meetings],
+  );
+  return { grades, status: state.status };
+}
+
+/** Open deals Laya routed to Pat. */
+export function useLayaReviewList(deals: Deal[], meetings: Meeting[]): { items: LayaReviewItem[]; status: State['status'] } {
+  const state = useLayaJudgmentState(deals);
   const items = useMemo(
     () => (state.status === 'ready'
       ? buildLayaReviewList({ deals, meetings, judgments: state.judgments, currentShas: state.currentShas })

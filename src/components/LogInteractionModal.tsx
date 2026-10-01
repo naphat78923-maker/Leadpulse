@@ -32,6 +32,10 @@ interface LogInteractionModalProps {
   selectedDealId?: string;
   initialContactIds?: string[];
   initialCompanyId?: string;
+  /** open on this event instead of "I reached out" */
+  initialKind?: InteractionEventKind;
+  /** "Paste reply": the buyer's exact words come first and take focus; the summary is optional */
+  pasteReplyFirst?: boolean;
 }
 
 const KINDS: { value: InteractionEventKind; label: string }[] = [
@@ -127,10 +131,12 @@ export default function LogInteractionModal({
   selectedDealId,
   initialContactIds,
   initialCompanyId,
+  initialKind,
+  pasteReplyFirst = false,
 }: LogInteractionModalProps) {
   const { refresh, logActivity } = useCrm();
   const { addToast } = useToast();
-  const [kind, setKind] = useState<InteractionEventKind>('outbound_attempt');
+  const [kind, setKind] = useState<InteractionEventKind>(initialKind ?? 'outbound_attempt');
   const [channel, setChannel] = useState<Channel>('call');
   const [notes, setNotes] = useState('');
   /** The buyer's exact words — written to deals.buyer_reply, the only text Laya judges. */
@@ -170,7 +176,7 @@ export default function LogInteractionModal({
       setSelectedDeal(selectedDealId || '');
       setNextWorkflowAction(initialDeal ? getWorkflowAction(initialDeal) : '');
       setSampleStatus('');
-      setKind('outbound_attempt');
+      setKind(initialKind ?? 'outbound_attempt');
       setChannel('call');
       setFollowupChoice('keep');
       setConfirmSuccess(false);
@@ -185,9 +191,10 @@ export default function LogInteractionModal({
       setSaveError(null);
       setPendingDealUpdate(null);
     }
-    // Only reset when the modal opens. Data refreshes while open must not erase the form.
+    // Reset when the modal opens, or is re-pointed at another deal or mode ("Paste reply" vs
+    // a plain log). Data refreshes while open must not erase the form, so nothing else re-runs it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
+  }, [isOpen, selectedDealId, initialKind]);
 
   const deal = deals.find(item => item.id === selectedDeal);
   const dealAction = deal ? getWorkflowAction(deal) : undefined;
@@ -413,6 +420,26 @@ export default function LogInteractionModal({
     // The account's own deals first when logging against an account.
     .sort((a, b) => Number(b.company_id === initialCompanyId) - Number(a.company_id === initialCompanyId));
 
+  // The buyer's exact words — the only text Laya reads. "Paste reply" puts it first and focuses it.
+  const buyerWordsRow = kind === 'customer_response' && deal ? (
+    <Row label={pasteReplyFirst ? 'Their exact words' : 'Their exact words (optional)'} hint="Laya reads only this">
+      <textarea
+        value={buyerWords}
+        onChange={e => setBuyerWords(e.target.value)}
+        rows={pasteReplyFirst ? 4 : 3}
+        autoFocus={pasteReplyFirst}
+        aria-label="Their exact words"
+        placeholder="Paste their reply exactly as they wrote it"
+        className="w-full resize-none rounded-xl border border-clay-hairline bg-transparent px-3.5 py-3 text-sm text-clay-ink placeholder:text-clay-muted focus:border-clay-ink/40 focus:outline-none focus:ring-2 focus:ring-clay-ink/10"
+      />
+      {deal.buyer_reply && !buyerWords.trim() && (
+        <p className="mt-1.5 text-xs text-clay-muted">
+          Leave it empty and the older saved reply is cleared, so Laya never judges an out-of-date message.
+        </p>
+      )}
+    </Row>
+  ) : null;
+
   return (
     <ModalShell
       open={isOpen}
@@ -506,35 +533,19 @@ export default function LogInteractionModal({
             </div>
           )}
 
+          {pasteReplyFirst && buyerWordsRow}
+
           <textarea
             value={notes}
             onChange={e => setNotes(e.target.value)}
             rows={3}
             aria-label="What happened"
-            placeholder="What happened? (first line becomes the title)"
+            placeholder={pasteReplyFirst ? 'Your summary (optional)' : 'What happened? (first line becomes the title)'}
             className="w-full resize-none rounded-xl border border-clay-hairline bg-transparent px-3.5 py-3 text-sm text-clay-ink placeholder:text-clay-muted focus:border-clay-ink/40 focus:outline-none focus:ring-2 focus:ring-clay-ink/10"
           />
 
-          {kind === 'customer_response' && deal && (
-            <Row
-              label="Their exact words (optional)"
-              hint="Laya reads only this"
-            >
-              <textarea
-                value={buyerWords}
-                onChange={e => setBuyerWords(e.target.value)}
-                rows={3}
-                aria-label="Their exact words"
-                placeholder="Paste their reply exactly as they wrote it"
-                className="w-full resize-none rounded-xl border border-clay-hairline bg-transparent px-3.5 py-3 text-sm text-clay-ink placeholder:text-clay-muted focus:border-clay-ink/40 focus:outline-none focus:ring-2 focus:ring-clay-ink/10"
-              />
-              {deal.buyer_reply && !buyerWords.trim() && (
-                <p className="mt-1.5 text-xs text-clay-muted">
-                  Leave it empty and the older saved reply is cleared, so Laya never judges an out-of-date message.
-                </p>
-              )}
-            </Row>
-          )}
+          {!pasteReplyFirst && buyerWordsRow}
+
 
           {!selectedDealId && (
             <Row label="Deal">

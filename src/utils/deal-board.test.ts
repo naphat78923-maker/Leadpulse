@@ -239,7 +239,19 @@ describe('filterAndSortBoardDeals', () => {
       overdue: 1,
       today: 1,
       needsReview: 1,
+      layaReview: 0,
     });
+  });
+
+  it('counts and filters the deals Laya routed to Pat', () => {
+    const layaReviewIds = new Set([deals[0].id, deals[2].id]);
+    expect(getDoNowCounts(deals, today, layaReviewIds).layaReview).toBe(2);
+    const visible = filterAndSortBoardDeals(deals, {
+      attention: 'laya-review', search: '', product: 'all', priority: 'all', today, layaReviewIds,
+    });
+    expect(visible.map(item => item.id).sort()).toEqual([deals[0].id, deals[2].id].sort());
+    // Without review ids the Laya filter shows nothing rather than everything.
+    expect(filterAndSortBoardDeals(deals, { attention: 'laya-review', search: '', product: 'all', priority: 'all', today })).toEqual([]);
   });
 });
 

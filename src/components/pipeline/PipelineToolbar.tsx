@@ -11,7 +11,7 @@ interface PipelineToolbarProps {
   onSearchChange: (value: string) => void;
   attentionFilter: BoardAttentionFilter;
   onAttentionChange: (value: BoardAttentionFilter) => void;
-  counts: { all: number; overdue: number; today: number; needsReview: number };
+  counts: { all: number; overdue: number; today: number; needsReview: number; layaReview: number };
   productFilter: string;
   onProductChange: (value: string) => void;
   productOptions: readonly string[];
@@ -71,6 +71,10 @@ export default function PipelineToolbar({
           ['overdue', 'Overdue', counts.overdue],
           ['today', 'Due today', counts.today],
           ['needs-review', 'Needs review', counts.needsReview],
+          // Laya's review queue: only shown when something is waiting (or it is selected).
+          ...(counts.layaReview > 0 || attentionFilter === 'laya-review'
+            ? [['laya-review', 'Laya review', counts.layaReview] as [BoardAttentionFilter, string, number]]
+            : []),
         ] as Array<[BoardAttentionFilter, string, number]>).map(([value, label, count]) => (
           <button
             key={value}
@@ -84,7 +88,9 @@ export default function PipelineToolbar({
             )}
           >
             {label}
-            <span className={clsx('text-xs', value === 'overdue' && count > 0 ? 'font-semibold text-clay-error' : 'text-clay-muted')}>{count}</span>
+            <span className={clsx('text-xs',
+              value === 'overdue' && count > 0 ? 'font-semibold text-clay-error'
+                : value === 'laya-review' && count > 0 ? 'font-semibold text-clay-ochre' : 'text-clay-muted')}>{count}</span>
           </button>
         ))}
       </div>
