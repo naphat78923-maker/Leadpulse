@@ -12,7 +12,8 @@ import type { Deal } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
 import * as crm from '@/lib/crm';
 import type { LayaJudgmentRow } from '@/lib/crm';
-import { gradeDeal, type DealGrade, type SavedJudgment } from '@/utils/grade';
+import { gradeDeal, type DealGrade } from '@/utils/grade';
+import { toSavedJudgment } from '@/utils/laya-review';
 import { chasesSinceLastReply } from '@/utils/interaction-event';
 import { dealInputSha256 } from '@/utils/laya-freshness';
 import { TIER_LABELS } from '@/utils/lead-scoring';
@@ -61,15 +62,7 @@ export default function LayaGradePanel({ deal }: { deal: Deal }) {
 
   const grade = useMemo<DealGrade | null>(() => {
     if (loaded.state !== 'ready') return null;
-    const judgment: SavedJudgment | null = loaded.row
-      ? {
-          status: loaded.row.status,
-          not_scored_code: loaded.row.not_scored_code,
-          answers: loaded.row.answers,
-          fresh: !!loaded.currentSha && loaded.row.input_sha256 === loaded.currentSha,
-        }
-      : null;
-    return gradeDeal({ deal, judgment, chasesSinceReply: chases });
+    return gradeDeal({ deal, judgment: toSavedJudgment(loaded.row, loaded.currentSha), chasesSinceReply: chases });
   }, [loaded, deal, chases]);
 
   const title = loaded.state === 'ready' && grade

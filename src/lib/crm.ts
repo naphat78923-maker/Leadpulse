@@ -419,3 +419,14 @@ export async function getLatestDealJudgment(dealId: string): Promise<LayaJudgmen
   if (error) throw error;
   return (data as LayaJudgmentRow | null) ?? null;
 }
+
+/** The newest deal-set judgment for every deal that has one. */
+export async function getLatestDealJudgments(): Promise<LayaJudgmentRow[]> {
+  const { data, error } = await supabase
+    .from('laya_judgments_latest')
+    .select('deal_id, question_set, input_sha256, status, not_scored_code, answers, model_package_sha256, scored_at')
+    .eq('question_set', 'terminal')
+    .not('deal_id', 'is', null);
+  if (error) throw error;
+  return (data as LayaJudgmentRow[] | null) ?? [];
+}
