@@ -121,6 +121,26 @@ repo and outside anything Vercel reads — for example the macOS Keychain, or a
   "Run" buttons stay as lab tools.
 - `grade.ts` (later): a pure function over saved answers plus deterministic CRM fields.
 
+## Grading signals decided (2026-10-01)
+
+Inputs for `grade.ts`, decided with Pat. Weights and cut-offs are still to be tuned.
+
+- **Order quantity — code, not Laya.** Tiers: small < 5 kg, moderate 5–15 kg, large
+  > 15 kg, or none. Read from the buyer's words by a deterministic rule
+  (`kilograms_stated` in `scripts/evaluate_laya_quantity.py`; sentences about samples
+  are skipped). A Laya Choice scored 12/24 on the tiers; the rule 24/24 on the tier set
+  and 29/29 on the independent buyer-detail set. Unreadable phrasing ("a few cases")
+  gets no tier rather than a guess.
+- **Nudges — code, chases since the buyer's last reply.** More unanswered chases lower
+  the closing score. Counted from the interaction log, resetting when the buyer replies,
+  so a deal that came back to life is not penalised for earlier silence. The pipeline's
+  4/4 badge keeps its current lifetime count (`v0-cumulative-sends`); only grading uses
+  the since-last-reply count.
+- **Warmth — Laya:** `trial_reported`, `trial_positive`, `trial_negative`.
+- **Fall-out reasons — Laya:** `concern_price`, `concern_technical`, `concern_delivery`,
+  `concern_approval`, `concern_timing`.
+- **Cut:** `current_supplier`, `timeline_stated`.
+
 ## Prerequisites
 
 1. ~~`deals.buyer_reply` missing in the live database~~ — applied 2026-09-29

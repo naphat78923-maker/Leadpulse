@@ -1,0 +1,31 @@
+{
+  "schema": "laya-quantity-audit/v1",
+  "status": "draft labels, self-assigned 2026-10-01, written before any inference. Buckets follow Pat's tiers: small = under 5 kg, moderate = 5 to 15 kg (both ends included), large = over 15 kg, none_stated = no order amount. A per-week or per-month amount is bucketed by the stated amount itself. Sample quantities are not orders and are labelled none_stated. A null label is genuinely ambiguous and skipped.",
+  "cases": [
+    {"id": "q_small_2kg_start", "lang": "en", "reply": "Can we order 2 kg to start with?", "quantity": "small"},
+    {"id": "q_small_3_kilos", "lang": "en", "reply": "Just 3 kilos for now, please.", "quantity": "small"},
+    {"id": "q_small_500g", "lang": "en", "reply": "We only need 500 g for a menu test order.", "quantity": "small"},
+    {"id": "q_small_1kg_week", "lang": "en", "reply": "We use about 1 kg a week. What would that cost?", "quantity": "small"},
+    {"id": "q_small_th_2kilo", "lang": "th", "reply": "ขอสั่ง 2 กิโลก่อนนะครับ", "quantity": "small"},
+    {"id": "q_small_th_half_kilo", "lang": "th", "reply": "เอาครึ่งกิโลก่อนครับ", "quantity": "small"},
+    {"id": "q_mod_10kg_quote", "lang": "en", "reply": "Please quote 10 kg of salted butter.", "quantity": "moderate"},
+    {"id": "q_mod_12kg_month", "lang": "en", "reply": "We go through roughly 12 kg a month.", "quantity": "moderate"},
+    {"id": "q_mod_8kg_first", "lang": "en", "reply": "Our first order would be 8 kg.", "quantity": "moderate"},
+    {"id": "q_mod_exact_5kg", "lang": "en", "reply": "Send us 5 kg and the invoice.", "quantity": "moderate"},
+    {"id": "q_mod_exact_15kg", "lang": "en", "reply": "We'd take 15 kg if the price works.", "quantity": "moderate"},
+    {"id": "q_mod_th_10kilo", "lang": "th", "reply": "สั่ง 10 กิโลครับ ส่งวันจันทร์ได้ไหม", "quantity": "moderate"},
+    {"id": "q_large_20kg", "lang": "en", "reply": "Please send a quotation for 20 kg.", "quantity": "large"},
+    {"id": "q_large_25kg_block_month", "lang": "en", "reply": "We need one 25 kg block every month.", "quantity": "large"},
+    {"id": "q_large_two_10kg_cases", "lang": "en", "reply": "Can you do two 10 kg cases for next week?", "quantity": "large"},
+    {"id": "q_large_100kg", "lang": "en", "reply": "Please prepare our first order of 100 kg for next month.", "quantity": "large"},
+    {"id": "q_large_th_50kilo", "lang": "th", "reply": "ขอใบเสนอราคาเนยจำนวน 50 กิโลกรัมครับ", "quantity": "large"},
+    {"id": "q_large_th_30kilo_month", "lang": "th", "reply": "ลองแล้วครับ อร่อยมาก ขอใบเสนอราคา 30 กิโลต่อเดือน", "quantity": "large"},
+    {"id": "q_none_price_list", "lang": "en", "reply": "Can you send your price list?", "quantity": "none_stated"},
+    {"id": "q_none_thanks", "lang": "en", "reply": "Thanks for the info, looks interesting.", "quantity": "none_stated"},
+    {"id": "q_none_sample_2kg", "lang": "en", "reply": "Please send 2 kg of samples to our Sukhumvit branch.", "quantity": "none_stated"},
+    {"id": "q_none_moq", "lang": "en", "reply": "What is your minimum order quantity?", "quantity": "none_stated"},
+    {"id": "q_none_th_price", "lang": "th", "reply": "ราคาเท่าไหร่ครับ", "quantity": "none_stated"},
+    {"id": "q_none_tested", "lang": "en", "reply": "We tested the butter and the croissants came out great.", "quantity": "none_stated"},
+    {"id": "q_ambiguous_a_few_cases", "lang": "en", "reply": "We'd probably take a few cases a month.", "quantity": null}
+  ]
+}
