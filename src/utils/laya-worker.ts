@@ -10,7 +10,8 @@
 import { createHash } from 'node:crypto';
 import type { Deal } from '../types/crm.ts';
 import { parseLayaScore } from './laya-answers.ts';
-import { buildLayaBuyerResponseInput, hasThaiScript, LAYA_ALL_FROZEN_QUESTIONS } from './laya-buyer-response.ts';
+import { hasThaiScript } from './laya-buyer-response.ts';
+import { dealScoreRequest } from './laya-deal-request.ts';
 
 export const DEAL_QUESTION_SET = 'terminal';
 
@@ -41,10 +42,9 @@ export function skipReason(deal: WorkerDeal): SkipReason | null {
 /** The exact /score request for one deal, with its hashes. */
 export function buildScoreRequest(deal: WorkerDeal): ScoreRequest | null {
   if (skipReason(deal)) return null;
-  const built = buildLayaBuyerResponseInput({ deal });
-  if (!built?.verbatim) return null;
-  const sent = { state: built.state, questions: LAYA_ALL_FROZEN_QUESTIONS as Record<string, unknown> };
-  const body = JSON.stringify(sent);
+  const request = dealScoreRequest(deal);
+  if (!request) return null;
+  const { sent, body } = request;
   return {
     dealId: deal.id,
     body,

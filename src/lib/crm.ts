@@ -395,3 +395,27 @@ export async function createAccountEvent(event: AccountEvent, source: string = '
   if (error) throw error;
   return data;
 }
+
+// ─── Laya judgments (read-only; only the Mac worker writes) ───
+export interface LayaJudgmentRow {
+  deal_id: string;
+  question_set: string;
+  input_sha256: string;
+  status: 'scored' | 'not_scored';
+  not_scored_code: string | null;
+  answers: Record<string, { probabilities?: Record<string, number>; noul?: number }> | null;
+  model_package_sha256: string;
+  scored_at: string;
+}
+
+/** The newest deal-set judgment for one deal, or null when none has been saved. */
+export async function getLatestDealJudgment(dealId: string): Promise<LayaJudgmentRow | null> {
+  const { data, error } = await supabase
+    .from('laya_judgments_latest')
+    .select('deal_id, question_set, input_sha256, status, not_scored_code, answers, model_package_sha256, scored_at')
+    .eq('deal_id', dealId)
+    .eq('question_set', 'terminal')
+    .maybeSingle();
+  if (error) throw error;
+  return (data as LayaJudgmentRow | null) ?? null;
+}
