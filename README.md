@@ -118,17 +118,22 @@ notes still need human review. A negated phrase such as "did not request no
 contact" may also be refused for manual review rather than interpreted as
 permission. No Laya output authorizes outreach.
 
-**Judgment scope:** two frozen questions are active. Buyer-response `Choice` gives
-attention advice, not purchase odds, qualification or contact authorization. Deal-amount
-`Score` (six ordered ฿ buckets plus an honest "no amount stated" bucket) runs only in the
-/prospects terminal, one inference pass alongside buyer-response; the card never asks it. The
-deal-amount question ships contract-tested but not accuracy-evaluated — buyer-response's 8/8
-numbers came from `scripts/eval_results/2026-09-23-buyer-response-eval-report.md`, which has no
-deal-amount counterpart yet. `Noul` is deferred until a narrow evidence
-question is useful; missing evidence must not be presented as a negative finding.
-The ordered `Score`/sales-readiness proposal is deferred to avoid duplicating deal
-stage. The card labels percentages as option probabilities and does not manufacture
-a model reasoning narrative. Existing deterministic CRM rules are unchanged.
+**Question source:** every frozen question and every accepted question set lives once,
+in `src/utils/laya-questions.json`. The TypeScript builder imports it and the worker
+loads it; `/score` accepts only those sets (`buyer`, `terminal`, `fit`) and answers with
+`{answers, usage, trace}`. Every client checks a response with the one shared parser in
+`src/utils/laya-answers.ts`, which also requires the trace to echo the exact request.
+
+**Judgment scope:** the score card asks one question: buyer-response `Choice`, which gives
+attention advice, not purchase odds, qualification or contact authorization (8/8
+requested_next_step recall on verbatim replies, `scripts/eval_results/2026-09-23-buyer-response-eval-report.md`).
+The /lab terminal adds five buyer-detail questions in the same pass; they are review-only and
+not yet accuracy-evaluated. Deal size is **not** a model question: the CRM value is already a
+number, and `lead-scoring.ts` buckets it in code. Prospect fit asks one yes/no `Noul` per
+published archetype over a plain-sentence identity; code picks the highest at or above 0.5,
+otherwise `no_fit` (`scripts/eval_results/2026-09-29-prospect-fit-eval.md`). The card labels
+percentages as option probabilities and does not manufacture a model reasoning narrative.
+Existing deterministic CRM rules are unchanged.
 
 **Result identity (slice 2):** a score belongs to one deal, linked company, Bangkok
 day and exact serialized input (including the question/options). Changing any of
@@ -251,7 +256,7 @@ the downloaded model tokenizer/config files (no neural inference in this suite):
 
 ```bash
 /Users/pat/laya-coreml/.venv/bin/python -B -m unittest discover -s scripts -p 'test_laya_score_server.py' -v
-npm test -- src/utils/laya-buyer-response.test.ts src/utils/laya-buyer-response.contract.test.ts src/components/LayaScoreCard.test.tsx
+npm test -- src/utils/laya-buyer-response.test.ts src/utils/laya-buyer-response.contract.test.ts src/utils/laya-answers.test.ts src/components/LayaScoreCard.test.tsx
 ```
 
 The default paths match Pat's install. Override either only if Laya lives elsewhere;

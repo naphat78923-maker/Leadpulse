@@ -1,0 +1,27 @@
+{
+  "note": "Synthetic dev set for the prospect-fit support check. Labels were written before any inference. `supported` lists every archetype the name, industry and tags establish on their own; an empty list means none does. `archetype` is the expected archetype_select answer. Draft labels, self-assigned — a smoke signal, not an accuracy estimate for the real CRM.",
+  "cases": [
+    {"id": "clear-bakery", "name": "April's Bakery", "industry": "Bakery", "tags": ["bakery", "chain"], "archetype": "bakery_patisserie_brands", "supported": ["bakery_patisserie_brands"]},
+    {"id": "clear-patisserie", "name": "Maison Lumière Pâtisserie", "industry": "Patisserie", "tags": ["croissant", "viennoiserie", "3 outlets"], "archetype": "bakery_patisserie_brands", "supported": ["bakery_patisserie_brands"]},
+    {"id": "dessert-brand", "name": "Sweet Tooth Desserts", "industry": "Dessert brand", "tags": ["cakes", "own production"], "archetype": "bakery_patisserie_brands", "supported": ["bakery_patisserie_brands"]},
+    {"id": "thai-bakery", "name": "ร้านขนมปังบ้านสวน", "industry": "เบเกอรี่", "tags": ["ขนมปัง", "ครัวซองต์"], "archetype": "bakery_patisserie_brands", "supported": ["bakery_patisserie_brands"]},
+    {"id": "clear-vegan-cafe", "name": "Green Bowl", "industry": "Vegan restaurant", "tags": ["plant-based", "cafe"], "archetype": "plant_based_restaurant_cafe", "supported": ["plant_based_restaurant_cafe"]},
+    {"id": "vegan-kitchen", "name": "Root & Leaf Kitchen", "industry": "Restaurant", "tags": ["vegan", "plant-based menu"], "archetype": "plant_based_restaurant_cafe", "supported": ["plant_based_restaurant_cafe"]},
+    {"id": "thai-jay", "name": "ร้านอาหารเจ ใจดี", "industry": "ร้านอาหารมังสวิรัติ", "tags": ["อาหารเจ", "vegan"], "archetype": "plant_based_restaurant_cafe", "supported": ["plant_based_restaurant_cafe"]},
+    {"id": "clear-grocery", "name": "FreshMart Supermarket", "industry": "Grocery retail", "tags": ["supermarket", "chain"], "archetype": "modern_trade_specialty_retail", "supported": ["modern_trade_specialty_retail"]},
+    {"id": "online-grocery", "name": "BasketGo", "industry": "Online grocery", "tags": ["e-commerce", "delivery"], "archetype": "modern_trade_specialty_retail", "supported": ["modern_trade_specialty_retail"]},
+    {"id": "specialty-retail", "name": "The Pantry Deli", "industry": "Specialty food retail", "tags": ["gourmet", "imported goods"], "archetype": "modern_trade_specialty_retail", "supported": ["modern_trade_specialty_retail"]},
+    {"id": "vegan-bakery", "name": "Kind Crumbs", "industry": "Vegan bakery", "tags": ["plant-based", "bakery", "cafe"], "archetype": "bakery_patisserie_brands", "supported": ["bakery_patisserie_brands", "plant_based_restaurant_cafe"]},
+    {"id": "bakery-in-grocery", "name": "FreshMart In-Store Bakery", "industry": "Grocery retail", "tags": ["supermarket", "bakery counter"], "archetype": "modern_trade_specialty_retail", "supported": ["modern_trade_specialty_retail"]},
+    {"id": "generic-restaurant", "name": "Somchai Seafood House", "industry": "Restaurant", "tags": ["seafood", "Thai"], "archetype": "no_fit", "supported": []},
+    {"id": "steakhouse", "name": "Prime Cut Steakhouse", "industry": "Restaurant", "tags": ["steak", "grill"], "archetype": "no_fit", "supported": []},
+    {"id": "hotel", "name": "Riverside Grand Hotel", "industry": "Hospitality", "tags": ["hotel", "banquets"], "archetype": "no_fit", "supported": []},
+    {"id": "distributor", "name": "Siam Food Trading", "industry": "Food distribution", "tags": ["importer", "wholesale"], "archetype": "no_fit", "supported": []},
+    {"id": "school", "name": "Bangkok International School", "industry": "Education", "tags": ["school", "canteen"], "archetype": "no_fit", "supported": []},
+    {"id": "thin-name-only", "name": "Sunrise Co., Ltd.", "industry": null, "tags": [], "archetype": "no_fit", "supported": []},
+    {"id": "vague-food", "name": "Golden Spoon", "industry": "Food", "tags": ["food"], "archetype": "no_fit", "supported": []},
+    {"id": "coffee-chain", "name": "Daily Grind Coffee", "industry": "Cafe", "tags": ["coffee", "chain"], "archetype": "no_fit", "supported": []},
+    {"id": "name-says-bakery-industry-other", "name": "Crust & Co", "industry": "Consulting", "tags": ["B2B services"], "archetype": "no_fit", "supported": []},
+    {"id": "tags-only-bakery", "name": "Nimman Group", "industry": null, "tags": ["bakery", "pastry kitchen"], "archetype": "bakery_patisserie_brands", "supported": ["bakery_patisserie_brands"]}
+  ]
+}

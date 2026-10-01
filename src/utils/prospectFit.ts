@@ -10,9 +10,9 @@
 //     identity (isInstitutionalIndustry). A school is excluded BEFORE any
 //     inference pass, so it can never waste a model call or have to be talked
 //     out of a bakery archetype.
-//   - MODEL (in the app, on explicit press): archetype fit itself, via the
-//     frozen archetype_select + role_support questions. Judgment results enter
-//     through judgmentFromAnswers and are ordered by orderCandidates. Nothing
+//   - MODEL (in the app, on explicit press): one yes/no fit Noul per published
+//     archetype. judgmentFromAnswers turns them into a fit with an explicit code
+//     rule (FIT_THRESHOLD), and orderCandidates ranks the results. Nothing
 //     in this file scores anything — the legacy recipe (role regex → keyword
 //     signals → arithmetic score) is retired, not reimplemented.
 //
@@ -24,7 +24,7 @@
 
 import { isInstitutionalIndustry } from './companyRole.ts';
 import { CAMPAIGN_ARCHETYPES_V1, type CampaignArchetype } from './campaignArchetypes.ts';
-import type { LayaArchetypeChoice, LayaFitAnswers } from './laya-buyer-response.ts';
+import type { LayaArchetypeChoice, LayaFitAnswers, LayaPublishedArchetype } from './laya-buyer-response.ts';
 
 export type Reachability = 'named_contact' | 'route_only' | 'none';
 
@@ -72,16 +72,14 @@ export interface ProspectCandidate {
  */
 export interface ProspectJudgment {
   company_id: string;
-  /** the model's archetype_select choice, including 'no_fit' */
+  /** the best-supported published archetype, or 'no_fit' when none reaches FIT_THRESHOLD */
   archetype_id: LayaArchetypeChoice;
   /** display name of the archetype; null when the choice is no_fit */
   archetype_name: string | null;
+  /** the chosen archetype's fit Noul; for no_fit, 1 − the highest fit Noul */
   archetype_confidence: number;
-  /** full distribution over the frozen criteria, keyed by archetype id */
-  probabilities: Record<LayaArchetypeChoice, number>;
-  /** role_support noul: near 0 = identity supports the assignment, near 1 = invented */
-  role_support: number;
-  role_support_confidence: number;
+  /** fit Noul per published archetype — independent yes/no, not a distribution */
+  support: Record<LayaPublishedArchetype, number>;
   judged_at: string;
 }
 
@@ -125,27 +123,35 @@ function rowGaps(row: ProspectSourceRow): string[] {
   return gaps;
 }
 
+/** A fit Noul at or above this counts as the account being that archetype. */
+export const FIT_THRESHOLD = 0.5;
+
 /**
- * Turn one validated Laya fit run into a session judgment. The archetype name
- * comes from the published archetype list (the same source as the frozen
- * question's criteria); no_fit carries a null name so renderers must handle
- * "no fit" explicitly instead of inventing a label.
+ * Turn one validated Laya fit run into a session judgment. Policy lives here, in
+ * code: the highest fit Noul wins when it reaches FIT_THRESHOLD, otherwise the
+ * account is no_fit. The archetype name comes from the published archetype list;
+ * no_fit carries a null name so renderers must handle "no fit" explicitly.
  */
 export function judgmentFromAnswers(
   company_id: string,
   answers: LayaFitAnswers,
   now: Date = new Date()
 ): ProspectJudgment {
-  const archetype_id = answers.archetype_select.choice;
+  const support = Object.fromEntries(
+    Object.entries(answers.support).map(([id, answer]) => [id, answer.noul])
+  ) as Record<LayaPublishedArchetype, number>;
+  const [best, bestNoul] = (Object.entries(support) as [LayaPublishedArchetype, number][]).reduce(
+    (top, entry) => (entry[1] > top[1] ? entry : top)
+  );
+  const fits = bestNoul >= FIT_THRESHOLD;
+  const archetype_id: LayaArchetypeChoice = fits ? best : 'no_fit';
   const archetype = CAMPAIGN_ARCHETYPES_V1.find((a) => a.id === archetype_id);
   return {
     company_id,
     archetype_id,
     archetype_name: archetype?.name ?? null,
-    archetype_confidence: answers.archetype_select.confidence,
-    probabilities: answers.archetype_select.probabilities,
-    role_support: answers.role_support.noul,
-    role_support_confidence: answers.role_support.confidence,
+    archetype_confidence: fits ? bestNoul : 1 - bestNoul,
+    support,
     judged_at: now.toISOString(),
   };
 }

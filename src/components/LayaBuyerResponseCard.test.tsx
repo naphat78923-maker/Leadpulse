@@ -47,10 +47,13 @@ function response(body: string, recommendation = 'requested_next_step') {
   return {
     ok: true,
     json: async () => ({
-      question: 'buyer_response',
-      recommendation,
-      confidence: probabilities[recommendation as keyof typeof probabilities],
-      probabilities,
+      answers: {
+        buyer_response: {
+          choice: recommendation,
+          confidence: probabilities[recommendation as keyof typeof probabilities],
+          probabilities,
+        },
+      },
       usage: { input_tokens: 60, output_tokens: 0 },
       trace: {
         scored_input: JSON.parse(body),

@@ -10,7 +10,7 @@
 // Membership is deterministic: three pre-gates (buying evidence, status, institutional
 // identity) decide who is a candidate, and nothing is scored to get there. Archetype
 // fit is a Laya JUDGMENT a human presses for, one candidate at a time or in a batch,
-// against the frozen archetype_select + role_support questions.
+// against the frozen fit Nouls, one per published archetype.
 //
 // The evaluator's own diagnostics (counts of excluded accounts, judgment counts,
 // reconciliation, source attribution) live under "How matching works" at the foot of
@@ -43,6 +43,7 @@ import { useCrm } from '@/components/CrmProvider';
 import { PageTransition } from '@/components/motion';
 import {
   buildProspectFitReport,
+  FIT_THRESHOLD,
   judgmentFromAnswers,
   orderCandidates,
   type ProspectCandidate,
@@ -56,9 +57,9 @@ import {
   READINESS_DIMENSIONS,
   type ReviewContact,
 } from '@/utils/prospectReview';
-import { buildLayaProspectFitInput, scoreFitFromLaya } from '@/utils/laya-buyer-response';
+import { buildLayaProspectFitInput } from '@/utils/laya-buyer-response';
+import { fitAnswersFromRun, parseLayaScore } from '@/utils/laya-answers';
 import { requestLocalLaya } from '@/utils/laya-transport';
-import { TAXONOMY_VERSION } from '@/utils/companyRole';
 import ProspectReviewPanel from '@/components/ProspectReviewPanel';
 import { loadProspectReviews, type ProspectReviewRow, type ReviewsLoad } from '@/lib/prospectReviews';
 import type { Company, Deal } from '@/types/crm';
@@ -185,7 +186,6 @@ function CandidateDetail({
       name: fit.name,
       industry: fit.industry,
       tags: fit.tags,
-      taxonomyVersion: TAXONOMY_VERSION,
     }),
     [fit.name, fit.industry, fit.tags]
   );
@@ -199,26 +199,25 @@ function CandidateDetail({
             <div className="mt-2 space-y-2 text-xs">
               <p className="text-clay-ink font-semibold">{judgment.archetype_name ?? judgment.archetype_id}</p>
               <div className="flex flex-wrap gap-2">
-                <Chip>archetype confidence {judgment.archetype_confidence.toFixed(2)}</Chip>
-                <Chip>{judgment.role_support < 0.5 ? 'identity supports this' : 'goes beyond the identity'}</Chip>
+                <Chip>
+                  {judgment.archetype_id === 'no_fit'
+                    ? `no archetype reaches ${FIT_THRESHOLD}`
+                    : `fit ${judgment.archetype_confidence.toFixed(2)}`}
+                </Chip>
               </div>
               <ul className="space-y-0.5 text-clay-body">
-                {(Object.entries(judgment.probabilities) as [string, number][]).map(([id, p]) => (
+                {(Object.entries(judgment.support) as [string, number][]).map(([id, p]) => (
                   <li key={id} className={clsx(id === judgment.archetype_id && 'font-medium text-clay-ink')}>
                     · {id}: {p.toFixed(2)}
                   </li>
                 ))}
               </ul>
               <p className="text-clay-body">
-                role_support {judgment.role_support.toFixed(2)} —{' '}
-                {judgment.role_support < 0.5
-                  ? 'the name, industry and tags support the assigned archetype'
-                  : 'the assigned archetype goes beyond what the name, industry and tags establish'}
-                .
+                Each number is a separate yes/no: the probability the name, industry and tags show this
+                archetype. The highest at or above {FIT_THRESHOLD} is the fit; otherwise no_fit.
               </p>
               <SourceNote>
-                local Laya worker (frozen archetype_select + role_support), judged {judgment.judged_at} · this
-                session only, not saved
+                local Laya worker (frozen fit Nouls), judged {judgment.judged_at} · this session only, not saved
               </SourceNote>
               <p className="text-[10px] uppercase tracking-wide text-clay-muted">
                 model judgment, not a qualification and not a verified business fact
@@ -268,10 +267,9 @@ function CandidateDetail({
                 {judgmentInput.state}
               </p>
               <p className="mt-2 text-xs text-clay-muted">
-                Two frozen questions: <span className="font-mono text-[11px]">archetype_select</span> (which
-                published archetype fits, or <span className="font-mono text-[11px]">no_fit</span>) and{' '}
-                <span className="font-mono text-[11px]">role_support</span> (is that assignment supported by
-                the identity?).
+                One yes/no question per published archetype (
+                <span className="font-mono text-[11px]">fit_&lt;archetype&gt;</span>), asked in one pass. Code
+                picks the fit.
               </p>
               <SourceNote>the exact payload a judge press sends; nothing else leaves this app</SourceNote>
             </>
@@ -541,13 +539,13 @@ export default function ProspectsPage() {
         name: candidate.name,
         industry: candidate.industry,
         tags: candidate.tags,
-        taxonomyVersion: report?.taxonomy_version ?? TAXONOMY_VERSION,
       });
       if (!fitInput) return 'Nothing to send: this account states no name, industry or tags.';
       try {
+        const sent = { state: fitInput.state, questions: fitInput.questions };
         const { ok, status, payload } = await requestLocalLaya('/score', {
           signal,
-          body: JSON.stringify({ state: fitInput.state, questions: fitInput.questions }),
+          body: JSON.stringify(sent),
         });
         if (!ok) {
           const p = payload as { status?: unknown; error?: unknown } | null;
@@ -557,7 +555,7 @@ export default function ProspectsPage() {
               : `The local worker refused this judgment (HTTP ${status}).`;
           return p?.status === 'not_scored' || status === 422 ? `Not judged: ${message}` : message;
         }
-        const answers = scoreFitFromLaya(payload);
+        const answers = fitAnswersFromRun(parseLayaScore(payload, sent));
         if (!answers) {
           return 'Laya returned an invalid score. A malformed payload is never rendered as a result.';
         }
@@ -571,7 +569,7 @@ export default function ProspectsPage() {
         return err instanceof Error ? err.message : 'Cannot reach the local Laya worker.';
       }
     },
-    [report?.taxonomy_version]
+    []
   );
 
   const handleJudge = useCallback(

@@ -53,9 +53,10 @@ class InputBoundaryTests(unittest.TestCase):
 const fs = require('fs'), ts = require('typescript');
 const load = sourcePath => {
   const source = fs.readFileSync(sourcePath, 'utf8');
-  const code = ts.transpileModule(source, {compilerOptions: {module:ts.ModuleKind.CommonJS}}).outputText;
+  const code = ts.transpileModule(source, {compilerOptions: {module:ts.ModuleKind.CommonJS, esModuleInterop:true}}).outputText;
   const m = {exports:{}};
-  new Function('exports', 'require', 'module', code)(m.exports, require, m);
+  const localRequire = p => require(p.startsWith('.') ? require('path').resolve(require('path').dirname(sourcePath), p) : p);
+  new Function('exports', 'require', 'module', code)(m.exports, localRequire, m);
   return m.exports;
 };
 const m = {exports: load('src/utils/laya-buyer-response.ts')};
@@ -67,8 +68,8 @@ console.log(JSON.stringify({
   refusal:buildBuyer({buyer_reply:'Buyer asked for a sample price but later declined and requested no contact'}),
   buyer_verbatim:buildBuyer({buyer_reply:'Please send us a quotation for 20 kg of salted butter.'}),
   buyer_note:buildBuyer({last_outcome:'Buyer asked for a sample price'}),
-  fit:post(m.exports.buildLayaProspectFitInput({name:"April's Bakery",industry:"Bakery",tags:["bakery","chain"],taxonomyVersion:"v1"})),
-  combined:(() => {const terminal = m.exports.buildLayaBuyerResponseInput({deal:{product:'Butter',last_outcome:null,buyer_reply:'Please send us a quotation for 20 kg of salted butter.',value:30000},includeDealValue:true});return {state:terminal.state,questions:m.exports.LAYA_ALL_FROZEN_QUESTIONS};})(),
+  fit:post(m.exports.buildLayaProspectFitInput({name:"April's Bakery",industry:"Bakery",tags:["bakery","chain"]})),
+  combined:(() => {const terminal = m.exports.buildLayaBuyerResponseInput({deal:{product:'Butter',last_outcome:null,buyer_reply:'Please send us a quotation for 20 kg of salted butter.'}});return {state:terminal.state,questions:m.exports.LAYA_ALL_FROZEN_QUESTIONS};})(),
 }));
 """
         cls.inputs = json.loads(subprocess.check_output(['node', '-e', javascript], cwd=ROOT, text=True))
@@ -106,156 +107,19 @@ console.log(JSON.stringify({
         _, status, data = respond.call_args.args
         return status, data
 
-    def review_payload(self):
-        return {
-            'schema': 'followup_review_v1',
-            'state': {
-                'draft': 'Would you like me to prepare a paid trial quote?',
-                'primary_ask': 'Ask whether they want a paid trial quote.',
-                'language': 'en',
-                'evidence': [
-                    {'id': 'reply-1', 'provenance': 'buyer_message', 'text': 'Please send pricing for a trial.'},
-                ],
-            },
-        }
-
-    def review_result(self):
-        return {
-            'answers': {
-                'primary_ask_alignment': {
-                    'type': 'choice', 'choice': 'aligned',
-                    'probabilities': {'aligned': 0.9, 'different_ask': 0.04, 'multiple_asks': 0.03, 'unclear': 0.03},
-                    'confidence': 0.7, 'action': {'act_probability': 0.8},
-                },
-                'ask_clarity': {
-                    'type': 'score', 'score': 2.68,
-                    'legend': {'0': 'No actionable ask: no question or request the buyer can act on.', '1': 'Vague ask: a request exists, but the buyer cannot tell what action or answer is wanted.', '2': 'Mostly clear ask: the requested action is identifiable but an important detail is missing.', '3': 'Specific, answerable ask: one direct action or question the buyer can readily answer.'},
-                    'probabilities': {'0': 0.02, '1': 0.03, '2': 0.2, '3': 0.75},
-                    'confidence': 0.5, 'action': {'act_probability': 0.8},
-                },
-                'unsupported_claim': {
-                    'type': 'noul', 'noul': 0.1, 'confidence': 0.9,
-                    'action': {'act_probability': 0.8},
-                },
-            },
-            'usage': {'input_tokens': 250, 'output_tokens': 0},
-        }
-
-    def test_review_accepts_fixed_mixed_primitive_contract_and_traces_exact_input(self):
-        payload = self.review_payload()
-        original = self.agent.predict.return_value
-        try:
-            self.agent.predict.return_value = self.review_result()
-            status, data = self.post(payload, path='/review')
-            self.assertEqual(status, 200)
-            self.assertEqual(data['schema'], 'followup_review_v1')
-            self.assertEqual(set(data['answers']), {'primary_ask_alignment', 'ask_clarity', 'unsupported_claim'})
-            self.assertEqual(data['answers']['primary_ask_alignment']['type'], 'choice')
-            self.assertEqual(data['answers']['ask_clarity']['type'], 'score')
-            self.assertEqual(data['answers']['unsupported_claim']['type'], 'noul')
-            self.assertEqual(data['trace']['scored_input']['state'], payload['state'])
-            self.assertEqual(data['trace']['scored_input']['questions'], self.server.FOLLOWUP_REVIEW_QUESTIONS)
-            self.assertEqual(data['trace']['rubric_version'], 'followup_review_v1')
-            self.assertEqual(data['trace']['input_limit'], min(self.agent.shape['max_length'], self.agent.cfg['max_len']))
-            self.agent.predict.assert_called_once_with(payload['state'], self.server.FOLLOWUP_REVIEW_QUESTIONS)
-        finally:
-            self.agent.predict.return_value = original
-
-    def test_review_rejects_untrusted_schema_and_invalid_evidence_before_inference(self):
-        valid = self.review_payload()
-        duplicate_ids = self.review_payload()
-        duplicate_ids['state']['evidence'].append({**duplicate_ids['state']['evidence'][0]})
-        cases = [
-            {**valid, 'schema': 'followup_review_v2'},
-            {**valid, 'questions': self.server.FOLLOWUP_REVIEW_QUESTIONS},
-            {**valid, 'unexpected': True},
-            {**valid, 'state': {**valid['state'], 'unexpected': True}},
-            {**valid, 'state': {**valid['state'], 'draft': '   '}},
-            {**valid, 'state': {**valid['state'], 'language': 'fr'}},
-            duplicate_ids,
-            {**valid, 'state': {**valid['state'], 'evidence': [{**valid['state']['evidence'][0], 'provenance': 'unverified_source'}]}},
-            {**valid, 'state': {**valid['state'], 'evidence': [{**valid['state']['evidence'][0], 'text': '  '}]}},
-            {**valid, 'state': {**valid['state'], 'evidence': [{**valid['state']['evidence'][0], 'extra': 'not allowed'}]}},
-            {**valid, 'state': {**valid['state'], 'draft': 'x' * 4_001}},
-            {**valid, 'state': {**valid['state'], 'primary_ask': 'x' * 1_001}},
-            {**valid, 'state': {**valid['state'], 'evidence': [{**valid['state']['evidence'][0], 'text': 'x' * 1_201}]}},
-            {**valid, 'state': {**valid['state'], 'evidence': [
-                {'id': f'e-{i}', 'provenance': 'crm_summary', 'text': 'x'} for i in range(7)
-            ]}},
-            {**valid, 'state': {**valid['state'], 'draft': 'x' * 4_000, 'primary_ask': 'y' * 1_000,
-                'evidence': [{'id': f'e-{i}', 'provenance': 'crm_summary', 'text': 'z' * 1_200} for i in range(5)]}},
-        ]
-        for payload in cases:
-            with self.subTest(payload=payload):
-                status, data = self.post(payload, path='/review')
-                self.assertEqual(status, 400)
-                self.assertEqual(data, {'error': 'Invalid follow-up review request'})
-                self.agent.predict.assert_not_called()
-
-    def test_review_handles_thai_and_empty_evidence_without_changing_scored_state(self):
-        payload = self.review_payload()
-        payload['state']['draft'] = 'สนใจให้ส่งใบเสนอราคาสำหรับทดลองใช้ไหม'
-        payload['state']['primary_ask'] = 'ถามว่าต้องการใบเสนอราคาทดลองใช้หรือไม่'
-        payload['state']['language'] = 'th'
-        payload['state']['evidence'] = []
-        original = self.agent.predict.return_value
-        try:
-            self.agent.predict.return_value = self.review_result()
-            status, data = self.post(payload, path='/review')
-            self.assertEqual(status, 200)
-            self.assertEqual(data['trace']['scored_input']['state'], payload['state'])
-            self.agent.predict.assert_called_once_with(payload['state'], self.server.FOLLOWUP_REVIEW_QUESTIONS)
-        finally:
-            self.agent.predict.return_value = original
-
-    def test_review_refuses_real_tokenizer_overflow_without_inference(self):
-        payload = self.review_payload()
-        payload['state']['draft'] = 'ขอ ' * 500
-        status, data = self.post(payload, path='/review')
-        self.assertEqual(status, 422)
-        self.assertEqual(data['code'], 'input_too_long')
-        self.assertEqual(data['token_limit'], self.server.EFFECTIVE_INPUT_LIMIT)
-        self.assertGreater(data['input_tokens'], data['token_limit'])
+    def test_retired_review_endpoint_is_not_found_before_inference(self):
+        status, data = self.post({'schema': 'followup_review_v1', 'state': {}}, path='/review')
+        self.assertEqual(status, 404)
+        self.assertEqual(data, {'error': 'Not found'})
         self.agent.predict.assert_not_called()
 
-    def test_review_rejects_partial_or_malformed_native_outputs(self):
-        original = self.agent.predict.return_value
-        valid = self.review_result()
-        variants = []
-        missing = json.loads(json.dumps(valid))
-        del missing['answers']['unsupported_claim']
-        variants.append(missing)
-        wrong_type = json.loads(json.dumps(valid))
-        wrong_type['answers']['ask_clarity']['type'] = 'choice'
-        variants.append(wrong_type)
-        wrong_choice = json.loads(json.dumps(valid))
-        wrong_choice['answers']['primary_ask_alignment']['choice'] = 'approved'
-        variants.append(wrong_choice)
-        bad_total = json.loads(json.dumps(valid))
-        bad_total['answers']['primary_ask_alignment']['probabilities']['aligned'] = 0.2
-        variants.append(bad_total)
-        bad_legend = json.loads(json.dumps(valid))
-        bad_legend['answers']['ask_clarity']['legend']['3'] = 'approved'
-        variants.append(bad_legend)
-        bad_score = json.loads(json.dumps(valid))
-        bad_score['answers']['ask_clarity']['score'] = 1
-        variants.append(bad_score)
-        bad_noul = json.loads(json.dumps(valid))
-        bad_noul['answers']['unsupported_claim']['noul'] = float('nan')
-        variants.append(bad_noul)
-        bad_usage = json.loads(json.dumps(valid))
-        bad_usage['usage']['input_tokens'] = True
-        variants.append(bad_usage)
-        try:
-            for result in variants:
-                with self.subTest(result=result):
-                    self.agent.predict.return_value = result
-                    status, data = self.post(self.review_payload(), path='/review')
-                    self.assertEqual(status, 422)
-                    self.assertEqual(data, {'error': 'Laya returned an invalid draft review'})
-                    self.assertNotIn('answers', data)
-        finally:
-            self.agent.predict.return_value = original
+    def test_allowed_sets_come_from_the_shared_question_file(self):
+        frozen = json.loads((ROOT / 'src/utils/laya-questions.json').read_text(encoding='utf-8'))
+        self.assertEqual(len(self.server.ALLOWED_QUESTIONS), len(frozen['sets']))
+        for allowed, ids in zip(self.server.ALLOWED_QUESTIONS, frozen['sets'].values()):
+            self.assertEqual(list(allowed), ids)
+        self.assertEqual(self.inputs['combined']['questions'], self.server.ALLOWED_QUESTIONS[1])
+        self.assertEqual(self.inputs['fit']['questions'], self.server.ALLOWED_QUESTIONS[2])
 
     def test_json_response_rejects_nonfinite_numbers_before_writing_headers(self):
         for value in (float('nan'), float('inf'), float('-inf')):
@@ -267,53 +131,6 @@ console.log(JSON.stringify({
                 handler.send_response.assert_not_called()
                 self.assertEqual(handler.wfile.getvalue(), b'')
 
-    def test_review_choice_winner_matches_distribution_with_rounding_tolerance(self):
-        for probabilities, expected_status in (
-            ({'aligned': 0.04, 'different_ask': 0.9, 'multiple_asks': 0.03, 'unclear': 0.03}, 422),
-            ({'aligned': 0.4499, 'different_ask': 0.4501, 'multiple_asks': 0.05, 'unclear': 0.05}, 422),
-            ({'aligned': 0.45, 'different_ask': 0.4501, 'multiple_asks': 0.05, 'unclear': 0.0499}, 200),
-            ({'aligned': 0.45, 'different_ask': 0.45, 'multiple_asks': 0.05, 'unclear': 0.05}, 200),
-        ):
-            with self.subTest(probabilities=probabilities):
-                result = self.review_result()
-                result['answers']['primary_ask_alignment']['probabilities'] = probabilities
-                with patch.object(self.agent, 'predict', Mock(return_value=result)):
-                    status, data = self.post(self.review_payload(), path='/review')
-                self.assertEqual(status, expected_status)
-                if expected_status == 422:
-                    self.assertNotIn('answers', data)
-                else:
-                    self.assertEqual(data['answers'], result['answers'])
-
-    def test_review_rejects_unexpected_native_answer_fields(self):
-        for key in self.review_result()['answers']:
-            for value in ('unexpected', float('nan')):
-                with self.subTest(answer=key, value=value):
-                    result = self.review_result()
-                    result['answers'][key]['extra'] = value
-                    with patch.object(self.agent, 'predict', Mock(return_value=result)):
-                        status, data = self.post(self.review_payload(), path='/review')
-                    self.assertEqual(status, 422)
-                    self.assertEqual(data, {'error': 'Laya returned an invalid draft review'})
-
-    def test_review_model_failure_and_busy_worker_are_sanitized(self):
-        original_side_effect = self.agent.predict.side_effect
-        try:
-            self.server.INFERENCE_SLOTS.acquire(blocking=False)
-            try:
-                status, data = self.post(self.review_payload(), path='/review')
-                self.assertEqual(status, 503)
-                self.assertEqual(data, {'error': 'Local Laya is busy. Retry shortly.'})
-                self.agent.predict.assert_not_called()
-            finally:
-                self.server.INFERENCE_SLOTS.release()
-            self.agent.predict.side_effect = RuntimeError('sensitive draft text')
-            status, data = self.post(self.review_payload(), path='/review')
-            self.assertEqual(status, 503)
-            self.assertNotIn('sensitive draft text', str(data))
-        finally:
-            self.agent.predict.side_effect = original_side_effect
-
     def test_score_rejects_missing_or_untrusted_origin_and_non_loopback_host(self):
         for headers in ({'Origin': None}, {'Origin': 'https://evil.example'},
                         {'Host': 'attacker.example:8765'}, {'Host': 'localhost:8765'},
@@ -323,7 +140,7 @@ console.log(JSON.stringify({
             with self.subTest(headers=headers):
                 status, data = self.post(self.inputs['baseline'], headers)
                 self.assertEqual(status, 403)
-                self.assertNotIn('recommendation', data)
+                self.assertNotIn('answers', data)
                 self.agent.predict.assert_not_called()
 
     def test_score_accepts_exact_production_origin_and_loopback_host(self):
@@ -359,7 +176,7 @@ console.log(JSON.stringify({
         self.assertEqual(respond.call_args.args[2]['engine'], 'cpu_gpu')
         self.assertEqual(respond.call_args.args[2]['model'], self.server.MODEL_IDENTITY)
         self.assertEqual(respond.call_args.args[2]['effective_input_limit'], self.server.EFFECTIVE_INPUT_LIMIT)
-        self.assertEqual(respond.call_args.args[2]['supported_review_schemas'], ['followup_review_v1'])
+        self.assertNotIn('supported_review_schemas', respond.call_args.args[2])
 
     def test_missing_max_len_uses_native_512_default_for_health_and_preflight(self):
         cfg = {key: value for key, value in self.agent.cfg.items() if key != 'max_len'}
@@ -409,7 +226,7 @@ console.log(JSON.stringify({
             with self.subTest(headers=headers):
                 status, data = self.post(self.inputs['baseline'], headers)
                 self.assertEqual(status, 400)
-                self.assertNotIn('recommendation', data)
+                self.assertNotIn('answers', data)
                 self.agent.predict.assert_not_called()
 
     def test_rejects_altered_or_extra_question_and_body_keys(self):
@@ -424,7 +241,7 @@ console.log(JSON.stringify({
             with self.subTest(payload=payload):
                 status, data = self.post(payload)
                 self.assertEqual(status, 400)
-                self.assertNotIn('recommendation', data)
+                self.assertNotIn('answers', data)
                 self.agent.predict.assert_not_called()
 
     def test_rejects_legacy_broad_attention_question(self):
@@ -449,30 +266,13 @@ console.log(JSON.stringify({
                 ['requested_next_step', 'deferred', 'declined', 'no_commitment', 'unclear'], 0.2)}},
             'usage': {'input_tokens': 60, 'output_tokens': 0}}
 
-    def deal_amount_probabilities(self):
-        return {'0': 0.05, '1': 0.10, '2': 0.25, '3': 0.30, '4': 0.20, '5': 0.05, '6': 0.05}
-
-    def deal_amount_answer(self, criteria, overrides=None):
-        probabilities = self.deal_amount_probabilities()
-        answer = {
-            'type': 'score',
-            'score': sum(int(level) * probability for level, probability in probabilities.items()),
-            'legend': {str(index): text for index, text in enumerate(criteria)},
-            'probabilities': probabilities,
-            'confidence': 0.5,
-        }
-        if overrides:
-            answer.update(overrides)
-        return answer
-
-    def combined_result(self, criteria, deal_overrides=None):
+    def combined_result(self):
         questions = self.inputs['combined']['questions']
         strength_criteria = questions['obstacle_strength']['criteria']
         return {'answers': {
             'buyer_response': {'choice': 'requested_next_step', 'confidence': 0.7,
                 'probabilities': dict.fromkeys(
                     ['requested_next_step', 'deferred', 'declined', 'no_commitment', 'unclear'], 0.2)},
-            'deal_amount': self.deal_amount_answer(criteria, deal_overrides),
             'next_step_commitment': {'type': 'noul', 'noul': 0.7, 'confidence': 0.7},
             'sample_trial_report': {'type': 'choice', 'choice': 'testing_planned', 'confidence': 0.55,
                 'probabilities': dict.fromkeys(
@@ -488,29 +288,27 @@ console.log(JSON.stringify({
                 'probabilities': {'0': 0.1, '1': 0.6, '2': 0.2, '3': 0.1}},
         }, 'usage': {'input_tokens': 200, 'output_tokens': 0}}
 
-    def test_terminal_state_carries_the_recorded_deal_value_while_buyer_only_does_not(self):
-        self.assertIn('Deal value on record: ฿30,000.', self.inputs['combined']['state'])
+    def test_terminal_state_carries_no_deal_value_and_asks_no_deal_amount(self):
+        # Deal size is bucketed in code from the CRM value, never asked of the model.
+        self.assertNotIn('Deal value', self.inputs['combined']['state'])
         self.assertEqual(list(self.inputs['combined']['questions']), [
-            'buyer_response', 'deal_amount', 'next_step_commitment', 'sample_trial_report',
+            'buyer_response', 'next_step_commitment', 'sample_trial_report',
             'commercial_info_request', 'obstacle_kind', 'obstacle_strength',
         ])
-        self.assertNotIn('Deal value on record', self.inputs['baseline']['state'])
 
-    def test_combined_frozen_questions_score_in_one_pass_with_legacy_top_level(self):
+    def test_combined_frozen_questions_score_in_one_pass(self):
         payload = self.inputs['combined']
-        criteria = payload['questions']['deal_amount']['criteria']
         original = self.agent.predict.return_value
         try:
-            self.agent.predict.return_value = self.combined_result(criteria)
+            self.agent.predict.return_value = self.combined_result()
             status, data = self.post(payload)
             self.assertEqual(status, 200)
-            # Legacy top-level fields keep describing buyer_response for the score card.
-            self.assertEqual(data['question'], 'buyer_response')
-            self.assertEqual(data['recommendation'], 'requested_next_step')
-            self.assertEqual(data['confidence'], 0.7)
+            # No legacy top-level fields: every client reads `answers`.
+            self.assertEqual(set(data), {'answers', 'usage', 'trace'})
+            self.assertEqual(data['answers']['buyer_response']['choice'], 'requested_next_step')
             # Every posted question comes back under `answers`, validated.
             self.assertEqual(set(data['answers']), {
-                'buyer_response', 'deal_amount', 'next_step_commitment', 'sample_trial_report',
+                'buyer_response', 'next_step_commitment', 'sample_trial_report',
                 'commercial_info_request', 'obstacle_kind', 'obstacle_strength',
             })
             self.assertEqual(data['answers']['next_step_commitment']['noul'], 0.7)
@@ -519,60 +317,20 @@ console.log(JSON.stringify({
             self.assertEqual(data['answers']['obstacle_strength']['legend'],
                              {str(index): text for index, text in
                               enumerate(payload['questions']['obstacle_strength']['criteria'])})
-            deal = data['answers']['deal_amount']
-            self.assertEqual(deal['legend'], {str(index): text for index, text in enumerate(criteria)})
-            self.assertAlmostEqual(deal['score'],
-                                   sum(int(level) * value for level, value in deal['probabilities'].items()),
-                                   places=9)
             self.assertEqual(data['trace']['scored_input'], payload)
             self.agent.predict.assert_called_once_with(payload['state'], payload['questions'])
         finally:
             self.agent.predict.return_value = original
 
-    def test_malformed_deal_amount_answers_never_become_a_recommendation(self):
+    def test_rejects_partial_retired_or_tampered_combined_schema_without_inference(self):
         payload = self.inputs['combined']
-        criteria = payload['questions']['deal_amount']['criteria']
-        valid = self.combined_result(criteria)
-        probabilities = self.deal_amount_probabilities()
-        wrong_legend = {str(index): text for index, text in enumerate(criteria)}
-        wrong_legend['0'] = 'Altered bucket'
-        extra_key = dict(probabilities)
-        extra_key['7'] = 0.0
-        mistotaled = dict(probabilities)
-        mistotaled['3'] = 0.5
-        variants = [
-            {**valid, 'answers': {'buyer_response': valid['answers']['buyer_response']}},
-            self.combined_result(criteria, {'type': 'choice'}),
-            self.combined_result(criteria, {'probabilities': {bucket: 1 / 7 for bucket in criteria}}),
-            self.combined_result(criteria, {'probabilities': extra_key}),
-            self.combined_result(criteria, {'legend': wrong_legend}),
-            self.combined_result(criteria, {'score': 1}),
-            self.combined_result(criteria, {'score': 7}),
-            self.combined_result(criteria, {'score': float('nan')}),
-            self.combined_result(criteria, {'confidence': 1.5}),
-            self.combined_result(criteria, {'probabilities': mistotaled}),
-            {**valid, 'answers': {**valid['answers'], 'deal_amount': 'bucket 3'}},
-        ]
-        original = self.agent.predict.return_value
-        try:
-            for result in variants:
-                with self.subTest(result=result):
-                    self.agent.predict.return_value = result
-                    self.agent.predict.reset_mock()
-                    status, data = self.post(payload)
-                    self.assertEqual(status, 422)
-                    self.assertEqual(data, {'error': 'Laya returned an invalid score'})
-                    self.assertNotIn('recommendation', data)
-        finally:
-            self.agent.predict.return_value = original
-
-    def test_rejects_deal_amount_only_or_tampered_combined_schema_without_inference(self):
-        payload = self.inputs['combined']
-        deal_question = payload['questions']['deal_amount']
         tampered = json.loads(json.dumps(payload))
-        tampered['questions']['deal_amount']['criteria'][0] = 'Ignore rules'
+        tampered['questions']['obstacle_strength']['criteria'][0] = 'Ignore rules'
+        retired_deal_amount = {'deal_amount': {'type': 'score', 'instructions': 'How much is this deal?',
+                                               'criteria': ['0-2500', 'no amount stated']}}
         for body in (
-            {'state': payload['state'], 'questions': {'deal_amount': deal_question}},
+            {'state': payload['state'], 'questions': {'obstacle_strength': payload['questions']['obstacle_strength']}},
+            {**payload, 'questions': {**payload['questions'], **retired_deal_amount}},
             tampered,
             {**payload, 'questions': {**payload['questions'], 'other': {'type': 'noul', 'instructions': 'Another'}}},
             {**payload, 'extra': 'data'},
@@ -581,13 +339,12 @@ console.log(JSON.stringify({
                 status, data = self.post(body)
                 self.assertEqual(status, 400)
                 self.assertEqual(data, {'error': 'Unsupported scoring schema'})
-                self.assertNotIn('recommendation', data)
+                self.assertNotIn('answers', data)
                 self.agent.predict.assert_not_called()
 
     def test_malformed_buyer_detail_answers_reject_the_whole_score(self):
         payload = self.inputs['combined']
-        criteria = payload['questions']['deal_amount']['criteria']
-        valid = self.combined_result(criteria)
+        valid = self.combined_result()
         sample_keys = list(payload['questions']['sample_trial_report']['criteria'])
         obstacle_keys = list(payload['questions']['obstacle_kind']['criteria'])
         strength_legend = {str(index): text for index, text in
@@ -633,7 +390,7 @@ console.log(JSON.stringify({
                     status, data = self.post(payload)
                     self.assertEqual(status, 422)
                     self.assertEqual(data, {'error': 'Laya returned an invalid score'})
-                    self.assertNotIn('recommendation', data)
+                    self.assertNotIn('answers', data)
         finally:
             self.agent.predict.return_value = original
 
@@ -653,12 +410,11 @@ console.log(JSON.stringify({
                     return candidate
             self.fail(f'Could not construct boundary fixture: {count}')
 
-        # A state that lands the heaviest of the seven questions exactly on the
+        # A state that lands the heaviest of the six questions exactly on the
         # limit still scores — the detail questions did not eat the budget.
         original = self.agent.predict.return_value
         payload['state'] = state_at(limit)
-        self.agent.predict.return_value = self.combined_result(
-            payload['questions']['deal_amount']['criteria'])
+        self.agent.predict.return_value = self.combined_result()
         try:
             status, data = self.post(payload)
             self.assertEqual(status, 200)
@@ -672,62 +428,59 @@ console.log(JSON.stringify({
         self.assertEqual(status, 422)
         self.assertEqual(data['code'], 'input_too_long')
         self.assertEqual(data['input_tokens'], limit + 1)
-        self.assertNotIn('recommendation', data)
+        self.assertNotIn('answers', data)
         self.agent.predict.assert_not_called()
 
-    def test_fit_pair_scores_archetype_and_support_in_one_pass(self):
+    def fit_result(self):
+        return {
+            'answers': {
+                'fit_plant_based_restaurant_cafe': {'type': 'noul', 'noul': 0.01, 'confidence': 0.99},
+                'fit_modern_trade_specialty_retail': {'type': 'noul', 'noul': 0.1, 'confidence': 0.9},
+                'fit_bakery_patisserie_brands': {'type': 'noul', 'noul': 0.82, 'confidence': 0.82},
+            },
+            'usage': {'input_tokens': 150, 'output_tokens': 0},
+        }
+
+    def test_fit_nouls_score_in_one_pass(self):
         payload = self.inputs['fit']
+        self.assertEqual(payload['state'], 'The account is named "April\'s Bakery"; its industry is "Bakery"; its tags are "bakery, chain".')
         original = self.agent.predict.return_value
         try:
-            self.agent.predict.return_value = {
-                'answers': {
-                    'archetype_select': {'choice': 'bakery_patisserie_brands', 'confidence': 0.8,
-                        'probabilities': {'plant_based_restaurant_cafe': 0.05,
-                            'modern_trade_specialty_retail': 0.05,
-                            'bakery_patisserie_brands': 0.8, 'no_fit': 0.1}},
-                    'role_support': {'noul': 0.2, 'confidence': 0.8},
-                },
-                'usage': {'input_tokens': 150, 'output_tokens': 0},
-            }
+            self.agent.predict.return_value = self.fit_result()
             status, data = self.post(payload)
             self.assertEqual(status, 200)
-            self.assertEqual(data['question'], 'archetype_select')
-            self.assertEqual(data['archetype'], 'bakery_patisserie_brands')
-            self.assertNotIn('recommendation', data)
-            self.assertEqual(set(data['answers']), {'archetype_select', 'role_support'})
+            self.assertEqual(set(data), {'answers', 'usage', 'trace'})
+            self.assertEqual(set(data['answers']), {
+                'fit_plant_based_restaurant_cafe', 'fit_modern_trade_specialty_retail', 'fit_bakery_patisserie_brands'})
             self.assertEqual(data['trace']['scored_input'], payload)
             self.agent.predict.assert_called_once_with(payload['state'], payload['questions'])
         finally:
             self.agent.predict.return_value = original
 
+    def test_retired_fit_pair_is_rejected_without_inference(self):
+        retired = {'archetype_select': {'type': 'choice', 'instructions': 'Which published archetype does this account fit?',
+                                        'criteria': {'no_fit': 'none'}},
+                   'role_support': {'type': 'noul', 'instructions': 'Is the assigned archetype unsupported?'}}
+        status, data = self.post({'state': self.inputs['fit']['state'], 'questions': retired})
+        self.assertEqual(status, 400)
+        self.assertEqual(data, {'error': 'Unsupported scoring schema'})
+        self.agent.predict.assert_not_called()
+
     def test_fit_rejects_partial_or_malformed_native_outputs(self):
         payload = self.inputs['fit']
-        valid = {
-            'answers': {
-                'archetype_select': {'choice': 'bakery_patisserie_brands', 'confidence': 0.8,
-                    'probabilities': {'plant_based_restaurant_cafe': 0.05,
-                        'modern_trade_specialty_retail': 0.05,
-                        'bakery_patisserie_brands': 0.8, 'no_fit': 0.1}},
-                'role_support': {'noul': 0.2, 'confidence': 0.8},
-            },
-            'usage': {'input_tokens': 150, 'output_tokens': 0},
-        }
         variants = []
-        missing = json.loads(json.dumps(valid))
-        del missing['answers']['role_support']
+        missing = self.fit_result()
+        del missing['answers']['fit_bakery_patisserie_brands']
         variants.append(missing)
-        wrong_choice = json.loads(json.dumps(valid))
-        wrong_choice['answers']['archetype_select']['choice'] = 'foodservice_restaurant'
-        variants.append(wrong_choice)
-        mistotaled = json.loads(json.dumps(valid))
-        mistotaled['answers']['archetype_select']['probabilities']['no_fit'] = 0.5
-        variants.append(mistotaled)
-        bad_noul = json.loads(json.dumps(valid))
-        bad_noul['answers']['role_support']['noul'] = 1.5
+        bad_noul = self.fit_result()
+        bad_noul['answers']['fit_bakery_patisserie_brands'] = {'type': 'noul', 'noul': 1.5, 'confidence': 1.5}
         variants.append(bad_noul)
-        bad_confidence = json.loads(json.dumps(valid))
-        bad_confidence['answers']['role_support']['confidence'] = 0.5
+        bad_confidence = self.fit_result()
+        bad_confidence['answers']['fit_bakery_patisserie_brands']['confidence'] = 0.5
         variants.append(bad_confidence)
+        not_a_dict = self.fit_result()
+        not_a_dict['answers']['fit_modern_trade_specialty_retail'] = 'yes'
+        variants.append(not_a_dict)
         original = self.agent.predict.return_value
         try:
             for result in variants:
@@ -748,8 +501,7 @@ console.log(JSON.stringify({
             self.agent.predict.return_value = self.buyer_result()
             status, data = self.post(payload)
             self.assertEqual(status, 200)
-            self.assertEqual(data['question'], 'buyer_response')
-            self.assertEqual(data['recommendation'], 'requested_next_step')
+            self.assertEqual(data['answers']['buyer_response']['choice'], 'requested_next_step')
             self.assertEqual(data['trace']['scored_input'], payload)
             self.agent.predict.assert_called_once_with(payload['state'], payload['questions'])
 
@@ -785,7 +537,7 @@ console.log(JSON.stringify({
         status, data = self.post(payload)
         self.assertEqual(status, 422)
         self.assertEqual(data['code'], 'contact_opt_out')
-        self.assertNotIn('recommendation', data)
+        self.assertNotIn('answers', data)
         self.agent.predict.assert_not_called()
 
     def test_duplicate_json_keys_are_rejected_before_inference(self):
@@ -793,7 +545,7 @@ console.log(JSON.stringify({
         duplicated = baseline[:-1] + ',"state":"Another state"}'
         status, data = self.post(None, raw_body=duplicated.encode())
         self.assertEqual(status, 400)
-        self.assertNotIn('recommendation', data)
+        self.assertNotIn('answers', data)
         self.agent.predict.assert_not_called()
 
     def test_deeply_nested_json_returns_a_sanitized_bad_request(self):
@@ -882,7 +634,7 @@ console.log(JSON.stringify({
         self.assertEqual(data['status'], 'not_scored')
         self.assertEqual(data['token_limit'], self.agent.shape['max_length'])
         self.assertGreater(data['input_tokens'], data['token_limit'])
-        self.assertNotIn('recommendation', data)
+        self.assertNotIn('answers', data)
         self.agent.predict.assert_not_called()
 
     def test_buyer_reply_prompt_reaches_inference_unchanged(self):
@@ -891,7 +643,7 @@ console.log(JSON.stringify({
         self.assertEqual(len(prepared[0]['ids']), 131)
         status, data = self.post(payload)
         self.assertEqual(status, 200)
-        self.assertIn('recommendation', data)
+        self.assertIn('answers', data)
         self.agent.predict.assert_called_once_with(payload['state'], payload['questions'])
 
     def test_success_trace_reports_actual_input_manifest_and_utc_time(self):
@@ -917,7 +669,7 @@ console.log(JSON.stringify({
         self.assertEqual(data['status'], 'not_scored')
         self.assertEqual(data['code'], 'contact_opt_out')
         self.assertNotIn('trace', data)
-        self.assertNotIn('recommendation', data)
+        self.assertNotIn('answers', data)
         self.agent.predict.assert_not_called()
 
     def test_explicit_english_and_thai_opt_outs_block_inference(self):
@@ -933,14 +685,14 @@ console.log(JSON.stringify({
                 self.assertEqual(status, 422)
                 self.assertEqual(data['code'], 'contact_opt_out')
                 self.assertNotIn(note, str(data))
-                self.assertNotIn('recommendation', data)
+                self.assertNotIn('answers', data)
                 self.agent.predict.assert_not_called()
 
     def test_missing_contact_details_are_not_treated_as_opt_out(self):
         payload = {**self.inputs['baseline'], 'state': self.inputs['baseline']['state'] + ' No contact details on file.'}
         status, data = self.post(payload)
         self.assertEqual(status, 200)
-        self.assertIn('recommendation', data)
+        self.assertIn('answers', data)
 
     def test_negated_opt_out_phrase_still_refuses_for_manual_review(self):
         payload = {**self.inputs['baseline'], 'state': self.inputs['baseline']['state'] + ' Buyer did not request no contact.'}
@@ -956,7 +708,7 @@ console.log(JSON.stringify({
         status, data = self.post(payload)
         self.assertEqual(status, 422)
         self.assertEqual(data['code'], 'contact_opt_out')
-        self.assertNotIn('recommendation', data)
+        self.assertNotIn('answers', data)
         self.agent.predict.assert_not_called()
 
     def test_real_tokenizer_boundaries_include_question_and_option_overhead(self):
@@ -981,7 +733,7 @@ console.log(JSON.stringify({
                 else:
                     self.assertEqual(status, 422)
                     self.assertEqual(data['input_tokens'], count)
-                    self.assertNotIn('recommendation', data)
+                    self.assertNotIn('answers', data)
                     self.agent.predict.assert_not_called()
 
     def test_counts_before_upstream_configured_truncation(self):

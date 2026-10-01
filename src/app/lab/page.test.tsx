@@ -163,7 +163,7 @@ describe('Prospects review queue', () => {
     expect(screen.getByText(/Not judged yet\. One press sends this account's name, industry and tags to the local Laya worker/i)).toBeTruthy();
     // the exact state sentence that a judge press would send is shown upfront
     expect(screen.getByText(/What Laya is asked/i)).toBeTruthy();
-    expect(screen.getByText(/Candidate account: name "Green Bowl"/i)).toBeTruthy();
+    expect(screen.getByText(/The account is named "Green Bowl"/i)).toBeTruthy();
     // nothing about a match score or a regex classification may remain
     expect(screen.queryByText(/Match score/i)).toBeNull();
     expect(screen.queryByText(/Proposed role/i)).toBeNull();
@@ -330,26 +330,26 @@ describe('Prospects review queue', () => {
       expect(String(url)).toContain('/score');
       const body = JSON.parse(String(init.body));
       expect(Object.keys(body)).toEqual(['state', 'questions']);
-      expect(Object.keys(body.questions)).toEqual(['archetype_select', 'role_support']);
+      expect(Object.keys(body.questions)).toEqual([
+        'fit_plant_based_restaurant_cafe',
+        'fit_modern_trade_specialty_retail',
+        'fit_bakery_patisserie_brands',
+      ]);
       expect(body.state).toContain('Green Bowl');
       expect(body.state).toContain('Vegan restaurant');
       return {
         ok: true,
         status: 200,
         json: async () => ({
-          question: 'archetype_select',
           answers: {
-            archetype_select: {
-              choice: 'no_fit',
-              confidence: 0.85,
-              probabilities: {
-                plant_based_restaurant_cafe: 0.05,
-                modern_trade_specialty_retail: 0.05,
-                bakery_patisserie_brands: 0.05,
-                no_fit: 0.85,
-              },
-            },
-            role_support: { noul: 0.9, confidence: 0.9 },
+            fit_plant_based_restaurant_cafe: { noul: 0.3, confidence: 0.7 },
+            fit_modern_trade_specialty_retail: { noul: 0.1, confidence: 0.9 },
+            fit_bakery_patisserie_brands: { noul: 0.05, confidence: 0.95 },
+          },
+          trace: {
+            scored_input: JSON.parse(String(init.body)),
+            model: { repository: 'laya-local', source_revision: 'rev1', package_sha256: 'sha256', engine: 'cpu_gpu' },
+            scored_at: '2026-09-24T00:00:00Z',
           },
         }),
       };
@@ -373,23 +373,19 @@ describe('Prospects review queue', () => {
   it('renders a judged archetype with its distribution and the support check', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => ({
+      vi.fn(async (_url: unknown, init: { body?: string }) => ({
         ok: true,
         status: 200,
         json: async () => ({
-          question: 'archetype_select',
           answers: {
-            archetype_select: {
-              choice: 'plant_based_restaurant_cafe',
-              confidence: 0.75,
-              probabilities: {
-                plant_based_restaurant_cafe: 0.75,
-                modern_trade_specialty_retail: 0.1,
-                bakery_patisserie_brands: 0.1,
-                no_fit: 0.05,
-              },
-            },
-            role_support: { noul: 0.2, confidence: 0.8 },
+            fit_plant_based_restaurant_cafe: { noul: 0.75, confidence: 0.75 },
+            fit_modern_trade_specialty_retail: { noul: 0.1, confidence: 0.9 },
+            fit_bakery_patisserie_brands: { noul: 0.1, confidence: 0.9 },
+          },
+          trace: {
+            scored_input: JSON.parse(String(init.body)),
+            model: { repository: 'laya-local', source_revision: 'rev1', package_sha256: 'sha256', engine: 'cpu_gpu' },
+            scored_at: '2026-09-24T00:00:00Z',
           },
         }),
       }))
@@ -401,8 +397,9 @@ describe('Prospects review queue', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Judge fit with Laya/i }));
 
     expect(await screen.findByText(/Plant-based restaurant and cafe kitchens/i)).toBeTruthy();
-    expect(screen.getByText(/archetype confidence 0.75/i)).toBeTruthy();
-    expect(screen.getByText(/identity supports this/i)).toBeTruthy();
+    expect(screen.getByText(/^fit 0\.75$/i)).toBeTruthy();
+    expect(screen.getByText(/plant_based_restaurant_cafe: 0\.75/)).toBeTruthy();
+    expect(screen.getByText(/modern_trade_specialty_retail: 0\.10/)).toBeTruthy();
     expect(screen.getByText('judged', { exact: true })).toBeTruthy();
   });
 
