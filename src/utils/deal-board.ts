@@ -8,6 +8,18 @@ import { businessDateKey } from './business-time.ts';
 
 export type BoardAttentionFilter = 'all' | 'overdue' | 'today' | 'needs-review' | 'laya-review';
 
+/** "do-now": overdue first, then by due date (the default). "hottest": highest tier first. */
+export type BoardSort = 'do-now' | 'hottest';
+
+/** Cards shown per lane before "Show all"; a 100+ card lane cannot be scanned. */
+export const LANE_CARD_CAP = 12;
+
+/** The first LANE_CARD_CAP cards of a lane, unless expanded, and how many are hidden. */
+export function capLane<T>(items: T[], expanded: boolean, cap: number = LANE_CARD_CAP): { shown: T[]; hiddenCount: number } {
+  if (expanded || items.length <= cap) return { shown: items, hiddenCount: 0 };
+  return { shown: items.slice(0, cap), hiddenCount: items.length - cap };
+}
+
 export interface DealBoardFilters {
   attention: BoardAttentionFilter;
   search: string;
@@ -16,6 +28,9 @@ export interface DealBoardFilters {
   today: string;
   /** deal ids Laya routed to Pat (grade.ts needs_review); used by the 'laya-review' filter */
   layaReviewIds?: ReadonlySet<string>;
+  sort?: BoardSort;
+  /** dealId -> hotness (higher is hotter) for the 'hottest' sort; computed by the caller */
+  hotness?: ReadonlyMap<string, number>;
 }
 
 export interface DoNowCounts {
@@ -227,7 +242,11 @@ export function filterAndSortBoardDeals(deals: Deal[], filters: DealBoardFilters
     return true;
   });
 
-  return sortDealsForDoNow(filtered, filters.today);
+  const doNow = sortDealsForDoNow(filtered, filters.today);
+  if (filters.sort !== 'hottest') return doNow;
+  // Hottest first; equal hotness keeps the do-now order (Array.prototype.sort is stable).
+  const hot = (deal: Deal) => filters.hotness?.get(deal.id) ?? 0;
+  return doNow.sort((a, b) => hot(b) - hot(a));
 }
 
 /**

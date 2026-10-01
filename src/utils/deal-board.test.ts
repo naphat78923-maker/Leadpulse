@@ -17,7 +17,9 @@ import {
   dealNeedsReview,
   evaluateAccountSignals,
   filterAndSortBoardDeals,
+  capLane,
   findDealsMatchingSearch,
+  LANE_CARD_CAP,
   getDoNowCounts,
   localDateKey,
   medianInterOrderDays,
@@ -789,5 +791,51 @@ describe('original ReviewReason members are untouched', () => {
         }),
       ),
     ).toEqual(['pre-contact-action']);
+  });
+});
+
+describe('capLane', () => {
+  const items = Array.from({ length: 30 }, (_, i) => i);
+
+  it('shows the first LANE_CARD_CAP cards of a long lane and counts the rest', () => {
+    const { shown, hiddenCount } = capLane(items, false);
+    expect(shown).toEqual(items.slice(0, LANE_CARD_CAP));
+    expect(hiddenCount).toBe(30 - LANE_CARD_CAP);
+  });
+
+  it('shows everything when expanded, or when the lane is short', () => {
+    expect(capLane(items, true)).toEqual({ shown: items, hiddenCount: 0 });
+    const short = items.slice(0, LANE_CARD_CAP);
+    expect(capLane(short, false)).toEqual({ shown: short, hiddenCount: 0 });
+  });
+});
+
+describe('filterAndSortBoardDeals — sort', () => {
+  const today = '2026-10-02';
+  const deal = (id: string, over: Partial<Deal> = {}): Deal => ({
+    id, title: id, stage: 'research', product: 'Butter', client: id, company_id: null, contact_ids: [],
+    value: null, priority: 'medium', next_action: 'Call', followup_date: '2026-10-10', last_outcome: null,
+    nudge_count: 0, workflow_action: 'outreach', nudge_stage: null, sample_status: null,
+    created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z', ...over,
+  });
+  const deals = [
+    deal('a-overdue', { followup_date: '2026-09-01' }),
+    deal('b-cold'),
+    deal('c-hot'),
+    deal('d-hot-too'),
+  ];
+  const base = { attention: 'all' as const, search: '', product: 'all', priority: 'all' as const, today };
+
+  it('keeps the do-now order by default', () => {
+    const doNow = filterAndSortBoardDeals(deals, base).map(d => d.id);
+    expect(doNow[0]).toBe('a-overdue');
+    expect(filterAndSortBoardDeals(deals, { ...base, sort: 'do-now' }).map(d => d.id)).toEqual(doNow);
+  });
+
+  it('puts the hottest first and keeps the do-now order among equals', () => {
+    const hotness = new Map([['a-overdue', 1000], ['b-cold', 1000], ['c-hot', 4000], ['d-hot-too', 4000]]);
+    const ids = filterAndSortBoardDeals(deals, { ...base, sort: 'hottest', hotness }).map(d => d.id);
+    expect(ids.slice(0, 2).sort()).toEqual(['c-hot', 'd-hot-too']);
+    expect(ids.slice(2)).toEqual(['a-overdue', 'b-cold']);
   });
 });
