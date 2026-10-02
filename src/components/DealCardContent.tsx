@@ -26,6 +26,8 @@ interface DealCardContentProps {
    * this differs from the badge's lifetime count; null otherwise.
    */
   chasesSinceReply?: number | null;
+  /** how long since the last contact, shown while the board is sorted quietest-first */
+  quietNote?: string | null;
 }
 
 const QUANTITY_TIER_LABEL: Record<Exclude<QuantityTier, 'none'>, string> = {
@@ -50,6 +52,7 @@ export default function DealCardContent({
   showGrip = false,
   layaGrade,
   chasesSinceReply = null,
+  quietNote = null,
 }: DealCardContentProps) {
   const { contact, companyName, companyLogoUrl, product, nextAction, timing } = presentation;
   const hasConcreteNextAction = isConcreteNextAction(deal.next_action);
@@ -132,6 +135,11 @@ export default function DealCardContent({
             className="text-[10px] text-clay-muted"
           >
             {chasesSinceReply === 0 ? 'none since reply' : `${chasesSinceReply} since reply`}
+          </span>
+        )}
+        {quietNote && (
+          <span data-quiet-note title="Time since the last logged contact with the buyer, in either direction." className="text-[10px] text-clay-muted">
+            {quietNote}
           </span>
         )}
         <LayaGradeChip grade={layaGrade} />

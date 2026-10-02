@@ -46,6 +46,7 @@ import LayaStatusLine from '@/components/LayaStatusLine';
 import { buildDataGapReport, dealIdsWithGap, isDataGap, type DataGap } from '@/utils/deal-data-gaps';
 import { buildLayaStatus } from '@/utils/laya-status';
 import { buildWaitingOnYou } from '@/utils/waiting-on-you';
+import { lastContactDates, quietLabel } from '@/utils/last-contact';
 import { chaseStatusSinceReply } from '@/utils/interaction-event';
 import { calculateLeadScore, scoreToTier, type LeadTier } from '@/utils/lead-scoring';
 import { BoardAttentionFilter, BoardSort, capLane, LANE_CARD_CAP, reviewReasons, REVIEW_LABEL, buildReviewReport, buildReviewFix, filterAndSortBoardDeals, findDealsMatchingSearch, getDoNowCounts, localDateKey } from '@/utils/deal-board';
@@ -171,6 +172,9 @@ function DealsBoard() {
   const gapReport = useMemo(() => buildDataGapReport(actionBoardDeals, dbMeetings || []), [actionBoardDeals, dbMeetings]);
   const missingDataIds = useMemo(() => dealIdsWithGap(gapReport, gapFilter), [gapReport, gapFilter]);
 
+  // "Quietest" sort: when each deal was last in contact.
+  const lastContact = useMemo(() => lastContactDates(dbMeetings || []), [dbMeetings]);
+
   // Deals where the buyer spoke last and nothing has gone back since.
   const waitingOnYouIds = useMemo(
     () => new Set(buildWaitingOnYou({ deals: actionBoardDeals, meetings: dbMeetings || [], grades: layaGrades, today: todayStr }).map(item => item.deal.id)),
@@ -202,8 +206,9 @@ function DealsBoard() {
       waitingOnYouIds,
       sort: boardSort,
       hotness,
+      lastContact,
     }),
-    [actionBoardDeals, attentionFilter, searchQuery, productFilter, priorityFilter, todayStr, layaReviewIds, missingDataIds, waitingOnYouIds, boardSort, hotness]
+    [actionBoardDeals, attentionFilter, searchQuery, productFilter, priorityFilter, todayStr, layaReviewIds, missingDataIds, waitingOnYouIds, boardSort, hotness, lastContact]
   );
 
   // Same deals the "Needs review" count uses: lane requirements only apply on the board.
@@ -550,6 +555,7 @@ function DealsBoard() {
             showGrip={opts?.grip}
             layaGrade={layaGrades.get(deal.id)}
             chasesSinceReply={chasesSinceReply}
+            quietNote={boardSort === 'quietest' ? quietLabel(lastContact.get(deal.id), todayStr) : null}
           />
           <p className="sr-only">Open {deal.client} in {lane.label}</p>
         </motion.button>

@@ -838,4 +838,10 @@ describe('filterAndSortBoardDeals — sort', () => {
     expect(ids.slice(0, 2).sort()).toEqual(['c-hot', 'd-hot-too']);
     expect(ids.slice(2)).toEqual(['a-overdue', 'b-cold']);
   });
+
+  it('puts the quietest first: no logged contact, then the oldest contact, do-now order among equals', () => {
+    const lastContact = new Map([['a-overdue', '2026-09-20'], ['c-hot', '2026-08-01'], ['d-hot-too', '2026-09-20']]);
+    const ids = filterAndSortBoardDeals(deals, { ...base, sort: 'quietest', lastContact }).map(d => d.id);
+    expect(ids).toEqual(['b-cold', 'c-hot', 'a-overdue', 'd-hot-too']);
+  });
 });
