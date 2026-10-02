@@ -6,7 +6,7 @@ import { getWorkflowAction, isOnJourneyBoard } from './deal-workflow.ts';
 import { daysBetween, inRetentionSystem, type ISODate } from './retentionCadence.ts';
 import { businessDateKey } from './business-time.ts';
 
-export type BoardAttentionFilter = 'all' | 'overdue' | 'today' | 'needs-review' | 'laya-review';
+export type BoardAttentionFilter = 'all' | 'overdue' | 'today' | 'needs-review' | 'laya-review' | 'missing-data';
 
 /** "do-now": overdue first, then by due date (the default). "hottest": highest tier first. */
 export type BoardSort = 'do-now' | 'hottest';
@@ -28,6 +28,8 @@ export interface DealBoardFilters {
   today: string;
   /** deal ids Laya routed to Pat (grade.ts needs_review); used by the 'laya-review' filter */
   layaReviewIds?: ReadonlySet<string>;
+  /** deal ids with the selected data gap (deal-data-gaps.ts); used by the 'missing-data' filter */
+  missingDataIds?: ReadonlySet<string>;
   sort?: BoardSort;
   /** dealId -> hotness (higher is hotter) for the 'hottest' sort; computed by the caller */
   hotness?: ReadonlyMap<string, number>;
@@ -230,6 +232,7 @@ export function filterAndSortBoardDeals(deals: Deal[], filters: DealBoardFilters
     if (filters.attention === 'today' && dueState !== 'today') return false;
     if (filters.attention === 'needs-review' && !dealNeedsReview(deal)) return false;
     if (filters.attention === 'laya-review' && !filters.layaReviewIds?.has(deal.id)) return false;
+    if (filters.attention === 'missing-data' && !filters.missingDataIds?.has(deal.id)) return false;
 
     if (search) {
       const searchable = `${deal.client} ${deal.title}`.toLocaleLowerCase();

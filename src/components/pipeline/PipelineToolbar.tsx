@@ -11,7 +11,7 @@ interface PipelineToolbarProps {
   onSearchChange: (value: string) => void;
   attentionFilter: BoardAttentionFilter;
   onAttentionChange: (value: BoardAttentionFilter) => void;
-  counts: { all: number; overdue: number; today: number; needsReview: number; layaReview: number };
+  counts: { all: number; overdue: number; today: number; needsReview: number; layaReview: number; missingData?: number };
   productFilter: string;
   onProductChange: (value: string) => void;
   productOptions: readonly string[];
@@ -78,6 +78,10 @@ export default function PipelineToolbar({
           // Laya's review queue: only shown when something is waiting (or it is selected).
           ...(counts.layaReview > 0 || attentionFilter === 'laya-review'
             ? [['laya-review', 'Laya review', counts.layaReview] as [BoardAttentionFilter, string, number]]
+            : []),
+          // Data gaps: same rule — hidden when every open deal is complete.
+          ...((counts.missingData ?? 0) > 0 || attentionFilter === 'missing-data'
+            ? [['missing-data', 'Missing data', counts.missingData ?? 0] as [BoardAttentionFilter, string, number]]
             : []),
         ] as Array<[BoardAttentionFilter, string, number]>).map(([value, label, count]) => (
           <button
