@@ -172,17 +172,27 @@ export interface DatedChaseCountableMeeting extends ChaseCountableMeeting {
  * 4/4 badge keeps its own lifetime count (ACTIVE_CHASE_POLICY_ID); this does not change it.
  */
 export function chasesSinceLastReply(meetings: DatedChaseCountableMeeting[], dealId: string): number {
+  return chaseStatusSinceReply(meetings, dealId).chases;
+}
+
+/** chasesSinceLastReply plus whether the buyer has ever replied on this deal. */
+export function chaseStatusSinceReply(
+  meetings: DatedChaseCountableMeeting[],
+  dealId: string,
+): { chases: number; buyerReplied: boolean } {
   const rows = meetings
     .filter(m => m.deal_id === dealId && m.direction !== 'internal')
     .sort((a, b) =>
       (a.date ?? '').localeCompare(b.date ?? '') || (a.created_at ?? '').localeCompare(b.created_at ?? ''));
   let chases = 0;
+  let buyerReplied = false;
   for (const row of rows) {
     if (row.direction === 'inbound' || isCustomerResponseOutcome(row.outcome)) {
       chases = 0;
+      buyerReplied = true;
     } else if (row.direction === 'outbound' && inChaseChannel(row)) {
       chases += 1;
     }
   }
-  return chases;
+  return { chases, buyerReplied };
 }

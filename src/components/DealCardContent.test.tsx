@@ -231,4 +231,25 @@ describe('DealCardContent', () => {
     expect(badge.getAttribute('title')).toBe('2/4 Remind NG-002');
   });
 
+  it('notes chases since the buyer last replied next to the nudge badge', () => {
+    const { container, rerender } = render(
+      <DealCardContent deal={deal} presentation={presentation} whyNow={null} reviewLabels={[]} nudge="3/4 Firm NG-003" chasesSinceReply={1} />
+    );
+    expect(container.querySelector('[data-since-reply]')!.textContent).toBe('1 since reply');
+    rerender(
+      <DealCardContent deal={deal} presentation={presentation} whyNow={null} reviewLabels={[]} nudge="3/4 Firm NG-003" chasesSinceReply={0} />
+    );
+    expect(container.querySelector('[data-since-reply]')!.textContent).toBe('none since reply');
+  });
+
+  it('shows no since-reply note without one, or without a nudge badge', () => {
+    const { container, rerender } = render(
+      <DealCardContent deal={deal} presentation={presentation} whyNow={null} reviewLabels={[]} nudge="3/4 Firm NG-003" />
+    );
+    expect(container.querySelector('[data-since-reply]')).toBeNull();
+    rerender(
+      <DealCardContent deal={deal} presentation={presentation} whyNow={null} reviewLabels={[]} nudge={null} chasesSinceReply={1} />
+    );
+    expect(container.querySelector('[data-since-reply]')).toBeNull();
+  });
 });

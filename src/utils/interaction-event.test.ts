@@ -3,6 +3,7 @@ import type { Meeting } from '@/types/crm';
 import {
   ACTIVE_CHASE_POLICY_ID,
   CHASE_COUNTING_POLICIES,
+  chaseStatusSinceReply,
   chasesSinceLastReply,
   UNANSWERED_CHASE_CHANNELS,
   countsTowardUnansweredChase,
@@ -186,5 +187,19 @@ describe('chasesSinceLastReply', () => {
 
   it('is zero with no rows', () => {
     expect(chasesSinceLastReply([], 'd1')).toBe(0);
+  });
+});
+
+describe('chaseStatusSinceReply', () => {
+  const row = (date: string, direction: string, outcome: string | null = null) =>
+    ({ deal_id: 'd1', type: 'call', direction, outcome, date, created_at: `${date}T00:00:00Z` });
+
+  it('reports whether the buyer has ever replied, alongside the count', () => {
+    expect(chaseStatusSinceReply([row('2026-09-01', 'outbound'), row('2026-09-02', 'outbound')], 'd1'))
+      .toEqual({ chases: 2, buyerReplied: false });
+    expect(chaseStatusSinceReply([row('2026-09-01', 'outbound'), row('2026-09-02', 'inbound'), row('2026-09-03', 'outbound')], 'd1'))
+      .toEqual({ chases: 1, buyerReplied: true });
+    expect(chaseStatusSinceReply([row('2026-09-01', 'outbound'), row('2026-09-02', 'outbound', 'positive')], 'd1'))
+      .toEqual({ chases: 0, buyerReplied: true });
   });
 });
