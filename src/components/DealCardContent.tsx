@@ -20,6 +20,11 @@ interface DealCardContentProps {
   showGrip?: boolean;
   /** Laya's grade for this deal, when it has a reply to grade */
   layaGrade?: DealGrade;
+  /**
+   * Unanswered chases since the buyer's last reply — only when the buyer has replied and
+   * this differs from the badge's lifetime count; null otherwise.
+   */
+  chasesSinceReply?: number | null;
 }
 
 export default function DealCardContent({
@@ -32,6 +37,7 @@ export default function DealCardContent({
   compact = false,
   showGrip = false,
   layaGrade,
+  chasesSinceReply = null,
 }: DealCardContentProps) {
   const { contact, companyName, companyLogoUrl, product, nextAction, timing } = presentation;
   const hasConcreteNextAction = isConcreteNextAction(deal.next_action);
@@ -92,6 +98,15 @@ export default function DealCardContent({
         {nudgeText && (
           <span data-nudge-badge title={nudge || undefined} className={clsx('rounded border px-1.5 py-0.5 text-[11px] font-semibold', nudgeColorClass(nudgeStage))}>
             {nudgeText}
+          </span>
+        )}
+        {nudgeText && chasesSinceReply !== null && (
+          <span
+            data-since-reply
+            title="The badge counts every chase on this deal. This counts only the chases since the buyer last replied — the number Laya's grade uses."
+            className="text-[10px] text-clay-muted"
+          >
+            {chasesSinceReply === 0 ? 'none since reply' : `${chasesSinceReply} since reply`}
           </span>
         )}
         <LayaGradeChip grade={layaGrade} />

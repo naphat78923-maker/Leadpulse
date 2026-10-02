@@ -39,6 +39,7 @@ import { WORKFLOW_LANES, WORKFLOW_BY_ID, getWorkflowAction, isOnJourneyBoard, is
 import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import { useLayaGrades } from '@/hooks/useLayaReviewList';
+import { chaseStatusSinceReply } from '@/utils/interaction-event';
 import { calculateLeadScore, scoreToTier, type LeadTier } from '@/utils/lead-scoring';
 import { BoardAttentionFilter, BoardSort, capLane, LANE_CARD_CAP, reviewReasons, REVIEW_LABEL, buildReviewReport, buildReviewFix, filterAndSortBoardDeals, findDealsMatchingSearch, getDoNowCounts, localDateKey } from '@/utils/deal-board';
 import type { DealCardPrimaryAction as DealCardPrimaryActionSpec } from '@/utils/deal-card';
@@ -475,8 +476,12 @@ function DealsBoard() {
 
   const renderDealCard = (deal: Deal, opts?: { grip?: boolean; compact?: boolean; dragging?: boolean }) => {
     const action = getWorkflowAction(deal);
+    const sendCount = outboundSendCountForDeal(dbMeetings || [], deal.id);
+    // Worth a note only when the buyer has replied and it changes the picture.
+    const sinceReply = chaseStatusSinceReply(dbMeetings || [], deal.id);
+    const chasesSinceReply = sinceReply.buyerReplied && sinceReply.chases !== sendCount ? sinceReply.chases : null;
     const derived = deriveNudge(deal, todayStr, {
-      sendCount: outboundSendCountForDeal(dbMeetings || [], deal.id),
+      sendCount,
     });
     const nudge = derived ? formatDerivedNudgeBadge(derived) : null;
     const nudgeStage = derived?.stage ?? null;
@@ -510,6 +515,7 @@ function DealsBoard() {
             compact={isCompact}
             showGrip={opts?.grip}
             layaGrade={layaGrades.get(deal.id)}
+            chasesSinceReply={chasesSinceReply}
           />
           <p className="sr-only">Open {deal.client} in {lane.label}</p>
         </motion.button>
