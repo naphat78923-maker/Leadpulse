@@ -57,6 +57,8 @@ export interface DealGrade {
   /** why the deal goes to Pat (needs_review) or was not graded (not_graded) */
   review: string[];
   quantity: QuantityTier;
+  /** P(the buyer asked for a next step), when a fresh complete judgment exists */
+  pRequestedNextStep?: number;
 }
 
 export interface GradeInput {
@@ -192,6 +194,7 @@ export function gradeDeal({ deal, judgment, chasesSinceReply }: GradeInput): Dea
 
   // 4. Tier shift — only applied when Laya was sure enough
   const suggestedTier = shiftTier(baseTier, momentum);
-  if (review.length > 0) return result('needs_review', review, { momentum, reasons, suggestedTier });
-  return result('graded', [], { tier: suggestedTier, suggestedTier, momentum, reasons });
+  const pRequestedNextStep = round2(pRequest);
+  if (review.length > 0) return result('needs_review', review, { momentum, reasons, suggestedTier, pRequestedNextStep });
+  return result('graded', [], { tier: suggestedTier, suggestedTier, momentum, reasons, pRequestedNextStep });
 }

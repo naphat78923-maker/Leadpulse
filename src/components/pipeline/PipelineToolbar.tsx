@@ -11,7 +11,7 @@ interface PipelineToolbarProps {
   onSearchChange: (value: string) => void;
   attentionFilter: BoardAttentionFilter;
   onAttentionChange: (value: BoardAttentionFilter) => void;
-  counts: { all: number; overdue: number; today: number; needsReview: number; layaReview: number; missingData?: number };
+  counts: { all: number; overdue: number; today: number; needsReview: number; layaReview: number; missingData?: number; waitingOnYou?: number };
   productFilter: string;
   onProductChange: (value: string) => void;
   productOptions: readonly string[];
@@ -75,6 +75,10 @@ export default function PipelineToolbar({
           ['overdue', 'Overdue', counts.overdue],
           ['today', 'Due today', counts.today],
           ['needs-review', 'Needs review', counts.needsReview],
+          // The buyer spoke last: only shown when a deal is waiting (or it is selected).
+          ...((counts.waitingOnYou ?? 0) > 0 || attentionFilter === 'waiting-on-you'
+            ? [['waiting-on-you', 'Waiting on you', counts.waitingOnYou ?? 0] as [BoardAttentionFilter, string, number]]
+            : []),
           // Laya's review queue: only shown when something is waiting (or it is selected).
           ...(counts.layaReview > 0 || attentionFilter === 'laya-review'
             ? [['laya-review', 'Laya review', counts.layaReview] as [BoardAttentionFilter, string, number]]
@@ -98,7 +102,7 @@ export default function PipelineToolbar({
             {label}
             <span className={clsx('text-xs',
               value === 'overdue' && count > 0 ? 'font-semibold text-clay-error'
-                : value === 'laya-review' && count > 0 ? 'font-semibold text-clay-ochre' : 'text-clay-muted')}>{count}</span>
+                : (value === 'laya-review' || value === 'waiting-on-you') && count > 0 ? 'font-semibold text-clay-ochre' : 'text-clay-muted')}>{count}</span>
           </button>
         ))}
       </div>
