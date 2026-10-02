@@ -39,6 +39,7 @@ import { WORKFLOW_LANES, WORKFLOW_BY_ID, getWorkflowAction, isOnJourneyBoard, is
 import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import { useLayaGrades } from '@/hooks/useLayaReviewList';
+import OverdueBulkBar from '@/components/pipeline/OverdueBulkBar';
 import { chaseStatusSinceReply } from '@/utils/interaction-event';
 import { calculateLeadScore, scoreToTier, type LeadTier } from '@/utils/lead-scoring';
 import { BoardAttentionFilter, BoardSort, capLane, LANE_CARD_CAP, reviewReasons, REVIEW_LABEL, buildReviewReport, buildReviewFix, filterAndSortBoardDeals, findDealsMatchingSearch, getDoNowCounts, localDateKey } from '@/utils/deal-board';
@@ -600,6 +601,10 @@ function DealsBoard() {
             compact={compact}
             onToggleCompact={() => setCompact(!compact)}
           />
+
+          {attentionFilter === 'overdue' && (
+            <OverdueBulkBar deals={visibleActionBoardDeals} today={todayStr} onDone={refresh} />
+          )}
 
           {attentionFilter === 'needs-review' && (
             <ReviewQueue items={reviewReport} onFix={(deal, reasons) => setReviewFix({ deal, reasons })} />
