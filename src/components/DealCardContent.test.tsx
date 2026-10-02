@@ -252,4 +252,34 @@ describe('DealCardContent', () => {
     );
     expect(container.querySelector('[data-since-reply]')).toBeNull();
   });
+
+  it('shows the order size the buyer stated, with its tier in the tooltip', () => {
+    const { container } = render(
+      <DealCardContent deal={{ ...deal, buyer_reply: 'We tested the sample. Please quote 40 kg per month.' }}
+        presentation={presentation} whyNow={null} reviewLabels={[]} nudge={null} />
+    );
+    const chip = container.querySelector('[data-order-size]')!;
+    expect(chip.textContent).toBe('40 kg');
+    expect(chip.getAttribute('data-order-size')).toBe('large');
+    expect(chip.getAttribute('title')).toMatch(/over 15 kg.*not saved to the deal/);
+  });
+
+  it('formats small and fractional amounts without trailing zeros', () => {
+    const size = (reply: string) => render(
+      <DealCardContent deal={{ ...deal, buyer_reply: reply }} presentation={presentation} whyNow={null} reviewLabels={[]} nudge={null} />
+    ).container.querySelector('[data-order-size]')?.textContent;
+    expect(size('We only need 500 g for a menu test order.')).toBe('0.5 kg');
+    cleanup();
+    expect(size('Send us 12.5 kg please.')).toBe('12.5 kg');
+  });
+
+  it('shows no order size without a stated amount, a reply, or for a sample amount', () => {
+    for (const reply of [null, 'Can you send your price list?', 'Please send 2 kg of samples.']) {
+      const { container } = render(
+        <DealCardContent deal={{ ...deal, buyer_reply: reply }} presentation={presentation} whyNow={null} reviewLabels={[]} nudge={null} />
+      );
+      expect(container.querySelector('[data-order-size]'), String(reply)).toBeNull();
+      cleanup();
+    }
+  });
 });

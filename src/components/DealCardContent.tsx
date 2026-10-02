@@ -8,6 +8,7 @@ import { formatBaht } from '@/utils/format';
 import CompanyLogo from '@/components/CompanyLogo';
 import LayaGradeChip from '@/components/LayaGradeChip';
 import type { DealGrade } from '@/utils/grade';
+import { kilogramsStated, quantityTier, type QuantityTier } from '@/utils/order-quantity';
 
 interface DealCardContentProps {
   deal: Deal;
@@ -27,6 +28,17 @@ interface DealCardContentProps {
   chasesSinceReply?: number | null;
 }
 
+const QUANTITY_TIER_LABEL: Record<Exclude<QuantityTier, 'none'>, string> = {
+  small: 'small — under 5 kg',
+  moderate: 'moderate — 5 to 15 kg',
+  large: 'large — over 15 kg',
+};
+
+/** "40 kg", "0.5 kg", "12.5 kg" — no trailing zeros. */
+function formatKg(kg: number): string {
+  return `${Number(kg.toFixed(2))} kg`;
+}
+
 export default function DealCardContent({
   deal,
   presentation,
@@ -42,6 +54,10 @@ export default function DealCardContent({
   const { contact, companyName, companyLogoUrl, product, nextAction, timing } = presentation;
   const hasConcreteNextAction = isConcreteNextAction(deal.next_action);
   const nudgeText = nudgeChipLabel(nudge);
+  // The order size the buyer stated in their own words, read by a code rule. A suggestion
+  // on the card only — it is never written to the deal's value.
+  const statedKg = kilogramsStated(deal.buyer_reply);
+  const statedTier = quantityTier(statedKg);
 
   return (
     <div className="min-w-0 space-y-2.5">
@@ -94,6 +110,15 @@ export default function DealCardContent({
         )}
         {deal.value != null && (
           <span className="ml-auto font-semibold text-clay-ink" title="Deal value">{formatBaht(deal.value)}</span>
+        )}
+        {statedKg !== null && statedTier !== 'none' && (
+          <span
+            data-order-size={statedTier}
+            title={`Order size the buyer stated: ${QUANTITY_TIER_LABEL[statedTier]}. Read from their reply; not saved to the deal.`}
+            className="rounded border border-clay-hairline px-1.5 py-0.5 text-[10px] font-medium text-clay-body"
+          >
+            {formatKg(statedKg)}
+          </span>
         )}
         {nudgeText && (
           <span data-nudge-badge title={nudge || undefined} className={clsx('rounded border px-1.5 py-0.5 text-[11px] font-semibold', nudgeColorClass(nudgeStage))}>
