@@ -8,8 +8,11 @@ import { businessDateKey } from './business-time.ts';
 
 export type BoardAttentionFilter = 'all' | 'overdue' | 'today' | 'needs-review' | 'laya-review' | 'missing-data' | 'waiting-on-you';
 
-/** "do-now": overdue first, then by due date (the default). "hottest": highest tier first. */
-export type BoardSort = 'do-now' | 'hottest';
+/**
+ * "do-now": overdue first, then by due date (the default). "hottest": highest tier first.
+ * "quietest": longest since the last contact first, deals with no logged contact before all.
+ */
+export type BoardSort = 'do-now' | 'hottest' | 'quietest';
 
 /** Cards shown per lane before "Show all"; a 100+ card lane cannot be scanned. */
 export const LANE_CARD_CAP = 12;
@@ -35,6 +38,8 @@ export interface DealBoardFilters {
   sort?: BoardSort;
   /** dealId -> hotness (higher is hotter) for the 'hottest' sort; computed by the caller */
   hotness?: ReadonlyMap<string, number>;
+  /** dealId -> date key of the last contact (last-contact.ts) for the 'quietest' sort; absent = never */
+  lastContact?: ReadonlyMap<string, string>;
 }
 
 export interface DoNowCounts {
@@ -249,6 +254,11 @@ export function filterAndSortBoardDeals(deals: Deal[], filters: DealBoardFilters
   });
 
   const doNow = sortDealsForDoNow(filtered, filters.today);
+  if (filters.sort === 'quietest') {
+    // Oldest contact first; '' (no logged contact) sorts before any date. Equal dates keep the do-now order.
+    const last = (deal: Deal) => filters.lastContact?.get(deal.id) ?? '';
+    return doNow.sort((a, b) => last(a).localeCompare(last(b)));
+  }
   if (filters.sort !== 'hottest') return doNow;
   // Hottest first; equal hotness keeps the do-now order (Array.prototype.sort is stable).
   const hot = (deal: Deal) => filters.hotness?.get(deal.id) ?? 0;

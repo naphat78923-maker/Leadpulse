@@ -138,11 +138,12 @@ export default function PipelineToolbar({
         <select
           value={sort}
           onChange={event => onSortChange(event.target.value as BoardSort)}
-          title="Do now: overdue first, then by due date. Hottest: highest tier first (Laya's tier where graded)."
+          title="Do now: overdue first, then by due date. Hottest: highest tier first (Laya's tier where graded). Quietest: longest since the last contact first."
           className="h-9 rounded-lg border border-clay-hairline bg-white px-2.5 text-base text-clay-body focus:outline-none focus:ring-2 focus:ring-clay-lavender/40 dark:bg-clay-card md:text-sm"
         >
           <option value="do-now">Sort: Do now</option>
           <option value="hottest">Sort: Hottest</option>
+          <option value="quietest">Sort: Quietest</option>
         </select>
       </label>
 
