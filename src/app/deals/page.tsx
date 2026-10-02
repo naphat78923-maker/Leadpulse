@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Deal, DealWorkflowAction, PRODUCT_OPTIONS } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
+import { useSearchParams } from 'next/navigation';
 import { useQuerySelection } from '@/hooks/useQuerySelection';
 import CreateModal from '@/components/CreateModal';
 import ProspectsTab from '@/components/ProspectsTab';
@@ -40,6 +41,10 @@ import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import { useLayaGrades } from '@/hooks/useLayaReviewList';
 import OverdueBulkBar from '@/components/pipeline/OverdueBulkBar';
+import MissingDataBar from '@/components/pipeline/MissingDataBar';
+import LayaStatusLine from '@/components/LayaStatusLine';
+import { buildDataGapReport, dealIdsWithGap, isDataGap, type DataGap } from '@/utils/deal-data-gaps';
+import { buildLayaStatus } from '@/utils/laya-status';
 import { chaseStatusSinceReply } from '@/utils/interaction-event';
 import { calculateLeadScore, scoreToTier, type LeadTier } from '@/utils/lead-scoring';
 import { BoardAttentionFilter, BoardSort, capLane, LANE_CARD_CAP, reviewReasons, REVIEW_LABEL, buildReviewReport, buildReviewFix, filterAndSortBoardDeals, findDealsMatchingSearch, getDoNowCounts, localDateKey } from '@/utils/deal-board';
@@ -75,7 +80,10 @@ function DealsBoard() {
   const [reviewFix, setReviewFix] = useState<{ deal: Deal; reasons: ReturnType<typeof reviewReasons> } | null>(null);
   const [celebrate, setCelebrate] = useState<{ dealId: string; laneId: DealWorkflowAction } | null>(null);
   const [pickerDeal, setPickerDeal] = useState<Deal | null>(null);
-  const [attentionFilter, setAttentionFilter] = useState<BoardAttentionFilter>('all');
+  // `/deals?missing=<gap|all>` (the This week links) lands on the Missing data filter.
+  const requestedGap = useSearchParams().get('missing');
+  const [attentionFilter, setAttentionFilter] = useState<BoardAttentionFilter>(requestedGap ? 'missing-data' : 'all');
+  const [gapFilter, setGapFilter] = useState<DataGap | 'all'>(isDataGap(requestedGap) ? requestedGap : 'all');
   const [boardSort, setBoardSort] = useState<BoardSort>('do-now');
   /** lanes showing every card instead of the first LANE_CARD_CAP */
   const [expandedLanes, setExpandedLanes] = useState<ReadonlySet<string>>(new Set());
@@ -137,7 +145,7 @@ function DealsBoard() {
   );
 
   // Laya's grades for deals with a pasted reply; review ids drive the "Laya review" filter.
-  const { grades: layaGrades } = useLayaGrades(actionBoardDeals, dbMeetings || []);
+  const { grades: layaGrades, judgments: layaJudgments, status: layaLoad } = useLayaGrades(actionBoardDeals, dbMeetings || []);
   const layaReviewIds = useMemo(
     () => new Set([...layaGrades].filter(([, grade]) => grade.status === 'needs_review').map(([id]) => id)),
     [layaGrades]
@@ -155,9 +163,21 @@ function DealsBoard() {
     }));
   }, [actionBoardDeals, layaGrades]);
 
+  // Open deals missing a field the grade or the forecast reads.
+  const gapReport = useMemo(() => buildDataGapReport(actionBoardDeals, dbMeetings || []), [actionBoardDeals, dbMeetings]);
+  const missingDataIds = useMemo(() => dealIdsWithGap(gapReport, gapFilter), [gapReport, gapFilter]);
+
+  const [statusNow] = useState(() => Date.now());
+  const layaStatus = useMemo(
+    () => (layaLoad === 'ready'
+      ? buildLayaStatus({ deals: actionBoardDeals, grades: layaGrades, judgments: layaJudgments, now: statusNow })
+      : null),
+    [layaLoad, actionBoardDeals, layaGrades, layaJudgments, statusNow]
+  );
+
   const doNowCounts = useMemo(
-    () => getDoNowCounts(actionBoardDeals, todayStr, layaReviewIds),
-    [actionBoardDeals, todayStr, layaReviewIds]
+    () => ({ ...getDoNowCounts(actionBoardDeals, todayStr, layaReviewIds), missingData: gapReport.total }),
+    [actionBoardDeals, todayStr, layaReviewIds, gapReport.total]
   );
 
   const visibleActionBoardDeals = useMemo(
@@ -168,10 +188,11 @@ function DealsBoard() {
       priority: priorityFilter,
       today: todayStr,
       layaReviewIds,
+      missingDataIds,
       sort: boardSort,
       hotness,
     }),
-    [actionBoardDeals, attentionFilter, searchQuery, productFilter, priorityFilter, todayStr, layaReviewIds, boardSort, hotness]
+    [actionBoardDeals, attentionFilter, searchQuery, productFilter, priorityFilter, todayStr, layaReviewIds, missingDataIds, boardSort, hotness]
   );
 
   // Same deals the "Needs review" count uses: lane requirements only apply on the board.
@@ -248,6 +269,7 @@ function DealsBoard() {
 
   const clearDoNowFilters = () => {
     setAttentionFilter('all');
+    setGapFilter('all');
     setSearchQuery('');
     setProductFilter('all');
     setPriorityFilter('all');
@@ -601,6 +623,18 @@ function DealsBoard() {
             compact={compact}
             onToggleCompact={() => setCompact(!compact)}
           />
+
+          <LayaStatusLine
+            status={layaStatus}
+            load={layaLoad}
+            now={statusNow}
+            missingReplyWords={gapReport.counts['reply-words']}
+            className="-mt-1.5 mb-3"
+          />
+
+          {attentionFilter === 'missing-data' && (
+            <MissingDataBar report={gapReport} gap={gapFilter} onGapChange={setGapFilter} />
+          )}
 
           {attentionFilter === 'overdue' && (
             <OverdueBulkBar deals={visibleActionBoardDeals} today={todayStr} onDone={refresh} />

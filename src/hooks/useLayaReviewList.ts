@@ -41,7 +41,12 @@ function useLayaJudgmentState(deals: Deal[]): State {
 }
 
 /** Laya's grade for every deal with a verbatim reply (absent = no reply to grade). */
-export function useLayaGrades(deals: Deal[], meetings: Meeting[]): { grades: Map<string, DealGrade>; status: State['status'] } {
+export function useLayaGrades(deals: Deal[], meetings: Meeting[]): {
+  grades: Map<string, DealGrade>;
+  /** the saved rows behind the grades; empty until ready */
+  judgments: LayaJudgmentRow[];
+  status: State['status'];
+} {
   const state = useLayaJudgmentState(deals);
   const grades = useMemo(
     () => (state.status === 'ready'
@@ -49,7 +54,8 @@ export function useLayaGrades(deals: Deal[], meetings: Meeting[]): { grades: Map
       : new Map<string, DealGrade>()),
     [state, deals, meetings],
   );
-  return { grades, status: state.status };
+  const judgments = useMemo(() => (state.status === 'ready' ? state.judgments : []), [state]);
+  return { grades, judgments, status: state.status };
 }
 
 /** Open deals Laya routed to Pat. */
