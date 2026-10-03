@@ -16,6 +16,7 @@ import { DECISION_EVENT, decisionFor, decisionRow, withDecision } from '@/utils/
 import { gradeDeal, type DealGrade, type GradeReason, type ReasonGroup } from '@/utils/grade';
 import { withTrend } from '@/utils/laya-trend';
 import LayaSpark from '@/components/LayaSpark';
+import ActionButton from '@/components/ActionButton';
 import { toSavedJudgment } from '@/utils/laya-review';
 import { chasesSinceLastReply } from '@/utils/interaction-event';
 import { dealInputSha256 } from '@/utils/laya-freshness';
@@ -81,11 +82,11 @@ export default function LayaGradePanel({ deal }: { deal: Deal }) {
     return withTrend(decided, loaded.row, loaded.history, loaded.currentSha);
   }, [rawGrade, loaded, deal.id]);
 
-  const [deciding, setDeciding] = useState(false);
+  const [deciding, setDeciding] = useState<'confirm' | 'reject' | null>(null);
   const [decideError, setDecideError] = useState(false);
   const decide = async (decision: 'confirm' | 'reject') => {
     if (!rawGrade || loaded.state !== 'ready' || deciding) return;
-    setDeciding(true);
+    setDeciding(decision);
     setDecideError(false);
     try {
       const saved = await crm.addReviewDecision(decisionRow(deal.id, loaded.currentSha, rawGrade, decision));
@@ -94,7 +95,7 @@ export default function LayaGradePanel({ deal }: { deal: Deal }) {
     } catch {
       setDecideError(true);
     } finally {
-      setDeciding(false);
+      setDeciding(null);
     }
   };
 
@@ -119,14 +120,12 @@ export default function LayaGradePanel({ deal }: { deal: Deal }) {
         {grade && <GradeBody grade={grade} />}
         {grade?.status === 'needs_review' && loaded.state === 'ready' && loaded.currentSha && (
           <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Your decision">
-            <button type="button" disabled={deciding} onClick={() => decide('confirm')}
-              className="inline-flex h-8 items-center rounded-lg bg-clay-ink px-3 text-xs font-medium text-clay-canvas hover:opacity-90 disabled:opacity-50">
+            <ActionButton busy={deciding === 'confirm'} disabled={deciding !== null} onClick={() => decide('confirm')}>
               {grade.suggestedTier && grade.suggestedTier !== grade.baseTier ? `Agree: ${TIER_LABELS[grade.suggestedTier]}` : 'Agree with Laya'}
-            </button>
-            <button type="button" disabled={deciding} onClick={() => decide('reject')}
-              className="inline-flex h-8 items-center rounded-lg border border-clay-hairline px-3 text-xs font-medium text-clay-ink hover:border-clay-ink/30 disabled:opacity-50">
+            </ActionButton>
+            <ActionButton variant="quiet" busy={deciding === 'reject'} disabled={deciding !== null} onClick={() => decide('reject')}>
               Disagree: keep {TIER_LABELS[grade.baseTier]}
-            </button>
+            </ActionButton>
             {decideError && <span role="alert" className="text-xs text-clay-error">Could not save your decision.</span>}
           </div>
         )}
@@ -176,7 +175,10 @@ function GradeBody({ grade }: { grade: DealGrade }) {
         {trend && (
           <span data-testid="laya-trend" data-trend={trend.direction}
             className={clsx(trend.direction === 'up' ? 'text-clay-success' : trend.direction === 'down' ? 'text-clay-error' : 'text-clay-muted')}>
-            {trend.direction === 'up' ? '↑ warmer than' : trend.direction === 'down' ? '↓ cooler than' : '→ same as'} the previous reply
+            <span aria-hidden="true" className={clsx('mr-1', trend.direction === 'up' && 'lp-nudge-up', trend.direction === 'down' && 'lp-nudge-down')}>
+              {trend.direction === 'up' ? '↑' : trend.direction === 'down' ? '↓' : '→'}
+            </span>
+            {trend.direction === 'up' ? 'warmer than' : trend.direction === 'down' ? 'cooler than' : 'same as'} the previous reply
             {numbers && ` (${trend.delta > 0 ? '+' : ''}${trend.delta.toFixed(2)})`}
           </span>
         )}

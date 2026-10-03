@@ -39,6 +39,9 @@ export default function DealTimeline({ deal }: { deal: Deal }) {
   const entries = useMemo(() => buildDealTimeline(deal, meetings, lane), [deal, meetings, lane]);
   const shown = showAll ? entries : entries.slice(0, PREVIEW);
   const days = daysInLane(lane, now);
+  // The buyer spoke last: their reply is the newest contact, so its dot pings.
+  const newestContact = entries.find(entry => entry.kind === 'theirs' || entry.kind === 'ours');
+  const waitingId = newestContact?.kind === 'theirs' ? newestContact.id : null;
 
   return (
     <section aria-label="Deal timeline" data-testid="deal-timeline">
@@ -51,7 +54,11 @@ export default function DealTimeline({ deal }: { deal: Deal }) {
           const Icon = ICON[entry.kind];
           return (
             <li key={entry.id} data-kind={entry.kind} className="lp-rise relative flex gap-3" style={{ animationDelay: `${Math.min(index, 8) * 35}ms` }}>
-              <span className={clsx('relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full', TONE[entry.kind])}>
+              <span
+                data-waiting={entry.id === waitingId || undefined}
+                title={entry.id === waitingId ? 'Their reply is the latest contact: the next move is yours.' : undefined}
+                className={clsx('relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full', TONE[entry.kind], entry.id === waitingId && 'lp-ping')}
+              >
                 <Icon className="h-3.5 w-3.5" aria-hidden="true" />
               </span>
               <div className="min-w-0 flex-1 pb-0.5">

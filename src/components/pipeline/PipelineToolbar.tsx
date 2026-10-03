@@ -5,6 +5,7 @@ import { Search, X } from 'lucide-react';
 import type { Deal } from '@/types/crm';
 import type { BoardAttentionFilter, BoardSort } from '@/utils/deal-board';
 import { formatBaht } from '@/utils/format';
+import AnimatedCount from '@/components/AnimatedCount';
 import type { PipelineOutcomes } from '@/utils/lane-time';
 
 interface PipelineToolbarProps {
@@ -100,7 +101,7 @@ export default function PipelineToolbar({
             )}
           >
             {label}
-            <span className={clsx('text-xs', value === 'overdue' && count > 0 ? 'font-semibold text-clay-error' : 'text-clay-muted')}>{count}</span>
+            <AnimatedCount value={count} className={clsx('text-xs', value === 'overdue' && count > 0 ? 'font-semibold text-clay-error' : 'text-clay-muted')} />
           </button>
         ))}
       </div>

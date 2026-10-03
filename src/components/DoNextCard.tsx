@@ -14,6 +14,7 @@ import { useLayaGrades } from '@/hooks/useLayaReviewList';
 import { buildDoNext, type DoNextKind } from '@/utils/do-next';
 import { laneTimelines } from '@/utils/lane-time';
 import LayaSpark from '@/components/LayaSpark';
+import AnimatedCount from '@/components/AnimatedCount';
 
 const PREVIEW = 8;
 
@@ -38,7 +39,7 @@ export default function DoNextCard({ deals, meetings, today }: { deals: Deal[]; 
   const shown = showAll ? items : items.slice(0, PREVIEW);
   return (
     <section aria-labelledby="do-next" className="rounded-xl border border-clay-hairline bg-white p-3.5 dark:bg-clay-card" data-testid="do-next-card">
-      <h2 id="do-next" className="mb-1 text-sm font-semibold text-clay-ink">Do next · {items.length}</h2>
+      <h2 id="do-next" className="mb-1 text-sm font-semibold text-clay-ink">Do next · <AnimatedCount value={items.length} /></h2>
       <p className="mb-2 text-xs text-clay-muted">Most pressing first. Each deal is listed once, with every reason.</p>
       <ol className="divide-y divide-clay-hairline">
         {shown.map(({ deal, reasons }, index) => (

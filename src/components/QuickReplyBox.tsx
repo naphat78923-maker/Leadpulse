@@ -9,6 +9,7 @@ import type { Deal } from '@/types/crm';
 import * as crm from '@/lib/crm';
 import { useCrm } from '@/components/CrmProvider';
 import { useToast } from '@/components/ToastProvider';
+import ActionButton from '@/components/ActionButton';
 import { localDateKey } from '@/utils/deal-board';
 import { REPLY_CHANNELS, buildQuickReply, type ReplyChannel } from '@/utils/quick-reply';
 
@@ -65,17 +66,9 @@ export default function QuickReplyBox({ deal }: { deal: Deal }) {
             {REPLY_CHANNELS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
-        <button type="button" disabled={saving || !words.trim()} onClick={save}
-          className="inline-flex h-8 items-center rounded-lg bg-clay-ink px-3 text-xs font-medium text-clay-canvas hover:opacity-90 disabled:opacity-50">
-          Save reply
-        </button>
+        <ActionButton busy={saving} disabled={!words.trim()} onClick={save}>Save reply</ActionButton>
         {saved ? (
-          <span role="status" className="inline-flex items-center gap-1 text-xs text-clay-success">
-            <svg viewBox="0 0 16 16" className="lp-check h-3.5 w-3.5" aria-hidden="true">
-              <path d="M3 8.5l3.2 3.2L13 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            Saved
-          </span>
+          <span role="status" className="lp-rise text-xs text-clay-success">Saved</span>
         ) : deal.buyer_reply ? <span className="text-[11px] text-clay-muted">Replaces the saved reply.</span> : null}
       </div>
       {error && <p role="alert" className="mt-1.5 text-xs text-clay-error">{error}</p>}
