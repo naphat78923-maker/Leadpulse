@@ -88,6 +88,16 @@ export interface ReshipEntry {
   reason: string;
 }
 
+/** Facts asked on a qualifying call; every answer is optional. */
+export interface CallChecklist {
+  /** who decides on the purchase */
+  decision_maker?: string;
+  /** how much of this product they use per month (kg) */
+  monthly_volume_kg?: number;
+  /** what they use today */
+  current_product?: string;
+}
+
 export interface Deal {
   id: string;
   title: string;
@@ -110,6 +120,10 @@ export interface Deal {
    * speech (scripts/eval_results/2026-09-23-buyer-response-eval-report.md).
    */
   buyer_reply?: string | null;
+  /** the order size the buyer stated, confirmed by Pat from the reply (kg) */
+  stated_order_kg?: number | null;
+  /** answers to the qualifying call checklist */
+  call_checklist?: CallChecklist | null;
   nudge_count: number;
   workflow_action?: DealWorkflowAction | null;
   nudge_stage?: NudgeStage | null;

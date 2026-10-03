@@ -60,9 +60,10 @@ export default function DealCardContent({
   const { contact, companyName, companyLogoUrl, product, nextAction, timing } = presentation;
   const hasConcreteNextAction = isConcreteNextAction(deal.next_action);
   const nudgeText = nudgeChipLabel(nudge);
-  // The order size the buyer stated in their own words, read by a code rule. A suggestion
-  // on the card only — it is never written to the deal's value.
-  const statedKg = kilogramsStated(deal.buyer_reply);
+  // The order size the buyer stated: the figure Pat saved, else what a code rule reads in
+  // the reply (dashed until saved). Never written to the deal's value.
+  const statedKg = deal.stated_order_kg ?? kilogramsStated(deal.buyer_reply);
+  const kgSaved = deal.stated_order_kg != null;
   const statedTier = quantityTier(statedKg);
 
   return (
@@ -120,8 +121,9 @@ export default function DealCardContent({
         {statedKg !== null && statedTier !== 'none' && (
           <span
             data-order-size={statedTier}
-            title={`Order size the buyer stated: ${QUANTITY_TIER_LABEL[statedTier]}. Read from their reply; not saved to the deal.`}
-            className="rounded border border-clay-hairline px-1.5 py-0.5 text-[10px] font-medium text-clay-body"
+            data-order-saved={kgSaved || undefined}
+            title={`Order size the buyer stated: ${QUANTITY_TIER_LABEL[statedTier]}. ${kgSaved ? 'Saved to the deal.' : 'Read from their reply; open the deal to save it.'}`}
+            className={clsx('rounded border px-1.5 py-0.5 text-[10px] font-medium text-clay-body', kgSaved ? 'border-clay-ink/30' : 'border-dashed border-clay-hairline')}
           >
             {formatKg(statedKg)}
           </span>

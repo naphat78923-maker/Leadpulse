@@ -74,6 +74,8 @@ export interface DealGrade {
   pRequestedNextStep?: number;
   /** set by the callers that have the deal's judgment history (laya-trend.ts) */
   trend?: ReplyTrend;
+  /** Pat's decision on a needs_review grade for this reply (laya-decisions.ts) */
+  decision?: 'confirm' | 'reject';
 }
 
 export interface GradeInput {
@@ -174,9 +176,17 @@ export function replyMomentum(answers: Record<string, SavedAnswer> | null | unde
   return round2(buyerTerms(answers).reduce((sum, t) => sum + t.effect, 0));
 }
 
+/**
+ * The order size the grade uses: the confirmed figure, else what the reply states, else
+ * the monthly volume from the call checklist.
+ */
+export function orderKg(deal: Pick<Deal, 'stated_order_kg' | 'buyer_reply' | 'call_checklist'>): number | null {
+  return deal.stated_order_kg ?? kilogramsStated(deal.buyer_reply) ?? deal.call_checklist?.monthly_volume_kg ?? null;
+}
+
 export function gradeDeal({ deal, judgment, chasesSinceReply }: GradeInput): DealGrade {
   const baseTier = scoreToTier(calculateLeadScore(deal));
-  const quantity = quantityTier(kilogramsStated(deal.buyer_reply));
+  const quantity = quantityTier(orderKg(deal));
   const result = (status: GradeStatus, review: string[], extra: Partial<DealGrade> = {}): DealGrade => ({
     status, baseTier, tier: baseTier, suggestedTier: null, momentum: null, reasons: [], review, quantity, ...extra,
   });

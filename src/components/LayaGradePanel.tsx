@@ -11,7 +11,8 @@ import clsx from 'clsx';
 import type { Deal } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
 import * as crm from '@/lib/crm';
-import type { LayaJudgmentRow } from '@/lib/crm';
+import type { LayaJudgmentRow, ReviewDecisionRow } from '@/lib/crm';
+import { DECISION_EVENT, decisionFor, decisionRow, withDecision } from '@/utils/laya-decisions';
 import { gradeDeal, type DealGrade, type GradeReason, type ReasonGroup } from '@/utils/grade';
 import { withTrend } from '@/utils/laya-trend';
 import { toSavedJudgment } from '@/utils/laya-review';
@@ -22,7 +23,7 @@ import { TIER_LABELS } from '@/utils/lead-scoring';
 type Loaded =
   | { state: 'loading' }
   | { state: 'error'; key: string }
-  | { state: 'ready'; key: string; row: LayaJudgmentRow | null; history: LayaJudgmentRow[]; currentSha: string | null };
+  | { state: 'ready'; key: string; row: LayaJudgmentRow | null; history: LayaJudgmentRow[]; decisions: ReviewDecisionRow[]; currentSha: string | null };
 
 const STATUS_LABEL: Record<DealGrade['status'], string> = {
   graded: 'graded',
@@ -56,8 +57,9 @@ export default function LayaGradePanel({ deal }: { deal: Deal }) {
       dealInputSha256(deal),
       // The trend is an extra: without the history the grade simply shows none.
       Promise.resolve().then(() => crm.getDealJudgmentHistory(deal.id)).catch(() => [] as LayaJudgmentRow[]),
+      Promise.resolve().then(() => crm.getReviewDecisions(deal.id)).catch(() => [] as ReviewDecisionRow[]),
     ])
-      .then(([row, currentSha, history]) => { if (!cancelled) setResult({ state: 'ready', key, row, history, currentSha }); })
+      .then(([row, currentSha, history, decisions]) => { if (!cancelled) setResult({ state: 'ready', key, row, history, decisions, currentSha }); })
       .catch(() => { if (!cancelled) setResult({ state: 'error', key }); });
     return () => { cancelled = true; };
     // `key` covers the deal fields the request is built from.
@@ -66,11 +68,34 @@ export default function LayaGradePanel({ deal }: { deal: Deal }) {
 
   const chases = useMemo(() => chasesSinceLastReply(meetings, deal.id), [meetings, deal.id]);
 
-  const grade = useMemo<DealGrade | null>(() => {
+  const rawGrade = useMemo<DealGrade | null>(() => {
     if (loaded.state !== 'ready') return null;
-    const graded = gradeDeal({ deal, judgment: toSavedJudgment(loaded.row, loaded.currentSha), chasesSinceReply: chases });
-    return withTrend(graded, loaded.row, loaded.history, loaded.currentSha);
+    return gradeDeal({ deal, judgment: toSavedJudgment(loaded.row, loaded.currentSha), chasesSinceReply: chases });
   }, [loaded, deal, chases]);
+
+  // The same grade with Pat's decision for this reply and the trend applied.
+  const grade = useMemo<DealGrade | null>(() => {
+    if (!rawGrade || loaded.state !== 'ready') return null;
+    const decided = withDecision(rawGrade, decisionFor(loaded.decisions, deal.id, loaded.currentSha));
+    return withTrend(decided, loaded.row, loaded.history, loaded.currentSha);
+  }, [rawGrade, loaded, deal.id]);
+
+  const [deciding, setDeciding] = useState(false);
+  const [decideError, setDecideError] = useState(false);
+  const decide = async (decision: 'confirm' | 'reject') => {
+    if (!rawGrade || loaded.state !== 'ready' || deciding) return;
+    setDeciding(true);
+    setDecideError(false);
+    try {
+      const saved = await crm.addReviewDecision(decisionRow(deal.id, loaded.currentSha, rawGrade, decision));
+      setResult({ ...loaded, decisions: [saved, ...loaded.decisions] });
+      window.dispatchEvent(new Event(DECISION_EVENT));
+    } catch {
+      setDecideError(true);
+    } finally {
+      setDeciding(false);
+    }
+  };
 
   const title = loaded.state === 'ready' && grade
     ? `Laya grade · ${STATUS_LABEL[grade.status]}`
@@ -88,6 +113,24 @@ export default function LayaGradePanel({ deal }: { deal: Deal }) {
           <p className="text-xs text-clay-muted">Could not read saved Laya judgments. The deterministic tier is unaffected.</p>
         )}
         {grade && <GradeBody grade={grade} />}
+        {grade?.status === 'needs_review' && loaded.state === 'ready' && loaded.currentSha && (
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Your decision">
+            <button type="button" disabled={deciding} onClick={() => decide('confirm')}
+              className="inline-flex h-8 items-center rounded-lg bg-clay-ink px-3 text-xs font-medium text-clay-canvas hover:opacity-90 disabled:opacity-50">
+              {grade.suggestedTier && grade.suggestedTier !== grade.baseTier ? `Agree: ${TIER_LABELS[grade.suggestedTier]}` : 'Agree with Laya'}
+            </button>
+            <button type="button" disabled={deciding} onClick={() => decide('reject')}
+              className="inline-flex h-8 items-center rounded-lg border border-clay-hairline px-3 text-xs font-medium text-clay-ink hover:border-clay-ink/30 disabled:opacity-50">
+              Disagree: keep {TIER_LABELS[grade.baseTier]}
+            </button>
+            {decideError && <span role="alert" className="text-xs text-clay-error">Could not save your decision.</span>}
+          </div>
+        )}
+        {grade?.decision && (
+          <p data-testid="laya-decision" className="text-xs text-clay-muted">
+            You {grade.decision === 'confirm' ? 'agreed with' : 'disagreed with'} Laya on this reply.
+          </p>
+        )}
       </div>
     </details>
   );

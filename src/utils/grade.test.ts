@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Deal } from '@/types/crm';
 import LAYA_CUTOFFS from './laya-cutoffs.json';
-import { GRADE_WEIGHTS, gradeDeal, type SavedAnswer, type SavedJudgment } from './grade';
+import { GRADE_WEIGHTS, gradeDeal, orderKg, type SavedAnswer, type SavedJudgment } from './grade';
 
 // proposal 20 + medium 10 + no value 0 + no follow-up 5 + no outcome → tier C (20–39).
 const deal: Deal = {
@@ -150,5 +150,19 @@ describe('gradeDeal — graded', () => {
     const grade = gradeDeal({ deal, judgment: judgment(), chasesSinceReply: 0 });
     expect(grade.status).toBe('graded');
     expect(grade.tier).toBe(grade.baseTier);
+  });
+});
+
+describe('orderKg', () => {
+  it('prefers the saved figure, then the reply, then the checklist volume', () => {
+    const reply = 'Please quote 40 kg per month.';
+    expect(orderKg({ stated_order_kg: 12, buyer_reply: reply, call_checklist: { monthly_volume_kg: 3 } })).toBe(12);
+    expect(orderKg({ stated_order_kg: null, buyer_reply: reply, call_checklist: { monthly_volume_kg: 3 } })).toBe(40);
+    expect(orderKg({ stated_order_kg: null, buyer_reply: 'Send the price list.', call_checklist: { monthly_volume_kg: 3 } })).toBe(3);
+    expect(orderKg({ buyer_reply: null })).toBeNull();
+  });
+
+  it('feeds the grade: a saved size sets the quantity tier', () => {
+    expect(gradeDeal({ deal: { ...deal, stated_order_kg: 20 }, judgment: judgment(), chasesSinceReply: 0 }).quantity).toBe('large');
   });
 });

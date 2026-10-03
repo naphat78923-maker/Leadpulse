@@ -261,7 +261,19 @@ describe('DealCardContent', () => {
     const chip = container.querySelector('[data-order-size]')!;
     expect(chip.textContent).toBe('40 kg');
     expect(chip.getAttribute('data-order-size')).toBe('large');
-    expect(chip.getAttribute('title')).toMatch(/over 15 kg.*not saved to the deal/);
+    expect(chip.getAttribute('title')).toMatch(/over 15 kg.*open the deal to save it/);
+    expect(chip.getAttribute('data-order-saved')).toBeNull();
+  });
+
+  it('shows the saved order size in place of what the reply says', () => {
+    const { container } = render(
+      <DealCardContent deal={{ ...deal, stated_order_kg: 12, buyer_reply: 'Please quote 40 kg per month.' }}
+        presentation={presentation} whyNow={null} reviewLabels={[]} nudge={null} />
+    );
+    const chip = container.querySelector('[data-order-size]')!;
+    expect(chip.textContent).toBe('12 kg');
+    expect(chip.getAttribute('data-order-saved')).toBe('true');
+    expect(chip.getAttribute('title')).toMatch(/Saved to the deal/);
   });
 
   it('formats small and fractional amounts without trailing zeros', () => {

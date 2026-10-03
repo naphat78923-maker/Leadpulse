@@ -11,6 +11,7 @@ import LayaReviewCard from '@/components/LayaReviewCard';
 import DataHealthCard from '@/components/DataHealthCard';
 import WaitingOnYouCard from '@/components/WaitingOnYouCard';
 import GoingQuietCard from '@/components/GoingQuietCard';
+import GoalCard from '@/components/GoalCard';
 import type { HealthTier } from '@/utils/accountHealth';
 import { businessDaysBetween } from '@/utils/business-time';
 import { formatScheduleDate } from '@/utils/deal-schedule';
@@ -506,6 +507,7 @@ export default function ThisWeekQueue({
             </section>
 
             <div className="min-w-0 space-y-4">
+              <GoalCard deals={deals} today={today} />
               <WaitingOnYouCard deals={deals} meetings={meetings} today={today} />
               <GoingQuietCard deals={deals} />
               <LayaReviewCard deals={deals} meetings={meetings} />

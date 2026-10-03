@@ -420,6 +420,54 @@ export async function getLatestDealJudgment(dealId: string): Promise<LayaJudgmen
   return (data as LayaJudgmentRow | null) ?? null;
 }
 
+// ─── Review decisions (Pat's confirm/reject on a deal Laya routed to review) ───
+export interface ReviewDecisionRow {
+  deal_id: string;
+  input_sha256: string | null;
+  decision: 'confirm' | 'reject';
+  base_tier: string;
+  suggested_tier: string | null;
+  momentum: number | null;
+  review_reasons: string[];
+  decided_at: string;
+}
+
+/** Decisions newest first — every deal, or one. Append-only: the newest per reply stands. */
+export async function getReviewDecisions(dealId?: string): Promise<ReviewDecisionRow[]> {
+  let query = supabase
+    .from('laya_review_decisions')
+    .select('deal_id, input_sha256, decision, base_tier, suggested_tier, momentum, review_reasons, decided_at');
+  if (dealId) query = query.eq('deal_id', dealId);
+  const { data, error } = await query.order('decided_at', { ascending: false }).limit(dealId ? 20 : 1000);
+  if (error) throw error;
+  return (data as ReviewDecisionRow[] | null) ?? [];
+}
+
+export async function addReviewDecision(row: Omit<ReviewDecisionRow, 'decided_at'>): Promise<ReviewDecisionRow> {
+  const { data, error } = await supabase
+    .from('laya_review_decisions')
+    .insert(row)
+    .select('deal_id, input_sha256, decision, base_tier, suggested_tier, momentum, review_reasons, decided_at')
+    .single();
+  if (error) throw error;
+  return data as ReviewDecisionRow;
+}
+
+// ─── Sales goals (one revenue goal per month) ───
+/** The goal for the month starting on `month` (YYYY-MM-01), or null when none is set. */
+export async function getSalesGoal(month: string): Promise<number | null> {
+  const { data, error } = await supabase.from('sales_goals').select('amount').eq('month', month).maybeSingle();
+  if (error) throw error;
+  return data ? Number(data.amount) : null;
+}
+
+export async function setSalesGoal(month: string, amount: number): Promise<void> {
+  const { error } = await supabase
+    .from('sales_goals')
+    .upsert({ month, amount, updated_at: new Date().toISOString() }, { onConflict: 'month' });
+  if (error) throw error;
+}
+
 /**
  * Scored deal-set judgments, newest first — every deal, or one. The append-only table
  * keeps a row per reply, which is what the trend against the previous reply reads.
