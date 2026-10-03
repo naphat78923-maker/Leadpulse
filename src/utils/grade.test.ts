@@ -113,6 +113,10 @@ describe('gradeDeal — graded', () => {
     expect(grade.tier).toBe('B');
     expect(grade.reasons[0].label).toMatch(/asked for a next step/);
     expect(grade.reasons.map(r => r.label)).toEqual(expect.arrayContaining(['buyer reported a good trial', 'order size: large']));
+    // Each reason says where it comes from; weighted answers carry their probability.
+    expect(grade.reasons[0]).toMatchObject({ group: 'buyer', strength: 0.9 });
+    expect(grade.reasons.find(r => r.label === 'order size: large')).toMatchObject({ group: 'order' });
+    expect(grade.reasons.find(r => r.label === 'buyer reported a good trial')!.strength).toBeUndefined();
   });
 
   it('moves a clearly lost deal down two tiers, clamped at D', () => {

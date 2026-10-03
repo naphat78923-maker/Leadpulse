@@ -38,10 +38,23 @@ export interface SavedJudgment {
 
 export type GradeStatus = 'graded' | 'needs_review' | 'not_graded';
 
+/** Where a reason comes from: what the buyer said (Laya), Pat's follow-up, or the order size. */
+export type ReasonGroup = 'buyer' | 'followup' | 'order';
+
 export interface GradeReason {
   label: string;
   /** contribution to momentum; 0 for display-only notes */
   effect: number;
+  group?: ReasonGroup;
+  /** the probability behind a weighted answer; absent for yes/no signals and code facts */
+  strength?: number;
+}
+
+/** How Laya's reading of the reply moved against the previous reply on the same deal. */
+export interface ReplyTrend {
+  direction: 'up' | 'down' | 'steady';
+  /** change in the buyer-reply part of momentum */
+  delta: number;
 }
 
 export interface DealGrade {
@@ -59,6 +72,8 @@ export interface DealGrade {
   quantity: QuantityTier;
   /** P(the buyer asked for a next step), when a fresh complete judgment exists */
   pRequestedNextStep?: number;
+  /** set by the callers that have the deal's judgment history (laya-trend.ts) */
+  trend?: ReplyTrend;
 }
 
 export interface GradeInput {
@@ -117,6 +132,48 @@ function inUnsureBand(p: number): boolean {
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
+/** Whether a saved answer set has every question of the deal set. */
+function isComplete(answers: Record<string, SavedAnswer>): boolean {
+  return DEAL_SET.every(id => answers[id]) && !!answers.buyer_response?.probabilities;
+}
+
+/** The momentum terms that come from Laya's reading of the reply; needs a complete answer set. */
+function buyerTerms(answers: Record<string, SavedAnswer>): GradeReason[] {
+  const br = answers.buyer_response?.probabilities ?? {};
+  const value = (id: string) => answers[id]?.noul ?? 0;
+  const signal = (id: string) => {
+    const cutoff = DEAL_CUTOFFS[id]?.cutoff;
+    return cutoff !== undefined && value(id) >= cutoff;
+  };
+  const w = GRADE_WEIGHTS;
+  const weighted = (label: string, weight: number, p: number): GradeReason =>
+    ({ label: `${label} (P ${round2(p)})`, effect: weight * p, group: 'buyer', strength: round2(p) });
+  const flag = (id: string, weight: number): GradeReason[] =>
+    (signal(id) ? [{ label: LABELS[id], effect: weight, group: 'buyer' }] : []);
+  return [
+    weighted('asked for a next step', w.requestedNextStep, br.requested_next_step ?? 0),
+    weighted('declined', w.declined, br.declined ?? 0),
+    weighted('asked to come back later', w.deferred, br.deferred ?? 0),
+    ...flag('trial_reported', w.trialReported),
+    ...flag('trial_positive', w.trialPositive),
+    weighted('trial went badly', w.trialNegative, value('trial_negative')),
+    ...flag('concern_price', w.concernPrice),
+    ...flag('concern_technical', w.concernTechnical),
+    weighted('delivery concern', w.concernDelivery, value('concern_delivery')),
+    weighted('timing concern', w.concernTiming, value('concern_timing')),
+    weighted('committed to a next action', w.nextStepCommitment, value('next_step_commitment')),
+  ];
+}
+
+/**
+ * The part of momentum that comes from the reply alone (no order size, no chases), or
+ * null when the answer set is incomplete. Comparable across replies on the same deal.
+ */
+export function replyMomentum(answers: Record<string, SavedAnswer> | null | undefined): number | null {
+  if (!answers || !isComplete(answers)) return null;
+  return round2(buyerTerms(answers).reduce((sum, t) => sum + t.effect, 0));
+}
+
 export function gradeDeal({ deal, judgment, chasesSinceReply }: GradeInput): DealGrade {
   const baseTier = scoreToTier(calculateLeadScore(deal));
   const quantity = quantityTier(kilogramsStated(deal.buyer_reply));
@@ -150,7 +207,6 @@ export function gradeDeal({ deal, judgment, chasesSinceReply }: GradeInput): Dea
   const review: string[] = [];
   const pRequest = br.requested_next_step ?? 0;
   const pDeclined = br.declined ?? 0;
-  const pDeferred = br.deferred ?? 0;
   if (inUnsureBand(pRequest)) review.push(`unclear whether the buyer asked for a next step (${round2(pRequest)})`);
   if (inUnsureBand(pDeclined)) review.push(`unclear whether the buyer declined (${round2(pDeclined)})`);
   for (const [id, entry] of Object.entries(DEAL_CUTOFFS)) {
@@ -161,26 +217,12 @@ export function gradeDeal({ deal, judgment, chasesSinceReply }: GradeInput): Dea
   }
 
   // 3. Momentum
-  const signal = (id: string) => {
-    const cutoff = DEAL_CUTOFFS[id]?.cutoff;
-    return cutoff !== undefined && value(id) >= cutoff;
-  };
   const w = GRADE_WEIGHTS;
   const chases = Math.min(Math.max(chasesSinceReply, 0), w.maxChases);
   const terms: GradeReason[] = [
-    { label: `asked for a next step (P ${round2(pRequest)})`, effect: w.requestedNextStep * pRequest },
-    { label: `declined (P ${round2(pDeclined)})`, effect: w.declined * pDeclined },
-    { label: `asked to come back later (P ${round2(pDeferred)})`, effect: w.deferred * pDeferred },
-    ...(signal('trial_reported') ? [{ label: LABELS.trial_reported, effect: w.trialReported }] : []),
-    ...(signal('trial_positive') ? [{ label: LABELS.trial_positive, effect: w.trialPositive }] : []),
-    { label: `trial went badly (P ${round2(value('trial_negative'))})`, effect: w.trialNegative * value('trial_negative') },
-    ...(signal('concern_price') ? [{ label: LABELS.concern_price, effect: w.concernPrice }] : []),
-    ...(signal('concern_technical') ? [{ label: LABELS.concern_technical, effect: w.concernTechnical }] : []),
-    { label: `delivery concern (P ${round2(value('concern_delivery'))})`, effect: w.concernDelivery * value('concern_delivery') },
-    { label: `timing concern (P ${round2(value('concern_timing'))})`, effect: w.concernTiming * value('concern_timing') },
-    { label: `committed to a next action (P ${round2(value('next_step_commitment'))})`, effect: w.nextStepCommitment * value('next_step_commitment') },
-    ...(quantity !== 'none' ? [{ label: `order size: ${quantity}`, effect: w.quantity[quantity] }] : []),
-    ...(chases > 0 ? [{ label: `${chases} unanswered chase${chases === 1 ? '' : 's'} since the last reply`, effect: w.perChaseSinceReply * chases }] : []),
+    ...buyerTerms(answers),
+    ...(quantity !== 'none' ? [{ label: `order size: ${quantity}`, effect: w.quantity[quantity], group: 'order' as const }] : []),
+    ...(chases > 0 ? [{ label: `${chases} unanswered chase${chases === 1 ? '' : 's'} since the last reply`, effect: w.perChaseSinceReply * chases, group: 'followup' as const }] : []),
   ];
   const momentum = round2(terms.reduce((sum, t) => sum + t.effect, 0));
   const reasons = terms
@@ -189,7 +231,7 @@ export function gradeDeal({ deal, judgment, chasesSinceReply }: GradeInput): Dea
     .sort((a, b) => Math.abs(b.effect) - Math.abs(a.effect));
   // Display-only answers: shown, never counted.
   for (const id of Object.keys(DEAL_CUTOFFS).filter(id => DEAL_CUTOFFS[id].tier === 'display')) {
-    reasons.push({ label: `${id} (display only, P ${round2(value(id))})`, effect: 0 });
+    reasons.push({ label: `${id} (display only, P ${round2(value(id))})`, effect: 0, group: 'buyer', strength: round2(value(id)) });
   }
 
   // 4. Tier shift — only applied when Laya was sure enough
