@@ -15,6 +15,7 @@ import type { LayaJudgmentRow, ReviewDecisionRow } from '@/lib/crm';
 import { DECISION_EVENT, decisionFor, decisionRow, withDecision } from '@/utils/laya-decisions';
 import { gradeDeal, type DealGrade, type GradeReason, type ReasonGroup } from '@/utils/grade';
 import { withTrend } from '@/utils/laya-trend';
+import LayaSpark from '@/components/LayaSpark';
 import { toSavedJudgment } from '@/utils/laya-review';
 import { chasesSinceLastReply } from '@/utils/interaction-event';
 import { dealInputSha256 } from '@/utils/laya-freshness';
@@ -104,7 +105,10 @@ export default function LayaGradePanel({ deal }: { deal: Deal }) {
   return (
     <details className="group border-b border-clay-hairline" open={grade?.status === 'needs_review' || undefined}>
       <summary className="flex cursor-pointer list-none items-center justify-between py-3 text-sm text-clay-ink marker:hidden">
-        <span className={clsx(grade?.status === 'needs_review' && 'font-medium text-clay-ochre')}>{title}</span>
+        <span className={clsx('inline-flex items-center gap-1.5', grade?.status === 'needs_review' && 'font-medium text-clay-ochre')}>
+          <LayaSpark state={loaded.state === 'loading' ? 'working' : grade?.status === 'graded' ? 'ok' : grade?.status === 'needs_review' ? 'alert' : 'idle'} />
+          {title}
+        </span>
         <ChevronRight className="h-4 w-4 text-clay-muted transition-transform group-open:rotate-90" aria-hidden="true" />
       </summary>
       <div className="space-y-3 pb-4 text-sm" data-testid="laya-grade-panel">

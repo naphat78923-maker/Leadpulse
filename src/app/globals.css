@@ -156,6 +156,38 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .lp-rise { animation: none; }
 }
+
+/* Laya's spark: a slow breathe while working, one settle turn when done. */
+@keyframes laya-spark-breathe {
+  0%, 100% { transform: scale(0.82) rotate(0deg); opacity: 0.55; }
+  50% { transform: scale(1.12) rotate(45deg); opacity: 1; }
+}
+@keyframes laya-spark-settle {
+  from { transform: scale(0.6) rotate(-90deg); opacity: 0; }
+  to { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+.laya-spark-working { transform-origin: center; animation: laya-spark-breathe 1.8s ease-in-out infinite; }
+.laya-spark-settle { transform-origin: center; animation: laya-spark-settle 420ms cubic-bezier(0.23, 1, 0.32, 1) both; }
+
+/* A saved tick that draws itself. */
+@keyframes lp-check-draw {
+  from { stroke-dashoffset: 16; }
+  to { stroke-dashoffset: 0; }
+}
+.lp-check path { stroke-dasharray: 16; animation: lp-check-draw 320ms cubic-bezier(0.23, 1, 0.32, 1) 80ms both; }
+
+/* A number or label that changed pops once. */
+@keyframes lp-pop {
+  0% { transform: scale(0.92); opacity: 0.4; }
+  60% { transform: scale(1.04); opacity: 1; }
+  100% { transform: scale(1); }
+}
+.lp-pop { display: inline-block; animation: lp-pop 260ms cubic-bezier(0.23, 1, 0.32, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .laya-spark-working, .laya-spark-settle, .lp-pop { animation: none; }
+  .lp-check path { animation: none; stroke-dashoffset: 0; }
+}
 /* Swipe rows (tabs, chips) scroll without a visible track. */
 .no-scrollbar {
   scrollbar-width: none;

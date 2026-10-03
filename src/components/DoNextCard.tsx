@@ -13,6 +13,7 @@ import { useCrm } from '@/components/CrmProvider';
 import { useLayaGrades } from '@/hooks/useLayaReviewList';
 import { buildDoNext, type DoNextKind } from '@/utils/do-next';
 import { laneTimelines } from '@/utils/lane-time';
+import LayaSpark from '@/components/LayaSpark';
 
 const PREVIEW = 8;
 
@@ -40,10 +41,13 @@ export default function DoNextCard({ deals, meetings, today }: { deals: Deal[]; 
       <h2 id="do-next" className="mb-1 text-sm font-semibold text-clay-ink">Do next · {items.length}</h2>
       <p className="mb-2 text-xs text-clay-muted">Most pressing first. Each deal is listed once, with every reason.</p>
       <ol className="divide-y divide-clay-hairline">
-        {shown.map(({ deal, reasons }) => (
-          <li key={deal.id} className="py-2">
+        {shown.map(({ deal, reasons }, index) => (
+          <li key={deal.id} className="lp-rise py-2" style={{ animationDelay: `${Math.min(index, 8) * 35}ms` }}>
             <Link href={`/deals?deal=${encodeURIComponent(deal.id)}`} className="block rounded-md hover:bg-clay-surface">
-              <span className="block truncate text-sm font-medium text-clay-ink">{deal.client}</span>
+              <span className="flex items-center gap-1.5 truncate text-sm font-medium text-clay-ink">
+                {(reasons[0].kind === 'asked' || reasons[0].kind === 'review') && <LayaSpark state="alert" className="text-clay-ochre" />}
+                <span className="truncate">{deal.client}</span>
+              </span>
               {reasons.map((reason, index) => (
                 <span key={reason.kind} data-reason={reason.kind}
                   className={clsx('block text-xs', index === 0 ? TONE[reason.kind] : 'text-clay-muted')}>

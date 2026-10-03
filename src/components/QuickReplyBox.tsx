@@ -19,6 +19,8 @@ export default function QuickReplyBox({ deal }: { deal: Deal }) {
   const [channel, setChannel] = useState<ReplyChannel>('dm');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** shows the drawn tick until the next keystroke */
+  const [saved, setSaved] = useState(false);
 
   const save = async () => {
     const reply = buildQuickReply(deal, words, channel, localDateKey());
@@ -34,6 +36,7 @@ export default function QuickReplyBox({ deal }: { deal: Deal }) {
       }
       await refresh();
       setWords('');
+      setSaved(true);
       addToast('Reply saved — Laya will grade it');
     } catch {
       setError('Could not save the reply. Check the deal and try again.');
@@ -48,7 +51,7 @@ export default function QuickReplyBox({ deal }: { deal: Deal }) {
         Paste the buyer&rsquo;s reply
         <textarea
           value={words}
-          onChange={event => setWords(event.target.value)}
+          onChange={event => { setWords(event.target.value); setSaved(false); }}
           rows={3}
           placeholder="Their exact words, as received"
           className="mt-1 w-full rounded-lg border border-clay-hairline bg-transparent px-3 py-2 text-sm font-normal text-clay-ink placeholder:text-clay-muted focus:outline-none focus:ring-2 focus:ring-clay-ink/10"
@@ -66,7 +69,14 @@ export default function QuickReplyBox({ deal }: { deal: Deal }) {
           className="inline-flex h-8 items-center rounded-lg bg-clay-ink px-3 text-xs font-medium text-clay-canvas hover:opacity-90 disabled:opacity-50">
           Save reply
         </button>
-        {deal.buyer_reply && <span className="text-[11px] text-clay-muted">Replaces the saved reply.</span>}
+        {saved ? (
+          <span role="status" className="inline-flex items-center gap-1 text-xs text-clay-success">
+            <svg viewBox="0 0 16 16" className="lp-check h-3.5 w-3.5" aria-hidden="true">
+              <path d="M3 8.5l3.2 3.2L13 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Saved
+          </span>
+        ) : deal.buyer_reply ? <span className="text-[11px] text-clay-muted">Replaces the saved reply.</span> : null}
       </div>
       {error && <p role="alert" className="mt-1.5 text-xs text-clay-error">{error}</p>}
     </section>

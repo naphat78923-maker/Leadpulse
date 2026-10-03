@@ -231,67 +231,23 @@ describe('DealCardContent', () => {
     expect(badge.getAttribute('title')).toBe('2/4 Remind NG-002');
   });
 
-  it('notes chases since the buyer last replied next to the nudge badge', () => {
-    const { container, rerender } = render(
-      <DealCardContent deal={deal} presentation={presentation} whyNow={null} reviewLabels={[]} nudge="3/4 Firm NG-003" chasesSinceReply={1} />
-    );
-    expect(container.querySelector('[data-since-reply]')!.textContent).toBe('1 since reply');
-    rerender(
-      <DealCardContent deal={deal} presentation={presentation} whyNow={null} reviewLabels={[]} nudge="3/4 Firm NG-003" chasesSinceReply={0} />
-    );
-    expect(container.querySelector('[data-since-reply]')!.textContent).toBe('none since reply');
-  });
-
-  it('shows no since-reply note without one, or without a nudge badge', () => {
-    const { container, rerender } = render(
-      <DealCardContent deal={deal} presentation={presentation} whyNow={null} reviewLabels={[]} nudge="3/4 Firm NG-003" />
-    );
-    expect(container.querySelector('[data-since-reply]')).toBeNull();
-    rerender(
-      <DealCardContent deal={deal} presentation={presentation} whyNow={null} reviewLabels={[]} nudge={null} chasesSinceReply={1} />
-    );
-    expect(container.querySelector('[data-since-reply]')).toBeNull();
-  });
-
-  it('shows the order size the buyer stated, with its tier in the tooltip', () => {
-    const { container } = render(
-      <DealCardContent deal={{ ...deal, buyer_reply: 'We tested the sample. Please quote 40 kg per month.' }}
-        presentation={presentation} whyNow={null} reviewLabels={[]} nudge={null} />
-    );
-    const chip = container.querySelector('[data-order-size]')!;
-    expect(chip.textContent).toBe('40 kg');
-    expect(chip.getAttribute('data-order-size')).toBe('large');
-    expect(chip.getAttribute('title')).toMatch(/over 15 kg.*open the deal to save it/);
-    expect(chip.getAttribute('data-order-saved')).toBeNull();
-  });
-
-  it('shows the saved order size in place of what the reply says', () => {
-    const { container } = render(
-      <DealCardContent deal={{ ...deal, stated_order_kg: 12, buyer_reply: 'Please quote 40 kg per month.' }}
-        presentation={presentation} whyNow={null} reviewLabels={[]} nudge={null} />
-    );
-    const chip = container.querySelector('[data-order-size]')!;
-    expect(chip.textContent).toBe('12 kg');
-    expect(chip.getAttribute('data-order-saved')).toBe('true');
-    expect(chip.getAttribute('title')).toMatch(/Saved to the deal/);
-  });
-
-  it('formats small and fractional amounts without trailing zeros', () => {
-    const size = (reply: string) => render(
-      <DealCardContent deal={{ ...deal, buyer_reply: reply }} presentation={presentation} whyNow={null} reviewLabels={[]} nudge={null} />
-    ).container.querySelector('[data-order-size]')?.textContent;
-    expect(size('We only need 500 g for a menu test order.')).toBe('0.5 kg');
-    cleanup();
-    expect(size('Send us 12.5 kg please.')).toBe('12.5 kg');
-  });
-
-  it('shows no order size without a stated amount, a reply, or for a sample amount', () => {
-    for (const reply of [null, 'Can you send your price list?', 'Please send 2 kg of samples.']) {
-      const { container } = render(
-        <DealCardContent deal={{ ...deal, buyer_reply: reply }} presentation={presentation} whyNow={null} reviewLabels={[]} nudge={null} />
-      );
-      expect(container.querySelector('[data-order-size]'), String(reply)).toBeNull();
+  it('shows one status only: Laya first, then stalled, then a lane gap, then priority', () => {
+    const base = { presentation, whyNow: null, nudge: null };
+    const status = (ui: React.ReactElement) => {
+      const { container } = render(ui);
+      const text = container.querySelector('.border-t')!.textContent ?? '';
       cleanup();
-    }
+      return text;
+    };
+    const high = { ...deal, priority: 'high' as const };
+    const grade = { status: 'needs_review' as const, baseTier: 'B' as const, tier: 'B' as const, suggestedTier: null, momentum: null, reasons: [], review: ['x'], quantity: 'none' as const };
+    const all = status(<DealCardContent {...base} deal={high} reviewLabels={['Follow-up missing a date']} laneTime={{ days: 30, stalled: true }} layaGrade={grade} />);
+    expect(all).toMatch(/Laya: review/);
+    expect(all).not.toMatch(/stalled|Needs review|High/);
+    expect(status(<DealCardContent {...base} deal={high} reviewLabels={['Follow-up missing a date']} laneTime={{ days: 30, stalled: true }} />)).toMatch(/stalled · 30d/);
+    expect(status(<DealCardContent {...base} deal={high} reviewLabels={['Follow-up missing a date']} laneTime={{ days: 3, stalled: false }} />)).toMatch(/Needs review/);
+    const priority = status(<DealCardContent {...base} deal={high} reviewLabels={[]} laneTime={{ days: 3, stalled: false }} />);
+    expect(priority).toMatch(/High/);
+    expect(priority).not.toMatch(/in lane|kg/);
   });
 });

@@ -57,6 +57,15 @@ export default function PipelineToolbar({
   compact,
   onToggleCompact,
 }: PipelineToolbarProps) {
+  // The less frequent filters; one that is empty is listed only while it is the active one.
+  const attentionOptions = ([
+    ['waiting-on-you', 'Waiting on you', counts.waitingOnYou ?? 0],
+    ['needs-review', 'Needs review', counts.needsReview],
+    ['laya-review', 'Laya review', counts.layaReview],
+    ['stalled', 'Stalled', counts.stalled ?? 0],
+    ['missing-data', 'Missing data', counts.missingData ?? 0],
+  ] as Array<[BoardAttentionFilter, string, number]>).filter(([value, , count]) => count > 0 || attentionFilter === value);
+
   return (
     <>
     {/* One toolbar: search, quick filters, product and priority, then a live count. */}
@@ -78,22 +87,6 @@ export default function PipelineToolbar({
           ['all', 'All', counts.all],
           ['overdue', 'Overdue', counts.overdue],
           ['today', 'Due today', counts.today],
-          ['needs-review', 'Needs review', counts.needsReview],
-          // The buyer spoke last: only shown when a deal is waiting (or it is selected).
-          ...((counts.waitingOnYou ?? 0) > 0 || attentionFilter === 'waiting-on-you'
-            ? [['waiting-on-you', 'Waiting on you', counts.waitingOnYou ?? 0] as [BoardAttentionFilter, string, number]]
-            : []),
-          ...((counts.stalled ?? 0) > 0 || attentionFilter === 'stalled'
-            ? [['stalled', 'Stalled', counts.stalled ?? 0] as [BoardAttentionFilter, string, number]]
-            : []),
-          // Laya's review queue: only shown when something is waiting (or it is selected).
-          ...(counts.layaReview > 0 || attentionFilter === 'laya-review'
-            ? [['laya-review', 'Laya review', counts.layaReview] as [BoardAttentionFilter, string, number]]
-            : []),
-          // Data gaps: same rule — hidden when every open deal is complete.
-          ...((counts.missingData ?? 0) > 0 || attentionFilter === 'missing-data'
-            ? [['missing-data', 'Missing data', counts.missingData ?? 0] as [BoardAttentionFilter, string, number]]
-            : []),
         ] as Array<[BoardAttentionFilter, string, number]>).map(([value, label, count]) => (
           <button
             key={value}
@@ -107,12 +100,33 @@ export default function PipelineToolbar({
             )}
           >
             {label}
-            <span className={clsx('text-xs',
-              value === 'overdue' && count > 0 ? 'font-semibold text-clay-error'
-                : (value === 'laya-review' || value === 'waiting-on-you') && count > 0 ? 'font-semibold text-clay-ochre' : 'text-clay-muted')}>{count}</span>
+            <span className={clsx('text-xs', value === 'overdue' && count > 0 ? 'font-semibold text-clay-error' : 'text-clay-muted')}>{count}</span>
           </button>
         ))}
       </div>
+
+      {/* Phone: the four menus share one swipe row instead of three stacked lines. */}
+      <div className="-mx-4 flex gap-2 overflow-x-auto no-scrollbar px-4 sm:contents [&>label]:shrink-0">
+      {/* Every other reason a deal needs a look, in one menu; empty ones are left out. */}
+      <label>
+        <span className="sr-only">Needs attention</span>
+        <select
+          aria-label="Needs attention"
+          value={attentionOptions.some(([value]) => value === attentionFilter) ? attentionFilter : ''}
+          onChange={event => onAttentionChange((event.target.value || 'all') as BoardAttentionFilter)}
+          className={clsx(
+            'h-9 rounded-lg border px-2.5 text-base focus:outline-none focus:ring-2 focus:ring-clay-lavender/40 md:text-sm',
+            attentionOptions.some(([value]) => value === attentionFilter)
+              ? 'border-clay-lavender/60 bg-clay-lavender/20 text-clay-ink'
+              : 'border-clay-hairline bg-white text-clay-body dark:bg-clay-card',
+          )}
+        >
+          <option value="">Needs attention…</option>
+          {attentionOptions.map(([value, label, count]) => (
+            <option key={value} value={value}>{label} · {count}</option>
+          ))}
+        </select>
+      </label>
 
       <label>
         <span className="sr-only">Filter by product</span>
@@ -153,6 +167,7 @@ export default function PipelineToolbar({
           <option value="quietest">Sort: Quietest</option>
         </select>
       </label>
+      </div>
 
       {filtersActive && (
         <button
