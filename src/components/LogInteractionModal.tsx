@@ -18,6 +18,7 @@ import {
   validateScheduleIntent,
   type ScheduleIntent,
 } from '@/utils/deal-schedule';
+import { suggestedFollowupDays } from '@/utils/followup-suggestion';
 import { directionForEvent, type InteractionEventKind } from '@/utils/interaction-event';
 import { localDateKey } from '@/utils/deal-board';
 import ModalShell from '@/components/motion/ModalShell';
@@ -147,6 +148,8 @@ export default function LogInteractionModal({
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>(initialContactIds || []);
   const [followupChoice, setFollowupChoice] = useState<FollowupChoice>('keep');
   const [followupDate, setFollowupDate] = useState('');
+  /** Once the follow-up row is touched, the prompt for a date goes away. */
+  const [followupTouched, setFollowupTouched] = useState(false);
   /** Typed = replace the deal's next action in the same write; empty = keep, never write. */
   const [nextActionEdit, setNextActionEdit] = useState('');
   const [nextWorkflowAction, setNextWorkflowAction] = useState<DealWorkflowAction | ''>('');
@@ -179,6 +182,7 @@ export default function LogInteractionModal({
       setKind(initialKind ?? 'outbound_attempt');
       setChannel('call');
       setFollowupChoice('keep');
+      setFollowupTouched(false);
       setConfirmSuccess(false);
       setNotes('');
       setBuyerWords('');
@@ -208,6 +212,12 @@ export default function LogInteractionModal({
   // A move into Testing or a Follow-up carries the date the lane needs, so it OWNS the deal's
   // schedule for this save; otherwise the follow-up choice does.
   const laneRequiresDate = isChangingLane && (selectedAction === 'testing' || selectedAction === 'reschedule');
+  const today = localDateKey();
+  // Outreach on a deal with no follow-up date: point at the first nudge rung. Never
+  // preselected — logging a touch does not write the deal unless a date is chosen.
+  const suggestedDays = followupTouched || !deal
+    ? null
+    : suggestedFollowupDays({ kind, followupDate: deal.followup_date, laneRequiresDate });
   const scheduleIntent: ScheduleIntent =
     followupChoice === 'pick'
       ? { mode: 'replace', date: followupDate }
@@ -216,7 +226,6 @@ export default function LogInteractionModal({
         : { mode: 'preserve' };
   const scheduleUpdates = scheduleUpdateForIntent(deal ?? null, scheduleIntent);
 
-  const today = localDateKey();
   const quickDates = QUICK_FOLLOWUPS.map(q => ({ ...q, date: addDaysToDateKey(today, q.days) }));
   const isQuickDate = followupChoice === 'pick' && quickDates.some(q => q.date === followupDate);
   const contactCount = selectedContactIds.length;
@@ -232,6 +241,7 @@ export default function LogInteractionModal({
   };
 
   const chooseFollowup = (choice: FollowupChoice, dateKey = '') => {
+    setFollowupTouched(true);
     setFollowupChoice(choice);
     setFollowupDate(dateKey);
     setSaveError(null);
@@ -606,9 +616,18 @@ export default function LogInteractionModal({
                 aria-label="Next follow-up date"
                 value={followupDate}
                 min={today}
-                onChange={e => setFollowupDate(e.target.value)}
+                onChange={e => { setFollowupTouched(true); setFollowupChoice('pick'); setFollowupDate(e.target.value); }}
                 className="mt-2 h-9 w-full rounded-lg border border-clay-hairline bg-transparent px-3 text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-clay-ink/10"
               />
+            )}
+            {suggestedDays !== null && (
+              <p data-followup-suggested className="mt-1.5 text-xs text-clay-muted">
+                This deal has no follow-up date, so it will not come back on its own.{' '}
+                <button type="button" className="underline decoration-clay-hairline underline-offset-2 hover:text-clay-ink"
+                  onClick={() => chooseFollowup('pick', addDaysToDateKey(today, suggestedDays))}>
+                  Set +{suggestedDays} days
+                </button>
+              </p>
             )}
             {laneRequiresDate && !followupDate && (
               <p className="mt-1.5 text-xs text-clay-muted">No date picked: the deal keeps its current follow-up.</p>
