@@ -8,8 +8,22 @@ import { useState } from 'react';
 import LayaSpark, { type SparkState } from '@/components/LayaSpark';
 import ActionButton from '@/components/ActionButton';
 import AnimatedCount from '@/components/AnimatedCount';
+import { Blob, type BlobState } from '@/components/blob';
 
 const SPARK_STATES: SparkState[] = ['idle', 'working', 'ok', 'alert'];
+
+const MASCOT_STATES: Array<{ state: BlobState; when: string }> = [
+  { state: 'idle', when: 'at rest' },
+  { state: 'grading', when: 'Laya is reading a reply' },
+  { state: 'drowsy', when: 'the grader has stopped' },
+  { state: 'watch', when: 'a card is being dragged' },
+  { state: 'land', when: 'a card just landed' },
+  { state: 'thinking', when: 'waiting on the buyer' },
+  { state: 'nudge', when: 'time to reach out' },
+  { state: 'alert', when: 'overdue' },
+  { state: 'sleep', when: 'parked' },
+  { state: 'joy', when: 'won' },
+];
 
 function Demo({ title, note, children }: { title: string; note: string; children: React.ReactNode }) {
   return (
@@ -28,6 +42,7 @@ export default function MotionLab() {
   const [busy, setBusy] = useState(false);
   const [count, setCount] = useState(12);
   const [replay, setReplay] = useState(0);
+  const [mascot, setMascot] = useState<BlobState>('idle');
 
   const runButton = () => {
     setBusy(true);
@@ -41,6 +56,16 @@ export default function MotionLab() {
         <h1 className="text-xl font-semibold text-clay-ink">Motion</h1>
         <p className="text-sm text-clay-muted">Every small animation in LeadPulse. With reduced motion on, none of them move.</p>
       </header>
+
+      <Demo title="The mascot" note={`Now: ${MASCOT_STATES.find(m => m.state === mascot)?.when}. Move the pointer while it watches; pick land again to replay the bounce.`}>
+        <span data-testid="lab-mascot" className="mr-2"><Blob key={mascot === 'land' ? replay : 'mascot'} state={mascot} size={72} follow={mascot === 'watch'} aria-label={`Mascot: ${mascot}`} /></span>
+        <div className="flex flex-1 flex-wrap gap-2">
+          {MASCOT_STATES.map(({ state }) => (
+            <button key={state} type="button" aria-pressed={mascot === state} className={chip}
+              onClick={() => { setMascot(state); if (state === 'land') setReplay(n => n + 1); }}>{state}</button>
+          ))}
+        </div>
+      </Demo>
 
       <Demo title="Laya's spark" note="Breathes while work is waiting. Go from working to ok to see it morph into a tick and back.">
         <span className="inline-flex items-center gap-2 text-base">

@@ -9,6 +9,7 @@ import Link from 'next/link';
 import clsx from 'clsx';
 import { STALLED_AFTER_MINUTES, formatAgo, type LayaStatus } from '@/utils/laya-status';
 import LayaSpark from '@/components/LayaSpark';
+import { Blob } from '@/components/blob';
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -52,7 +53,14 @@ export default function LayaStatusLine({ status, load, now, missingReplyWords, c
   return (
     <div data-testid="laya-status" data-health={status.health} className={clsx('text-xs text-clay-muted', className)}>
       <p>
-        <LayaSpark className="mr-1.5" state={status.health === 'stalled' ? 'alert' : status.health === 'waiting' ? 'working' : status.health === 'ok' ? 'ok' : 'idle'} />
+        {/* The mascot carries the two states worth noticing: grading, and the grader asleep. */}
+        {status.health === 'waiting' || status.health === 'stalled' ? (
+          <span data-mascot={status.health === 'waiting' ? 'grading' : 'drowsy'} className="mr-1.5 inline-block align-middle">
+            <Blob state={status.health === 'waiting' ? 'grading' : 'drowsy'} size={20} aria-label="" />
+          </span>
+        ) : (
+          <LayaSpark className="mr-1.5" state={status.health === 'ok' ? 'ok' : 'idle'} />
+        )}
         Laya: {parts.join(' · ')}
         {missing && <> · {missing}</>}
       </p>

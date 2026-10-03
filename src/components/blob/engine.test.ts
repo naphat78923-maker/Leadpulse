@@ -67,4 +67,35 @@ describe('BlobEngine', () => {
     e.setLook({ yaw: Number.NaN, pitch: 0, mix: 1, wander: 0 })
     expect(e.sample(1).bodyPath).not.toContain('NaN')
   })
+
+  it('grading shows three dots that take turns', () => {
+    const e = new BlobEngine()
+    e.setState('grading', 0)
+    const a = e.sample(2)
+    const b = e.sample(2.4)
+    expect(a.dots).toHaveLength(3)
+    expect(a.dots.map(d => d.y)).not.toEqual(b.dots.map(d => d.y))
+  })
+
+  it('land squashes on impact and settles back to the resting shape', () => {
+    const e = new BlobEngine()
+    e.setState('land', 0)
+    const impact = STATES.land.pose(0)
+    const settled = STATES.land.pose(3)
+    const rest = STATES.idle.pose(0)
+    expect(impact.sil).not.toEqual(rest.sil)
+    expect(Math.abs(settled.offY)).toBeLessThan(0.001)
+    expect(settled.eyes[0].tilt).toBeCloseTo(0, 3)
+    expect(e.sample(0.3).bodyPath).not.toBe(e.sample(3).bodyPath)
+  })
+
+  it('drowsy keeps the lids under half open and never fully shut; watch opens them wide', () => {
+    for (const t of [0, 1, 2, 3, 3.9, 4.1]) {
+      const open = STATES.drowsy.pose(t).eyes[0].open
+      expect(open).toBeLessThan(0.5)
+      expect(open).toBeGreaterThan(0.05)
+    }
+    expect(STATES.watch.pose(0).eyes[0].w).toBeGreaterThan(STATES.idle.pose(0).eyes[0].w)
+    expect(STATES.watch.pose(0).dots).toHaveLength(0)
+  })
 })
