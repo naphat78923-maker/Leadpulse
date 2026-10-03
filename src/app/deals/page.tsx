@@ -46,7 +46,6 @@ import { buildLayaStatus } from '@/utils/laya-status';
 import { buildWaitingOnYou } from '@/utils/waiting-on-you';
 import { lastContactDates, quietLabel } from '@/utils/last-contact';
 import { buildStalled, daysInLane, laneTimelines, pipelineOutcomes, stallThresholds } from '@/utils/lane-time';
-import { chaseStatusSinceReply } from '@/utils/interaction-event';
 import { calculateLeadScore, scoreToTier, type LeadTier } from '@/utils/lead-scoring';
 import { BoardAttentionFilter, BoardSort, capLane, LANE_CARD_CAP, reviewReasons, REVIEW_LABEL, buildReviewReport, buildReviewFix, filterAndSortBoardDeals, findDealsMatchingSearch, getDoNowCounts, localDateKey } from '@/utils/deal-board';
 import { buildCloseUpdate } from '@/utils/deal-close';
@@ -513,9 +512,6 @@ function DealsBoard() {
   const renderDealCard = (deal: Deal, opts?: { grip?: boolean; compact?: boolean; dragging?: boolean }) => {
     const action = getWorkflowAction(deal);
     const sendCount = outboundSendCountForDeal(dbMeetings || [], deal.id);
-    // Worth a note only when the buyer has replied and it changes the picture.
-    const sinceReply = chaseStatusSinceReply(dbMeetings || [], deal.id);
-    const chasesSinceReply = sinceReply.buyerReplied && sinceReply.chases !== sendCount ? sinceReply.chases : null;
     const derived = deriveNudge(deal, todayStr, {
       sendCount,
     });
@@ -551,7 +547,6 @@ function DealsBoard() {
             compact={isCompact}
             showGrip={opts?.grip}
             layaGrade={layaGrades.get(deal.id)}
-            chasesSinceReply={chasesSinceReply}
             quietNote={boardSort === 'quietest' ? quietLabel(lastContact.get(deal.id), todayStr) : null}
             laneTime={action !== 'outreach' && isOnJourneyBoard(deal) && timelines.has(deal.id)
               ? { days: daysInLane(timelines.get(deal.id)!, statusNow), stalled: stalledIds.has(deal.id) }

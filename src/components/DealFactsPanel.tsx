@@ -10,6 +10,7 @@ import { ChevronRight } from 'lucide-react';
 import type { CallChecklist, Deal } from '@/types/crm';
 import * as crm from '@/lib/crm';
 import { useCrm } from '@/components/CrmProvider';
+import ActionButton from '@/components/ActionButton';
 import { kilogramsStated } from '@/utils/order-quantity';
 
 const input = 'h-8 rounded-lg border border-clay-hairline bg-transparent px-2.5 text-xs text-clay-ink focus:outline-none focus:ring-2 focus:ring-clay-ink/10';
@@ -142,10 +143,7 @@ export default function DealFactsPanel({ deal }: { deal: Deal }) {
                 <input value={checklist.current_product} onChange={e => setChecklist({ ...checklist, current_product: e.target.value })} className={`${input} mt-0.5 w-full`} />
               </label>
               <div className="flex gap-2">
-                <button type="button" disabled={saving} onClick={saveChecklist}
-                  className="inline-flex h-8 items-center rounded-lg bg-clay-ink px-3 text-xs font-medium text-clay-canvas hover:opacity-90 disabled:opacity-50">
-                  Save checklist
-                </button>
+                <ActionButton busy={saving} onClick={saveChecklist}>Save checklist</ActionButton>
                 <button type="button" className={button} disabled={saving} onClick={() => { setChecklist(null); setError(null); }}>Cancel</button>
               </div>
             </div>

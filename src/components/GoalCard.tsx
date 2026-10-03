@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Deal } from '@/types/crm';
 import * as crm from '@/lib/crm';
 import { useCrm } from '@/components/CrmProvider';
+import ActionButton from '@/components/ActionButton';
 import { formatBaht } from '@/utils/format';
 import { goalProgress, monthStart } from '@/utils/goal-progress';
 import { laneTimelines } from '@/utils/lane-time';
@@ -81,10 +82,7 @@ export default function GoalCard({ deals, today }: { deals: Deal[]; today: strin
             placeholder="e.g. 150000"
             className="h-8 w-36 rounded-lg border border-clay-hairline bg-transparent px-2.5 text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-clay-ink/10"
           />
-          <button type="button" disabled={!valid || saving} onClick={save}
-            className="inline-flex h-8 items-center rounded-lg bg-clay-ink px-3 text-xs font-medium text-clay-canvas hover:opacity-90 disabled:opacity-50">
-            Save
-          </button>
+          <ActionButton busy={saving} disabled={!valid} onClick={save}>Save</ActionButton>
           <button type="button" disabled={saving} onClick={() => setEditing(false)}
             className="inline-flex h-8 items-center rounded-lg border border-clay-hairline px-3 text-xs font-medium text-clay-ink">
             Cancel

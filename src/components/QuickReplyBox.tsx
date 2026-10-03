@@ -9,6 +9,7 @@ import type { Deal } from '@/types/crm';
 import * as crm from '@/lib/crm';
 import { useCrm } from '@/components/CrmProvider';
 import { useToast } from '@/components/ToastProvider';
+import ActionButton from '@/components/ActionButton';
 import { localDateKey } from '@/utils/deal-board';
 import { REPLY_CHANNELS, buildQuickReply, type ReplyChannel } from '@/utils/quick-reply';
 
@@ -19,6 +20,8 @@ export default function QuickReplyBox({ deal }: { deal: Deal }) {
   const [channel, setChannel] = useState<ReplyChannel>('dm');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** shows the drawn tick until the next keystroke */
+  const [saved, setSaved] = useState(false);
 
   const save = async () => {
     const reply = buildQuickReply(deal, words, channel, localDateKey());
@@ -34,6 +37,7 @@ export default function QuickReplyBox({ deal }: { deal: Deal }) {
       }
       await refresh();
       setWords('');
+      setSaved(true);
       addToast('Reply saved — Laya will grade it');
     } catch {
       setError('Could not save the reply. Check the deal and try again.');
@@ -48,7 +52,7 @@ export default function QuickReplyBox({ deal }: { deal: Deal }) {
         Paste the buyer&rsquo;s reply
         <textarea
           value={words}
-          onChange={event => setWords(event.target.value)}
+          onChange={event => { setWords(event.target.value); setSaved(false); }}
           rows={3}
           placeholder="Their exact words, as received"
           className="mt-1 w-full rounded-lg border border-clay-hairline bg-transparent px-3 py-2 text-sm font-normal text-clay-ink placeholder:text-clay-muted focus:outline-none focus:ring-2 focus:ring-clay-ink/10"
@@ -62,11 +66,10 @@ export default function QuickReplyBox({ deal }: { deal: Deal }) {
             {REPLY_CHANNELS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
-        <button type="button" disabled={saving || !words.trim()} onClick={save}
-          className="inline-flex h-8 items-center rounded-lg bg-clay-ink px-3 text-xs font-medium text-clay-canvas hover:opacity-90 disabled:opacity-50">
-          Save reply
-        </button>
-        {deal.buyer_reply && <span className="text-[11px] text-clay-muted">Replaces the saved reply.</span>}
+        <ActionButton busy={saving} disabled={!words.trim()} onClick={save}>Save reply</ActionButton>
+        {saved ? (
+          <span role="status" className="lp-rise text-xs text-clay-success">Saved</span>
+        ) : deal.buyer_reply ? <span className="text-[11px] text-clay-muted">Replaces the saved reply.</span> : null}
       </div>
       {error && <p role="alert" className="mt-1.5 text-xs text-clay-error">{error}</p>}
     </section>

@@ -8,7 +8,6 @@ import { formatBaht } from '@/utils/format';
 import CompanyLogo from '@/components/CompanyLogo';
 import LayaGradeChip from '@/components/LayaGradeChip';
 import type { DealGrade } from '@/utils/grade';
-import { kilogramsStated, quantityTier, type QuantityTier } from '@/utils/order-quantity';
 
 interface DealCardContentProps {
   deal: Deal;
@@ -21,26 +20,10 @@ interface DealCardContentProps {
   showGrip?: boolean;
   /** Laya's grade for this deal, when it has a reply to grade */
   layaGrade?: DealGrade;
-  /**
-   * Unanswered chases since the buyer's last reply — only when the buyer has replied and
-   * this differs from the badge's lifetime count; null otherwise.
-   */
-  chasesSinceReply?: number | null;
   /** how long since the last contact, shown while the board is sorted quietest-first */
   quietNote?: string | null;
-  /** days in the current lane, and whether that is past the lane's stall threshold */
+  /** days in the current lane; only a stalled deal shows it on the card */
   laneTime?: { days: number; stalled: boolean } | null;
-}
-
-const QUANTITY_TIER_LABEL: Record<Exclude<QuantityTier, 'none'>, string> = {
-  small: 'small — under 5 kg',
-  moderate: 'moderate — 5 to 15 kg',
-  large: 'large — over 15 kg',
-};
-
-/** "40 kg", "0.5 kg", "12.5 kg" — no trailing zeros. */
-function formatKg(kg: number): string {
-  return `${Number(kg.toFixed(2))} kg`;
 }
 
 export default function DealCardContent({
@@ -53,18 +36,13 @@ export default function DealCardContent({
   compact = false,
   showGrip = false,
   layaGrade,
-  chasesSinceReply = null,
   quietNote = null,
   laneTime = null,
 }: DealCardContentProps) {
   const { contact, companyName, companyLogoUrl, product, nextAction, timing } = presentation;
   const hasConcreteNextAction = isConcreteNextAction(deal.next_action);
   const nudgeText = nudgeChipLabel(nudge);
-  // The order size the buyer stated: the figure Pat saved, else what a code rule reads in
-  // the reply (dashed until saved). Never written to the deal's value.
-  const statedKg = deal.stated_order_kg ?? kilogramsStated(deal.buyer_reply);
-  const kgSaved = deal.stated_order_kg != null;
-  const statedTier = quantityTier(statedKg);
+  const hasLayaChip = !!layaGrade && layaGrade.status !== 'not_graded';
 
   return (
     <div className="min-w-0 space-y-2.5">
@@ -112,45 +90,12 @@ export default function DealCardContent({
         >
           {timing.label}{timing.date ? ` · ${timing.date}` : ''}
         </span>
-        {deal.priority === 'high' && (
-          <span className="rounded bg-clay-coral/15 px-1.5 py-0.5 text-[10px] font-semibold text-clay-coral">High</span>
-        )}
         {deal.value != null && (
           <span className="ml-auto font-semibold text-clay-ink" title="Deal value">{formatBaht(deal.value)}</span>
-        )}
-        {statedKg !== null && statedTier !== 'none' && (
-          <span
-            data-order-size={statedTier}
-            data-order-saved={kgSaved || undefined}
-            title={`Order size the buyer stated: ${QUANTITY_TIER_LABEL[statedTier]}. ${kgSaved ? 'Saved to the deal.' : 'Read from their reply; open the deal to save it.'}`}
-            className={clsx('rounded border px-1.5 py-0.5 text-[10px] font-medium text-clay-body', kgSaved ? 'border-clay-ink/30' : 'border-dashed border-clay-hairline')}
-          >
-            {formatKg(statedKg)}
-          </span>
         )}
         {nudgeText && (
           <span data-nudge-badge title={nudge || undefined} className={clsx('rounded border px-1.5 py-0.5 text-[11px] font-semibold', nudgeColorClass(nudgeStage))}>
             {nudgeText}
-          </span>
-        )}
-        {nudgeText && chasesSinceReply !== null && (
-          <span
-            data-since-reply
-            title="The badge counts every chase on this deal. This counts only the chases since the buyer last replied — the number Laya's grade uses."
-            className="text-[10px] text-clay-muted"
-          >
-            {chasesSinceReply === 0 ? 'none since reply' : `${chasesSinceReply} since reply`}
-          </span>
-        )}
-        {laneTime && laneTime.days > 0 && (
-          <span
-            data-lane-days={laneTime.stalled ? 'stalled' : 'ok'}
-            title={laneTime.stalled
-              ? 'Stalled: in this lane past its limit (14 days, or 1.2× what won deals took once three have passed through).'
-              : 'Days since the deal entered this lane, read from the activity log.'}
-            className={clsx('text-[10px]', laneTime.stalled ? 'font-semibold text-clay-ochre' : 'text-clay-muted')}
-          >
-            {laneTime.stalled ? `stalled · ${laneTime.days}d in lane` : `${laneTime.days}d in lane`}
           </span>
         )}
         {quietNote && (
@@ -158,12 +103,25 @@ export default function DealCardContent({
             {quietNote}
           </span>
         )}
-        <LayaGradeChip grade={layaGrade} />
-        {reviewLabels.length > 0 && (
+        {/* One status only, the most pressing: Laya's grade, then stalled, then a lane gap, then priority.
+            Everything else (order size, chases since reply, days in lane) lives in the deal panel. */}
+        {hasLayaChip ? (
+          <LayaGradeChip grade={layaGrade} />
+        ) : laneTime?.stalled ? (
+          <span
+            data-lane-days="stalled"
+            title="Stalled: in this lane past its limit (14 days, or 1.2× what won deals took once three have passed through)."
+            className="text-[10px] font-semibold text-clay-ochre"
+          >
+            stalled · {laneTime.days}d
+          </span>
+        ) : reviewLabels.length > 0 ? (
           <span title={reviewLabels.join(' · ')} className="inline-flex items-center gap-1 rounded bg-clay-lavender/20 px-1.5 py-0.5 text-[10px] font-medium text-clay-ink">
             <AlertCircle className="h-3 w-3" aria-hidden="true" /> Needs review
           </span>
-        )}
+        ) : deal.priority === 'high' ? (
+          <span className="rounded bg-clay-coral/15 px-1.5 py-0.5 text-[10px] font-semibold text-clay-coral">High</span>
+        ) : null}
       </div>
     </div>
   );

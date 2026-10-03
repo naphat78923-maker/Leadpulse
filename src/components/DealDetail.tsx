@@ -41,6 +41,7 @@ import StakeholderMiniMap from '@/components/StakeholderMiniMap';
 import LayaScoreCard from '@/components/LayaScoreCard';
 import DealFactsPanel from '@/components/DealFactsPanel';
 import QuickReplyBox from '@/components/QuickReplyBox';
+import DealTimeline from '@/components/DealTimeline';
 import LayaGradePanel from '@/components/LayaGradePanel';
 import type { OutreachLanguage } from '@/types/crm';
 import { motion } from 'framer-motion';
@@ -631,6 +632,8 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
           )}
 
           {!isClosed && !editing && <QuickReplyBox deal={deal} />}
+
+          {!editing && <DealTimeline deal={deal} />}
 
           {/* Everything else, one quiet list. Editing opens the sections so every field is reachable. */}
           <div className="border-t border-clay-hairline">
