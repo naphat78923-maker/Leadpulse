@@ -1,6 +1,7 @@
 // ─── A deal card's Laya grade, in one small chip ───
 // review → amber "Laya: review"; graded with a tier move → "Laya ↑ A" / "Laya ↓ C";
 // graded, tier kept → muted "Laya B"; no reply or not graded → nothing (cards stay lean).
+// "· warmer" / "· cooler" follows when the reading moved against the previous reply.
 
 import clsx from 'clsx';
 import type { DealGrade } from '@/utils/grade';
@@ -18,7 +19,11 @@ export default function LayaGradeChip({ grade }: { grade?: DealGrade }) {
     );
   }
   const move = Math.sign(ORDER.indexOf(grade.tier) - ORDER.indexOf(grade.baseTier));
-  const title = grade.reasons.slice(0, 3).map(r => r.label).join(' · ');
+  const trend = grade.trend && grade.trend.direction !== 'steady' ? grade.trend.direction : null;
+  const title = [
+    ...(trend ? [`${trend === 'up' ? 'warmer' : 'cooler'} than the previous reply`] : []),
+    ...grade.reasons.slice(0, 3).map(r => r.label),
+  ].join(' · ');
   return (
     <span data-laya-chip={move > 0 ? 'up' : move < 0 ? 'down' : 'kept'} title={title}
       className={clsx('rounded border px-1.5 py-0.5 text-[10px] font-semibold',
@@ -26,6 +31,7 @@ export default function LayaGradeChip({ grade }: { grade?: DealGrade }) {
         move < 0 && 'border-clay-error/30 bg-clay-error/10 text-clay-error',
         move === 0 && 'border-clay-hairline text-clay-muted')}>
       Laya {move > 0 ? '↑ ' : move < 0 ? '↓ ' : ''}{grade.tier}
+      {trend && <span data-laya-trend={trend} className="ml-1 font-normal">{trend === 'up' ? '· warmer' : '· cooler'}</span>}
     </span>
   );
 }

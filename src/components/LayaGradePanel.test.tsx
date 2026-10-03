@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { Deal } from '@/types/crm';
 import LAYA_CUTOFFS from '@/utils/laya-cutoffs.json';
 import { dealInputSha256 } from '@/utils/laya-freshness';
@@ -58,6 +58,15 @@ describe('LayaGradePanel', () => {
     expect(panel.textContent).toMatch(/buyer reported a good trial/);
     expect(panel.textContent).toMatch(/order size over 15 kg/);
     expect(crmMocks.getLatestDealJudgment).toHaveBeenCalledWith(deal.id);
+    // Reasons are grouped; numbers stay hidden until asked for.
+    expect(panel.querySelector('[data-reason-group="buyer"]')!.textContent).toMatch(/What the buyer said.*asked for a next step/);
+    expect(panel.querySelector('[data-reason-group="order"]')!.textContent).toMatch(/order size: large/);
+    expect(panel.textContent).not.toMatch(/\(P 0\.9\)|momentum|declined/);
+    fireEvent.click(screen.getByRole('button', { name: 'Show the numbers' }));
+    expect(panel.textContent).toMatch(/asked for a next step \(P 0\.9\).*\+0\.27/);
+    expect(panel.textContent).toMatch(/momentum \+/);
+    // No history reader in this mock: the grade shows without a trend.
+    expect(screen.queryByTestId('laya-trend')).toBeNull();
   });
 
   it('never applies a judgment made on an older reply', async () => {
@@ -91,5 +100,18 @@ describe('LayaGradePanel', () => {
     render(<LayaGradePanel deal={deal} />);
     expect(await screen.findByText('Laya grade · unavailable')).toBeTruthy();
     expect(screen.getByTestId('laya-grade-panel').textContent).toMatch(/deterministic tier is unaffected/);
+  });
+
+  it('says whether this reply reads warmer or cooler than the previous one', async () => {
+    const sha = (await dealInputSha256(deal))!;
+    const current = row(sha, warm, { trial_reported: 0.9, trial_positive: 0.9 });
+    const previous = { ...row('b'.repeat(64), { requested_next_step: 0.1, declined: 0.02, deferred: 0.02, unclear: 0.8, no_commitment: 0.06 }), scored_at: '2026-09-20T12:00:00Z' };
+    crmMocks.getLatestDealJudgment.mockResolvedValue(current);
+    (crmMocks as Record<string, unknown>).getDealJudgmentHistory = vi.fn().mockResolvedValue([current, previous]);
+    render(<LayaGradePanel deal={deal} />);
+    const trend = await screen.findByTestId('laya-trend');
+    expect(trend.getAttribute('data-trend')).toBe('up');
+    expect(trend.textContent).toMatch(/warmer than the previous reply/);
+    delete (crmMocks as Record<string, unknown>).getDealJudgmentHistory;
   });
 });

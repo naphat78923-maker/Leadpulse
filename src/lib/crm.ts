@@ -420,6 +420,23 @@ export async function getLatestDealJudgment(dealId: string): Promise<LayaJudgmen
   return (data as LayaJudgmentRow | null) ?? null;
 }
 
+/**
+ * Scored deal-set judgments, newest first — every deal, or one. The append-only table
+ * keeps a row per reply, which is what the trend against the previous reply reads.
+ */
+export async function getDealJudgmentHistory(dealId?: string): Promise<LayaJudgmentRow[]> {
+  let query = supabase
+    .from('laya_judgments')
+    .select('deal_id, question_set, input_sha256, status, not_scored_code, answers, model_package_sha256, scored_at')
+    .eq('question_set', 'terminal')
+    .eq('status', 'scored')
+    .not('deal_id', 'is', null);
+  if (dealId) query = query.eq('deal_id', dealId);
+  const { data, error } = await query.order('scored_at', { ascending: false }).limit(dealId ? 20 : 1000);
+  if (error) throw error;
+  return (data as LayaJudgmentRow[] | null) ?? [];
+}
+
 /** The newest deal-set judgment for every deal that has one. */
 export async function getLatestDealJudgments(): Promise<LayaJudgmentRow[]> {
   const { data, error } = await supabase

@@ -11,7 +11,7 @@ import { buildLayaReviewList, gradeDealsWithReplies, type LayaReviewItem } from 
 type State =
   | { status: 'loading' }
   | { status: 'error' }
-  | { status: 'ready'; judgments: LayaJudgmentRow[]; currentShas: Map<string, string | null> };
+  | { status: 'ready'; judgments: LayaJudgmentRow[]; history: LayaJudgmentRow[]; currentShas: Map<string, string | null> };
 
 /** Saved judgments plus the current input hash of every reply, re-read when replies change. */
 function useLayaJudgmentState(deals: Deal[]): State {
@@ -23,12 +23,14 @@ function useLayaJudgmentState(deals: Deal[]): State {
     let cancelled = false;
     const load = async () => {
       // Nothing to judge: skip the network read entirely.
-      if (replies.length === 0) return { judgments: [], currentShas: new Map<string, string | null>() };
-      const [judgments, shas] = await Promise.all([
+      if (replies.length === 0) return { judgments: [], history: [], currentShas: new Map<string, string | null>() };
+      const [judgments, history, shas] = await Promise.all([
         crm.getLatestDealJudgments(),
+        // The trend is an extra: a failed or missing history read leaves the grades without one.
+        Promise.resolve().then(() => crm.getDealJudgmentHistory()).catch(() => [] as LayaJudgmentRow[]),
         Promise.all(replies.map(async d => [d.id, await dealInputSha256(d)] as const)),
       ]);
-      return { judgments, currentShas: new Map(shas) };
+      return { judgments, history, currentShas: new Map(shas) };
     };
     load()
       .then(result => { if (!cancelled) setState({ status: 'ready', ...result }); })
@@ -50,7 +52,7 @@ export function useLayaGrades(deals: Deal[], meetings: Meeting[]): {
   const state = useLayaJudgmentState(deals);
   const grades = useMemo(
     () => (state.status === 'ready'
-      ? gradeDealsWithReplies({ deals, meetings, judgments: state.judgments, currentShas: state.currentShas })
+      ? gradeDealsWithReplies({ deals, meetings, judgments: state.judgments, history: state.history, currentShas: state.currentShas })
       : new Map<string, DealGrade>()),
     [state, deals, meetings],
   );

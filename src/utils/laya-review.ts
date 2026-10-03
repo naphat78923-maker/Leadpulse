@@ -8,6 +8,7 @@ import type { LayaJudgmentRow } from '@/lib/crm';
 import { gradeDeal, type DealGrade, type SavedJudgment } from './grade';
 import { chasesSinceLastReply, type DatedChaseCountableMeeting } from './interaction-event';
 import type { LeadTier } from './lead-scoring';
+import { historyByDeal, withTrend } from './laya-trend';
 
 /** A saved row as gradeDeal reads it; fresh only when it was made for the current reply. */
 export function toSavedJudgment(row: LayaJudgmentRow | null | undefined, currentSha: string | null): SavedJudgment | null {
@@ -33,19 +34,25 @@ export interface LayaGradeInput {
   judgments: LayaJudgmentRow[];
   /** dealId -> dealInputSha256(deal) for deals with a verbatim reply */
   currentShas: Map<string, string | null>;
+  /** scored rows of every reply, newest first; when given, grades carry a trend */
+  history?: LayaJudgmentRow[];
 }
 
 /** gradeDeal for every deal with a verbatim reply; deals without one are absent. */
 export function gradeDealsWithReplies(input: LayaGradeInput): Map<string, DealGrade> {
   const byDeal = new Map(input.judgments.map(row => [row.deal_id, row]));
   const grades = new Map<string, DealGrade>();
+  const history = historyByDeal(input.history ?? []);
   for (const deal of input.deals) {
     if (!deal.buyer_reply?.trim()) continue;
-    grades.set(deal.id, gradeDeal({
+    const row = byDeal.get(deal.id);
+    const currentSha = input.currentShas.get(deal.id) ?? null;
+    const grade = gradeDeal({
       deal,
-      judgment: toSavedJudgment(byDeal.get(deal.id), input.currentShas.get(deal.id) ?? null),
+      judgment: toSavedJudgment(row, currentSha),
       chasesSinceReply: chasesSinceLastReply(input.meetings, deal.id),
-    }));
+    });
+    grades.set(deal.id, withTrend(grade, row, history.get(deal.id) ?? [], currentSha));
   }
   return grades;
 }

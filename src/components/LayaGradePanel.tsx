@@ -12,7 +12,8 @@ import type { Deal } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
 import * as crm from '@/lib/crm';
 import type { LayaJudgmentRow } from '@/lib/crm';
-import { gradeDeal, type DealGrade } from '@/utils/grade';
+import { gradeDeal, type DealGrade, type GradeReason, type ReasonGroup } from '@/utils/grade';
+import { withTrend } from '@/utils/laya-trend';
 import { toSavedJudgment } from '@/utils/laya-review';
 import { chasesSinceLastReply } from '@/utils/interaction-event';
 import { dealInputSha256 } from '@/utils/laya-freshness';
@@ -21,7 +22,7 @@ import { TIER_LABELS } from '@/utils/lead-scoring';
 type Loaded =
   | { state: 'loading' }
   | { state: 'error'; key: string }
-  | { state: 'ready'; key: string; row: LayaJudgmentRow | null; currentSha: string | null };
+  | { state: 'ready'; key: string; row: LayaJudgmentRow | null; history: LayaJudgmentRow[]; currentSha: string | null };
 
 const STATUS_LABEL: Record<DealGrade['status'], string> = {
   graded: 'graded',
@@ -50,8 +51,13 @@ export default function LayaGradePanel({ deal }: { deal: Deal }) {
   useEffect(() => {
     let cancelled = false;
     // Promise.resolve().then: a missing or throwing reader becomes "unavailable", never a crash.
-    Promise.all([Promise.resolve().then(() => crm.getLatestDealJudgment(deal.id)), dealInputSha256(deal)])
-      .then(([row, currentSha]) => { if (!cancelled) setResult({ state: 'ready', key, row, currentSha }); })
+    Promise.all([
+      Promise.resolve().then(() => crm.getLatestDealJudgment(deal.id)),
+      dealInputSha256(deal),
+      // The trend is an extra: without the history the grade simply shows none.
+      Promise.resolve().then(() => crm.getDealJudgmentHistory(deal.id)).catch(() => [] as LayaJudgmentRow[]),
+    ])
+      .then(([row, currentSha, history]) => { if (!cancelled) setResult({ state: 'ready', key, row, history, currentSha }); })
       .catch(() => { if (!cancelled) setResult({ state: 'error', key }); });
     return () => { cancelled = true; };
     // `key` covers the deal fields the request is built from.
@@ -62,7 +68,8 @@ export default function LayaGradePanel({ deal }: { deal: Deal }) {
 
   const grade = useMemo<DealGrade | null>(() => {
     if (loaded.state !== 'ready') return null;
-    return gradeDeal({ deal, judgment: toSavedJudgment(loaded.row, loaded.currentSha), chasesSinceReply: chases });
+    const graded = gradeDeal({ deal, judgment: toSavedJudgment(loaded.row, loaded.currentSha), chasesSinceReply: chases });
+    return withTrend(graded, loaded.row, loaded.history, loaded.currentSha);
   }, [loaded, deal, chases]);
 
   const title = loaded.state === 'ready' && grade
@@ -86,9 +93,24 @@ export default function LayaGradePanel({ deal }: { deal: Deal }) {
   );
 }
 
+const GROUPS: Array<{ id: ReasonGroup; title: string }> = [
+  { id: 'buyer', title: 'What the buyer said' },
+  { id: 'followup', title: 'Follow-up' },
+  { id: 'order', title: 'Order size' },
+];
+
+/** Shown without the numbers: facts, and weighted answers Laya leans towards. */
+const LEANING = 0.5;
+const isPlain = (reason: GradeReason) =>
+  reason.effect !== 0 && (reason.strength === undefined || reason.strength >= LEANING);
+const plainLabel = (label: string) => label.replace(/\s*\(P [^)]*\)$/, '');
+
 function GradeBody({ grade }: { grade: DealGrade }) {
+  const [numbers, setNumbers] = useState(false);
   const shifted = grade.tier !== grade.baseTier;
   const quantity = QUANTITY_LABEL[grade.quantity];
+  const trend = grade.trend;
+  const shown = grade.reasons.filter(reason => numbers || isPlain(reason));
   return (
     <>
       <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -104,7 +126,14 @@ function GradeBody({ grade }: { grade: DealGrade }) {
             would be {TIER_LABELS[grade.suggestedTier]} if you confirm
           </span>
         )}
-        {grade.momentum !== null && <span className="text-clay-muted">momentum {grade.momentum > 0 ? '+' : ''}{grade.momentum.toFixed(2)}</span>}
+        {trend && (
+          <span data-testid="laya-trend" data-trend={trend.direction}
+            className={clsx(trend.direction === 'up' ? 'text-clay-success' : trend.direction === 'down' ? 'text-clay-error' : 'text-clay-muted')}>
+            {trend.direction === 'up' ? '↑ warmer than' : trend.direction === 'down' ? '↓ cooler than' : '→ same as'} the previous reply
+            {numbers && ` (${trend.delta > 0 ? '+' : ''}${trend.delta.toFixed(2)})`}
+          </span>
+        )}
+        {numbers && grade.momentum !== null && <span className="text-clay-muted">momentum {grade.momentum > 0 ? '+' : ''}{grade.momentum.toFixed(2)}</span>}
         {quantity && <span className="text-clay-muted">order size {quantity}</span>}
       </div>
 
@@ -116,17 +145,40 @@ function GradeBody({ grade }: { grade: DealGrade }) {
         </ul>
       )}
 
+      {GROUPS.map(group => {
+        const reasons = shown.filter(reason => (reason.group ?? 'buyer') === group.id);
+        if (reasons.length === 0) return null;
+        return (
+          <div key={group.id} data-reason-group={group.id}>
+            <h4 className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-clay-muted">{group.title}</h4>
+            <ul className="space-y-0.5 text-xs text-clay-body">
+              {reasons.map(reason => (
+                <li key={reason.label} className="flex justify-between gap-3">
+                  <span>
+                    <span aria-hidden="true" className={clsx('mr-1.5 inline-block w-3 text-center',
+                      reason.effect > 0 ? 'text-clay-success' : reason.effect < 0 ? 'text-clay-error' : 'text-clay-muted')}>
+                      {reason.effect > 0 ? '↑' : reason.effect < 0 ? '↓' : '·'}
+                    </span>
+                    <span className="sr-only">{reason.effect > 0 ? 'Raises the grade: ' : reason.effect < 0 ? 'Lowers the grade: ' : ''}</span>
+                    {numbers ? reason.label : plainLabel(reason.label)}
+                  </span>
+                  {numbers && (
+                    <span className={clsx('tabular-nums', reason.effect > 0 ? 'text-clay-success' : reason.effect < 0 ? 'text-clay-error' : 'text-clay-muted')}>
+                      {reason.effect === 0 ? '—' : `${reason.effect > 0 ? '+' : ''}${reason.effect.toFixed(2)}`}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+
       {grade.reasons.length > 0 && (
-        <ul className="space-y-0.5 text-xs text-clay-body" aria-label="Why">
-          {grade.reasons.slice(0, 6).map(reason => (
-            <li key={reason.label} className="flex justify-between gap-3">
-              <span>{reason.label}</span>
-              <span className={clsx('tabular-nums', reason.effect > 0 ? 'text-clay-success' : reason.effect < 0 ? 'text-clay-error' : 'text-clay-muted')}>
-                {reason.effect === 0 ? '—' : `${reason.effect > 0 ? '+' : ''}${reason.effect.toFixed(2)}`}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <button type="button" onClick={() => setNumbers(value => !value)} aria-pressed={numbers}
+          className="text-[11px] text-clay-muted underline decoration-clay-hairline underline-offset-2 hover:text-clay-ink">
+          {numbers ? 'Hide the numbers' : 'Show the numbers'}
+        </button>
       )}
 
       <p className="text-[10px] uppercase tracking-wide text-clay-muted">

@@ -33,4 +33,14 @@ describe('LayaGradeChip', () => {
     expect(kept.textContent).toBe('Laya B');
     expect(kept.getAttribute('data-laya-chip')).toBe('kept');
   });
+
+  it('adds warmer or cooler when the reading moved against the previous reply, and nothing when steady', () => {
+    const up = render(<LayaGradeChip grade={grade({ trend: { direction: 'up', delta: 0.2 } })} />).container.querySelector('[data-laya-chip]')!;
+    expect(up.textContent).toBe('Laya B· warmer');
+    expect(up.getAttribute('title')).toMatch(/warmer than the previous reply/);
+    cleanup();
+    expect(render(<LayaGradeChip grade={grade({ trend: { direction: 'down', delta: -0.2 } })} />).container.querySelector('[data-laya-trend]')!.getAttribute('data-laya-trend')).toBe('down');
+    cleanup();
+    expect(render(<LayaGradeChip grade={grade({ trend: { direction: 'steady', delta: 0 } })} />).container.querySelector('[data-laya-trend]')).toBeNull();
+  });
 });
