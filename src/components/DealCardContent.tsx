@@ -28,6 +28,8 @@ interface DealCardContentProps {
   chasesSinceReply?: number | null;
   /** how long since the last contact, shown while the board is sorted quietest-first */
   quietNote?: string | null;
+  /** days in the current lane, and whether that is past the lane's stall threshold */
+  laneTime?: { days: number; stalled: boolean } | null;
 }
 
 const QUANTITY_TIER_LABEL: Record<Exclude<QuantityTier, 'none'>, string> = {
@@ -53,6 +55,7 @@ export default function DealCardContent({
   layaGrade,
   chasesSinceReply = null,
   quietNote = null,
+  laneTime = null,
 }: DealCardContentProps) {
   const { contact, companyName, companyLogoUrl, product, nextAction, timing } = presentation;
   const hasConcreteNextAction = isConcreteNextAction(deal.next_action);
@@ -135,6 +138,17 @@ export default function DealCardContent({
             className="text-[10px] text-clay-muted"
           >
             {chasesSinceReply === 0 ? 'none since reply' : `${chasesSinceReply} since reply`}
+          </span>
+        )}
+        {laneTime && laneTime.days > 0 && (
+          <span
+            data-lane-days={laneTime.stalled ? 'stalled' : 'ok'}
+            title={laneTime.stalled
+              ? 'Stalled: in this lane past its limit (14 days, or 1.2× what won deals took once three have passed through).'
+              : 'Days since the deal entered this lane, read from the activity log.'}
+            className={clsx('text-[10px]', laneTime.stalled ? 'font-semibold text-clay-ochre' : 'text-clay-muted')}
+          >
+            {laneTime.stalled ? `stalled · ${laneTime.days}d in lane` : `${laneTime.days}d in lane`}
           </span>
         )}
         {quietNote && (

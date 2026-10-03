@@ -5,13 +5,14 @@ import { Search, X } from 'lucide-react';
 import type { Deal } from '@/types/crm';
 import type { BoardAttentionFilter, BoardSort } from '@/utils/deal-board';
 import { formatBaht } from '@/utils/format';
+import type { PipelineOutcomes } from '@/utils/lane-time';
 
 interface PipelineToolbarProps {
   searchQuery: string;
   onSearchChange: (value: string) => void;
   attentionFilter: BoardAttentionFilter;
   onAttentionChange: (value: BoardAttentionFilter) => void;
-  counts: { all: number; overdue: number; today: number; needsReview: number; layaReview: number; missingData?: number; waitingOnYou?: number };
+  counts: { all: number; overdue: number; today: number; needsReview: number; layaReview: number; missingData?: number; waitingOnYou?: number; stalled?: number };
   productFilter: string;
   onProductChange: (value: string) => void;
   productOptions: readonly string[];
@@ -26,6 +27,8 @@ interface PipelineToolbarProps {
   openPipelineValue: number;
   weightedForecast: number;
   sourceRows: { source: string; won: number; total: number; rate: number }[];
+  /** win rate and time to close (lane-time.ts) */
+  outcomes?: PipelineOutcomes;
   compact: boolean;
   onToggleCompact: () => void;
 }
@@ -50,6 +53,7 @@ export default function PipelineToolbar({
   openPipelineValue,
   weightedForecast,
   sourceRows,
+  outcomes,
   compact,
   onToggleCompact,
 }: PipelineToolbarProps) {
@@ -78,6 +82,9 @@ export default function PipelineToolbar({
           // The buyer spoke last: only shown when a deal is waiting (or it is selected).
           ...((counts.waitingOnYou ?? 0) > 0 || attentionFilter === 'waiting-on-you'
             ? [['waiting-on-you', 'Waiting on you', counts.waitingOnYou ?? 0] as [BoardAttentionFilter, string, number]]
+            : []),
+          ...((counts.stalled ?? 0) > 0 || attentionFilter === 'stalled'
+            ? [['stalled', 'Stalled', counts.stalled ?? 0] as [BoardAttentionFilter, string, number]]
             : []),
           // Laya's review queue: only shown when something is waiting (or it is selected).
           ...(counts.layaReview > 0 || attentionFilter === 'laya-review'
@@ -166,6 +173,13 @@ export default function PipelineToolbar({
         </summary>
         <div className="mt-2 space-y-1">
           <p>Weighted forecast · <span className="font-semibold text-clay-ink">{formatBaht(weightedForecast)}</span></p>
+          {outcomes && outcomes.winRate !== null && (
+            <p data-testid="pipeline-outcomes">
+              Win rate · <span className="font-semibold text-clay-ink">{outcomes.winRate}%</span> ({outcomes.won} won, {outcomes.lost} lost)
+              {outcomes.daysToWin && <> · Time to win · <span className="font-semibold text-clay-ink">{outcomes.daysToWin.average} days</span> (over {outcomes.daysToWin.deals} deals)</>}
+              {outcomes.daysToLose && <> · Time to lose · <span className="font-semibold text-clay-ink">{outcomes.daysToLose.average} days</span> (over {outcomes.daysToLose.deals})</>}
+            </p>
+          )}
           {sourceRows.length > 0 && (
             <div className="flex flex-wrap gap-x-4 gap-y-1">
               {sourceRows.map(s => (
