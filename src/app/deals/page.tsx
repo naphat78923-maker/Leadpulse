@@ -15,7 +15,6 @@ import LanePickerSheet from '@/components/pipeline/LanePickerSheet';
 import { DraggableCard, DroppableLane } from '@/components/pipeline/BoardDnd';
 import { LANE_CRITERIA, dueStateFor, whyNow } from '@/components/pipeline/board-view';
 import DealDetail from '@/components/DealDetail';
-import DealCardPrimaryAction from '@/components/DealCardPrimaryAction';
 import DealCardContent from '@/components/DealCardContent';
 import LaneGateModal, { LaneGatePayload } from '@/components/LaneGateModal';
 import ReviewFixModal, { ReviewFixPayload } from '@/components/ReviewFixModal';
@@ -38,7 +37,6 @@ import { formatBaht, sumLaneValues } from '@/utils/format';
 import { calculateWeightedForecast, calculateSourcePerformance, lostReasonTotals, parkReasonTotals, weightedLaneValues } from '@/utils/analytics-metrics';
 import { WORKFLOW_LANES, WORKFLOW_BY_ID, getWorkflowAction, isOnJourneyBoard, isJourneyLane, deriveNudge, formatDerivedNudgeBadge, outboundSendCountForDeal } from '@/utils/deal-workflow';
 import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
-import LogInteractionModal from '@/components/LogInteractionModal';
 import { useLayaGrades } from '@/hooks/useLayaReviewList';
 import OverdueBulkBar from '@/components/pipeline/OverdueBulkBar';
 import MissingDataBar from '@/components/pipeline/MissingDataBar';
@@ -51,7 +49,6 @@ import { buildStalled, daysInLane, laneTimelines, pipelineOutcomes, stallThresho
 import { chaseStatusSinceReply } from '@/utils/interaction-event';
 import { calculateLeadScore, scoreToTier, type LeadTier } from '@/utils/lead-scoring';
 import { BoardAttentionFilter, BoardSort, capLane, LANE_CARD_CAP, reviewReasons, REVIEW_LABEL, buildReviewReport, buildReviewFix, filterAndSortBoardDeals, findDealsMatchingSearch, getDoNowCounts, localDateKey } from '@/utils/deal-board';
-import type { DealCardPrimaryAction as DealCardPrimaryActionSpec } from '@/utils/deal-card';
 import { buildCloseUpdate } from '@/utils/deal-close';
 import { buildLaneGateDecision } from '@/utils/lane-gate';
 import { buildDealCardPresentation } from '@/utils/deal-card';
@@ -265,9 +262,6 @@ function DealsBoard() {
   const lostDeals = useMemo(() => deals.filter(deal => deal.stage === 'closed_lost'), [deals]);
 
   const [exitModal, setExitModal] = useState<{ deal: Deal; kind: 'won' | 'lost' | 'park' } | null>(null);
-  const [logDealId, setLogDealId] = useState<string | null>(null);
-  /** true when the log form opens from "Paste reply": They replied, exact words first */
-  const [logPasteReply, setLogPasteReply] = useState(false);
 
   const stats = useMemo(() => {
     return {
@@ -313,17 +307,6 @@ function DealsBoard() {
   const handleCreate = async (data: any) => {
     // Let errors bubble to the modal so failures are visible.
     await createDeal(data);
-  };
-
-  // The card's one contextual action. It opens the right form — nothing is sent from here,
-  // and "Set next action" opens the deal instead of inventing a step.
-  const handleCardPrimaryAction = (deal: Deal, action: DealCardPrimaryActionSpec) => {
-    if (action.opensLogForm) {
-      setLogPasteReply(action.id === 'record-reply');
-      setLogDealId(deal.id);
-      return;
-    }
-    setSelectedDeal(deal.id);
   };
 
   /* ─── Drag & drop lane moves with per-lane gatekeeping ─── */
@@ -576,8 +559,6 @@ function DealsBoard() {
           />
           <p className="sr-only">Open {deal.client} in {lane.label}</p>
         </motion.button>
-        {/* Sibling of the card button, never nested: one contextual action that opens the form. */}
-        <DealCardPrimaryAction deal={deal} onSelect={handleCardPrimaryAction} />
       </div>
     );
   };
@@ -992,20 +973,6 @@ function DealsBoard() {
           kind={exitModal.kind}
           onCancel={() => setExitModal(null)}
           onConfirm={handleExitConfirm}
-        />
-      )}
-
-      {logDealId && (
-        <LogInteractionModal
-          isOpen={!!logDealId}
-          onClose={() => setLogDealId(null)}
-          onSave={async (meeting) => { await addMeeting(meeting); setLogDealId(null); await refresh(); }}
-          deals={deals}
-          contacts={contacts}
-          companies={companies}
-          selectedDealId={logDealId}
-          initialKind={logPasteReply ? 'customer_response' : undefined}
-          pasteReplyFirst={logPasteReply}
         />
       )}
 

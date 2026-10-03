@@ -40,6 +40,7 @@ import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
 import StakeholderMiniMap from '@/components/StakeholderMiniMap';
 import LayaScoreCard from '@/components/LayaScoreCard';
 import DealFactsPanel from '@/components/DealFactsPanel';
+import QuickReplyBox from '@/components/QuickReplyBox';
 import LayaGradePanel from '@/components/LayaGradePanel';
 import type { OutreachLanguage } from '@/types/crm';
 import { motion } from 'framer-motion';
@@ -628,6 +629,8 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
               Log touch
             </button>
           )}
+
+          {!isClosed && !editing && <QuickReplyBox deal={deal} />}
 
           {/* Everything else, one quiet list. Editing opens the sections so every field is reachable. */}
           <div className="border-t border-clay-hairline">
