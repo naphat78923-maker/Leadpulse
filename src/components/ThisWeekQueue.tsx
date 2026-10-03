@@ -7,11 +7,9 @@ import clsx from 'clsx';
 import type { Company, Deal, Meeting } from '@/types/crm';
 import CompanyLogo from '@/components/CompanyLogo';
 import RecentChanges from '@/components/RecentChanges';
-import LayaReviewCard from '@/components/LayaReviewCard';
 import DataHealthCard from '@/components/DataHealthCard';
-import WaitingOnYouCard from '@/components/WaitingOnYouCard';
-import GoingQuietCard from '@/components/GoingQuietCard';
 import GoalCard from '@/components/GoalCard';
+import DoNextCard from '@/components/DoNextCard';
 import type { HealthTier } from '@/utils/accountHealth';
 import { businessDaysBetween } from '@/utils/business-time';
 import { formatScheduleDate } from '@/utils/deal-schedule';
@@ -507,10 +505,8 @@ export default function ThisWeekQueue({
             </section>
 
             <div className="min-w-0 space-y-4">
+              <DoNextCard deals={deals} meetings={meetings} today={today} />
               <GoalCard deals={deals} today={today} />
-              <WaitingOnYouCard deals={deals} meetings={meetings} today={today} />
-              <GoingQuietCard deals={deals} />
-              <LayaReviewCard deals={deals} meetings={meetings} />
               <DataHealthCard deals={deals} meetings={meetings} />
               <CheckInsCard rows={checkIns} today={today} onLogCompany={onLogCompany} />
               <RecentChanges />
