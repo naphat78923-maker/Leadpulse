@@ -167,6 +167,8 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
         followup_date: el.followup_date,
         last_outcome: el.last_outcome,
         buyer_reply: el.buyer_reply ?? null,
+        stated_order_kg: el.stated_order_kg ?? null,
+        call_checklist: el.call_checklist ?? null,
         nudge_count: el.nudge_count || 0,
         workflow_action: el.workflow_action || undefined,
         nudge_stage: el.nudge_stage || null,

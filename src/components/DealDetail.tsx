@@ -39,6 +39,7 @@ import CompanyLogo from '@/components/CompanyLogo';
 import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
 import StakeholderMiniMap from '@/components/StakeholderMiniMap';
 import LayaScoreCard from '@/components/LayaScoreCard';
+import DealFactsPanel from '@/components/DealFactsPanel';
 import LayaGradePanel from '@/components/LayaGradePanel';
 import type { OutreachLanguage } from '@/types/crm';
 import { motion } from 'framer-motion';
@@ -631,6 +632,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
           {/* Everything else, one quiet list. Editing opens the sections so every field is reachable. */}
           <div className="border-t border-clay-hairline">
             {!isClosed && <LayaGradePanel deal={deal} />}
+            {!isClosed && <DealFactsPanel deal={deal} />}
             <PanelSection title="Account and buyer map" open={editing}>
               <div className="space-y-3">
                 <LayaScoreCard deal={deal} company={dealCompany} />

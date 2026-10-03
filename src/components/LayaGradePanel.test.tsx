@@ -88,6 +88,23 @@ describe('LayaGradePanel', () => {
     expect(panel.closest('details')?.open).toBe(true);
   });
 
+  it('saves Pat\'s decision on a review and takes the deal off review', async () => {
+    const sha = (await dealInputSha256(deal))!;
+    crmMocks.getLatestDealJudgment.mockResolvedValue(
+      row(sha, { requested_next_step: 0.5, declined: 0.1, deferred: 0.1, unclear: 0.2, no_commitment: 0.1 }),
+    );
+    const add = vi.fn().mockImplementation(async (saved: Record<string, unknown>) => ({ ...saved, decided_at: '2026-10-03T00:00:00Z' }));
+    (crmMocks as Record<string, unknown>).addReviewDecision = add;
+    render(<LayaGradePanel deal={deal} />);
+    await screen.findByText('Laya grade · needs your review');
+    fireEvent.click(screen.getByRole('button', { name: /Disagree: keep/ }));
+    expect(await screen.findByText('Laya grade · graded')).toBeTruthy();
+    expect(screen.getByTestId('laya-decision').textContent).toMatch(/You disagreed with Laya/);
+    expect(add).toHaveBeenCalledWith(expect.objectContaining({ deal_id: deal.id, input_sha256: sha, decision: 'reject' }));
+    expect(screen.queryByRole('group', { name: 'Your decision' })).toBeNull();
+    delete (crmMocks as Record<string, unknown>).addReviewDecision;
+  });
+
   it('says not judged yet when no judgment is saved', async () => {
     crmMocks.getLatestDealJudgment.mockResolvedValue(null);
     render(<LayaGradePanel deal={deal} />);
