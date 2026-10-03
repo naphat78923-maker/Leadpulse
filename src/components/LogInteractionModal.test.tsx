@@ -75,6 +75,34 @@ describe('LogInteractionModal save recovery', () => {
     expect(crmMocks.updateDealIfUnchanged).not.toHaveBeenCalled();
   });
 
+  it('prompts for a follow-up on a deal with none, and writes a date only when the prompt is taken', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    crmMocks.updateDealIfUnchanged.mockResolvedValue(undefined);
+
+    render(
+      <LogInteractionModal
+        isOpen
+        onClose={onClose}
+        onSave={onSave}
+        deals={[{ ...deal, followup_date: null }]}
+        contacts={[]}
+        companies={[]}
+        selectedDealId={deal.id}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Set +3 days' }));
+    // Taken: the prompt goes away and the +3 days date is selected.
+    expect(screen.queryByRole('button', { name: 'Set +3 days' })).toBeNull();
+    fireEvent.change(screen.getByLabelText('What happened'), { target: { value: 'Sent outbound email' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    const [, , updates] = crmMocks.updateDealIfUnchanged.mock.calls[0];
+    expect(updates.followup_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
   it('preserves the form and shows an error when the interaction write fails', async () => {
     const onSave = vi.fn().mockRejectedValue(new Error('interaction write failed'));
     const onClose = vi.fn();
