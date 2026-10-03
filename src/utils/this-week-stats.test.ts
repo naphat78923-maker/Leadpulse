@@ -40,8 +40,9 @@ describe('this-week stats', () => {
       { date: '2026-09-21', type: 'call', direction: 'outbound', outcome: null },
       { date: today, type: 'note', direction: 'internal', outcome: null },
       { date: today, type: 'reward', direction: null, outcome: 'positive' },
+      { date: '2026-09-14', type: 'call', direction: 'outbound', outcome: null },
     ], today);
 
-    expect(touches).toEqual({ total: 2, positive: 1, series: [1, 0, 0, 0, 0, 0, 1] });
+    expect(touches).toEqual({ total: 2, positive: 1, previous: 1, series: [1, 0, 0, 0, 0, 0, 1] });
   });
 });

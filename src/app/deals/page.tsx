@@ -35,7 +35,7 @@ import {
 import { Plus, Loader2, ArrowRight } from 'lucide-react';
 import clsx from 'clsx';
 import { formatBaht, sumLaneValues } from '@/utils/format';
-import { calculateWeightedForecast, calculateSourcePerformance } from '@/utils/analytics-metrics';
+import { calculateWeightedForecast, calculateSourcePerformance, lostReasonTotals, parkReasonTotals, weightedLaneValues } from '@/utils/analytics-metrics';
 import { WORKFLOW_LANES, WORKFLOW_BY_ID, getWorkflowAction, isOnJourneyBoard, isJourneyLane, deriveNudge, formatDerivedNudgeBadge, outboundSendCountForDeal } from '@/utils/deal-workflow';
 import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
 import LogInteractionModal from '@/components/LogInteractionModal';
@@ -231,6 +231,7 @@ function DealsBoard() {
 
   // folk-style "total deal value per stage": sum of non-null deal.value per lane.
   const laneValues = useMemo(() => sumLaneValues(WORKFLOW_LANES, dealsByAction), [dealsByAction]);
+  const weightedLanes = useMemo(() => weightedLaneValues(WORKFLOW_LANES, dealsByAction), [dealsByAction]);
 
   const openPipelineValue = useMemo(
     () => WORKFLOW_LANES.reduce((acc, lane) => acc + laneValues[lane.id], 0),
@@ -746,7 +747,10 @@ function DealsBoard() {
                   <div data-lane-header className="mb-2 flex flex-wrap items-center gap-2">
                     <span className="h-2 w-2 shrink-0 rounded-full bg-clay-teal" aria-hidden="true" />
                     <h2 data-lane-title className="min-w-0 flex-1 text-base font-semibold text-clay-ink">{lane.shortLabel}</h2>
-                    <span data-lane-stats className="whitespace-nowrap text-xs text-clay-muted">{laneDeals.length} · {formatBaht(laneValues[lane.id])}</span>
+                    <span data-lane-stats className="whitespace-nowrap text-xs text-clay-muted">
+                      {laneDeals.length} · {formatBaht(laneValues[lane.id])}
+                      {laneValues[lane.id] > 0 && <span data-lane-weighted> · {formatBaht(weightedLanes[lane.id])} weighted</span>}
+                    </span>
                   </div>
                   <StaggerList stagger={0.04} className="space-y-2">
                     {shown.map(d => (
@@ -784,7 +788,7 @@ function DealsBoard() {
                     <div data-lane-header className="mb-3 shrink-0 flex flex-wrap items-center gap-1.5">
                       <span className="h-2 w-2 shrink-0 rounded-full bg-clay-teal" aria-hidden="true" />
                       <h2 data-lane-title title={LANE_CRITERIA[lane.id]} className="min-w-0 flex-1 text-[13px] font-semibold text-clay-ink">{lane.shortLabel}</h2>
-                      <span data-lane-stats className="shrink-0 whitespace-nowrap text-[11px] text-clay-muted">{dealsByAction[lane.id].length} · {formatBaht(laneValues[lane.id])}</span>
+                      <span data-lane-stats title={`Weighted by stage probability: ${formatBaht(weightedLanes[lane.id])}`} className="shrink-0 whitespace-nowrap text-[11px] text-clay-muted">{dealsByAction[lane.id].length} · {formatBaht(laneValues[lane.id])}</span>
                     </div>
                     <StaggerList stagger={0.04} className="space-y-2 flex-1 pr-0.5">
                       {capLane(dealsByAction[lane.id], expandedLanes.has(lane.id)).shown.map(deal => (
@@ -893,6 +897,16 @@ function DealsBoard() {
         return (
           <div className="flex-1 overflow-y-auto">
             <p className="text-sm text-clay-muted mb-3">{caption}</p>
+            {view !== 'won' && list.length > 0 && (
+              <ul aria-label={view === 'lost' ? 'Why deals were lost' : 'Why deals were parked'} data-testid="reason-totals"
+                className="mb-3 flex flex-wrap gap-1.5 text-xs">
+                {(view === 'lost' ? lostReasonTotals(list) : parkReasonTotals(list)).map(reason => (
+                  <li key={reason.label} className="rounded-lg border border-clay-hairline bg-white px-2.5 py-1 text-clay-body dark:bg-clay-card">
+                    {reason.label} <span className="font-semibold text-clay-ink">{reason.count}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {list.length === 0 ? (
                 <div className="col-span-full rounded-xl border border-dashed border-clay-hairline p-8 text-center text-sm text-clay-muted">{empty}</div>

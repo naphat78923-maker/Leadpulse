@@ -55,20 +55,28 @@ export function checkInSplit(checkIns: readonly CheckInRow[]): Record<HealthTier
 
 /**
  * Real touches in the last seven days (today included): calls, emails, DMs and
- * meetings with a client. Internal notes and reward logs don't count.
+ * meetings with a client. Internal notes and reward logs don't count. `previous` is
+ * the same count over the seven days before.
  */
 export function touchesLastSevenDays(meetings: readonly Pick<Meeting, 'date' | 'type' | 'direction' | 'outcome'>[], today: string) {
   const days = Array.from({ length: 7 }, (_, i) => addDaysToDateKey(today, i - 6));
   const counts = new Map(days.map(day => [day, 0]));
+  // The seven days before those, for the comparison.
+  const previousFrom = addDaysToDateKey(today, -13);
   let total = 0;
   let positive = 0;
+  let previous = 0;
   for (const m of meetings) {
     const day = m.date?.slice(0, 10);
-    if (!day || !counts.has(day)) continue;
+    if (!day) continue;
     if (m.type === 'reward' || m.type === 'note' || m.direction === 'internal') continue;
+    if (!counts.has(day)) {
+      if (day >= previousFrom && day < days[0]) previous += 1;
+      continue;
+    }
     counts.set(day, (counts.get(day) ?? 0) + 1);
     total += 1;
     if (m.outcome === 'positive') positive += 1;
   }
-  return { total, positive, series: days.map(day => counts.get(day) ?? 0) };
+  return { total, positive, previous, series: days.map(day => counts.get(day) ?? 0) };
 }
