@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Company, Deal } from '@/types/crm';
-import { calculateSourcePerformance, calculateWeightedForecast } from './analytics-metrics';
+import { calculateSourcePerformance, calculateWeightedForecast, lostReasonTotals, parkReasonTotals, weightedLaneValues } from './analytics-metrics';
 
 function deal(overrides: Partial<Deal>): Deal {
   return {
@@ -59,5 +59,38 @@ describe('analytics metrics', () => {
     ];
 
     expect(calculateWeightedForecast(deals)).toBe(10_000);
+  });
+});
+
+describe('weightedLaneValues', () => {
+  it('weights each lane by the stage probability of its deals', () => {
+    const byAction = {
+      sample: [deal({ stage: 'proposal', value: 1000 }), deal({ stage: 'negotiation', value: 2000 })],
+      outreach: [deal({ stage: 'research', value: null })],
+    };
+    expect(weightedLaneValues([{ id: 'sample' }, { id: 'outreach' }, { id: 'testing' }], byAction))
+      .toEqual({ sample: 2000, outreach: 0, testing: 0 });
+  });
+});
+
+describe('reason totals', () => {
+  it('totals lost reasons with their labels, most common first and unrecorded last', () => {
+    const deals = [
+      deal({ lost_reason: 'no_reply' }), deal({ lost_reason: null }), deal({ lost_reason: null }), deal({ lost_reason: null }),
+      deal({ lost_reason: 'price' }), deal({ lost_reason: 'no_reply' }),
+    ];
+    expect(lostReasonTotals(deals)).toEqual([
+      { label: 'No reply', count: 2 }, { label: 'Price', count: 1 }, { label: 'Not recorded', count: 3 },
+    ]);
+  });
+
+  it('counts the same park reason once whatever its capitals or spacing', () => {
+    const deals = [
+      deal({ park_reason: 'No reply after 4 nudges' }), deal({ park_reason: ' no reply  after 4 nudges ' }),
+      deal({ park_reason: 'Budget next year' }), deal({ park_reason: '' }),
+    ];
+    expect(parkReasonTotals(deals)).toEqual([
+      { label: 'No reply after 4 nudges', count: 2 }, { label: 'Budget next year', count: 1 }, { label: 'Not recorded', count: 1 },
+    ]);
   });
 });

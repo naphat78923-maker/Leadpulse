@@ -435,7 +435,7 @@ export default function ThisWeekQueue({
               label="Touches · 7 days"
               value={touches.total}
               onClick={() => openTab('week')}
-              caption={touches.total > 0 ? `${touches.positive} positive` : 'No touches logged'}
+              caption={`${touches.total > 0 ? `${touches.positive} positive` : 'No touches logged'} · ${touches.previous} the week before`}
               chart={<Sparkline series={touches.series} />}
             />
           </div>
