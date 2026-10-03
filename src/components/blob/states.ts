@@ -66,7 +66,7 @@ function base(over: Partial<Pose> = {}): Pose {
   }
 }
 
-export type BlobState = 'idle' | 'thinking' | 'nudge' | 'alert' | 'sleep' | 'joy'
+export type BlobState = 'idle' | 'thinking' | 'nudge' | 'alert' | 'sleep' | 'joy' | 'grading' | 'watch' | 'land' | 'drowsy'
 
 export interface StateDef {
   id: BlobState
@@ -189,6 +189,84 @@ export const STATES: Record<BlobState, StateDef> = {
         // squinted arcs: tops converging — the mirrored tilt carries the smile
         eyes: pair(0.26, 0.15, 16),
         dots,
+      })
+    },
+  },
+
+  // Laya is reading a reply: the thinking sway, plus three dots that take turns rising.
+  grading: {
+    id: 'grading',
+    morph: 0.4,
+    blinkIn: true,
+    pose: (t) => {
+      const dots: DotSpec[] = []
+      for (let i = 0; i < 3; i++) {
+        // each dot peaks a third of a beat after the one before
+        const lift = Math.max(0, Math.sin(t * 4.2 - i * 0.9))
+        dots.push({ x: 0.5 + i * 0.2, y: -0.92 - lift * 0.14, r: 0.055, opacity: 0.45 + lift * 0.55 })
+      }
+      return base({
+        gaze: { yaw: 16 + Math.sin(t * 1.3) * 5, pitch: 12, roll: -6 + Math.sin(t * 1.0) * 4 },
+        eyes: [
+          { w: EYE_W, h: EYE_H, tilt: -10, open: 0.6 },
+          { w: EYE_W * 1.06, h: EYE_H, tilt: 0, open: 1 },
+        ],
+        dots,
+      })
+    },
+  },
+
+  // A card is being dragged: sits up, eyes wide. The gaze is left neutral on purpose —
+  // the component's pointer-follow supplies where it looks.
+  watch: {
+    id: 'watch',
+    morph: 0.22,
+    blinkIn: false,
+    pose: (t) => {
+      const lean = Math.sin(t * 2.4) * 0.012
+      return base({
+        offY: -0.04,
+        sil: silhouetteFromProfile(BODY, { sy: 1.04 + lean, sx: 0.98 - lean }),
+        gaze: { yaw: 0, pitch: 4, roll: 0 },
+        split: EYE_SPLIT + 1,
+        eyes: pair(EYE_W * 1.3, EYE_H * 1.14),
+      })
+    },
+  },
+
+  // A card just landed in this lane: one squash, then a bounce that dies away. A
+  // one-shot — the caller switches back to the lane's own state after about a second.
+  land: {
+    id: 'land',
+    morph: 0.12,
+    blinkIn: false,
+    pose: (t) => {
+      const decay = Math.exp(-t * 4.2)
+      const wave = Math.cos(t * 15) * decay // starts fully squashed, rings down
+      const hop = Math.max(0, -wave)
+      return base({
+        offY: -hop * 0.1,
+        sil: silhouetteFromProfile(BODY, { sy: 1 - wave * 0.16, sx: 1 + wave * 0.13 }),
+        gaze: { yaw: 4, pitch: 10, roll: 0 },
+        // pleased squint while it bounces, relaxing as it settles
+        eyes: pair(EYE_W * (1 + decay * 0.25), EYE_H * (1 - decay * 0.45), 14 * decay),
+      })
+    },
+  },
+
+  // The grader has stopped: lids half down, head sinking, then a small start awake.
+  drowsy: {
+    id: 'drowsy',
+    morph: 0.6,
+    blinkIn: false,
+    pose: (t) => {
+      const cyc = (t % 4.2) / 4.2
+      // sink for most of the cycle, jerk back up in the last tenth
+      const sink = cyc < 0.9 ? easings.easeOutCubic(cyc / 0.9) : 1 - (cyc - 0.9) / 0.1
+      return base({
+        sil: silhouetteFromProfile(BODY, { sy: 0.95 - sink * 0.04, sx: 1.03, cy: 0.04 }),
+        gaze: { yaw: 8, pitch: -4 - sink * 12, roll: -3 - sink * 6 },
+        eyes: pair(EYE_W * 1.08, EYE_H, 0, 0.42 - sink * 0.3),
       })
     },
   },

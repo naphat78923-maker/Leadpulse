@@ -52,7 +52,7 @@ import { buildCloseUpdate } from '@/utils/deal-close';
 import { buildLaneGateDecision } from '@/utils/lane-gate';
 import { buildDealCardPresentation } from '@/utils/deal-card';
 import { PageTransition, StaggerList, StaggerItem } from '@/components/motion';
-import { Blob } from '@/components/blob';
+import { Blob, type BlobState } from '@/components/blob';
 import { LANE_BLOB_STATE } from '@/utils/lane-blob';
 import { EASE_OUT, pressScale, springPress} from '@/lib/motion';
 
@@ -307,6 +307,10 @@ function DealsBoard() {
     // Let errors bubble to the modal so failures are visible.
     await createDeal(data);
   };
+
+  // A lane header's mascot: a landing wins, then a drag in progress, then the lane's own mood.
+  const laneMascot = (laneId: DealWorkflowAction): BlobState =>
+    celebrate?.laneId === laneId ? 'land' : activeDragId ? 'watch' : LANE_BLOB_STATE[laneId];
 
   /* ─── Drag & drop lane moves with per-lane gatekeeping ─── */
   const handleDragStart = (event: DragStartEvent) => setActiveDragId(event.active.id as string);
@@ -779,7 +783,10 @@ function DealsBoard() {
                 {WORKFLOW_LANES.map(lane => (
                   <DroppableLane key={lane.id} laneId={lane.id} reduceMotion={reduceMotion}>
                     <div data-lane-header className="mb-3 shrink-0 flex flex-wrap items-center gap-1.5">
-                      <span className="h-2 w-2 shrink-0 rounded-full bg-clay-teal" aria-hidden="true" />
+                      {/* The lane's mascot: watches a card being dragged, bounces when one lands here. */}
+                      <span data-lane-mascot={laneMascot(lane.id)} className="-my-1 shrink-0" aria-hidden="true">
+                        <Blob state={laneMascot(lane.id)} size={22} follow={!!activeDragId} aria-label="" />
+                      </span>
                       <h2 data-lane-title title={LANE_CRITERIA[lane.id]} className="min-w-0 flex-1 text-[13px] font-semibold text-clay-ink">{lane.shortLabel}</h2>
                       <span data-lane-stats title={`Weighted by stage probability: ${formatBaht(weightedLanes[lane.id])}`} className="shrink-0 whitespace-nowrap text-[11px] text-clay-muted">{dealsByAction[lane.id].length} · {formatBaht(laneValues[lane.id])}</span>
                     </div>

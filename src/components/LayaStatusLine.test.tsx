@@ -43,4 +43,13 @@ describe('LayaStatusLine', () => {
     render(<LayaStatusLine status={status({ withReply: 1, waiting: 1, oldestWaitingMinutes: 40, health: 'stalled' })} load="ready" now={NOW} missingReplyWords={0} />);
     expect(screen.getByRole('status').textContent).toMatch(/1 reply has waited over 15 minutes.*probably stopped/);
   });
+
+  it('shows the mascot grading while replies wait, and drowsy once the grader has stopped', () => {
+    const { container, rerender } = render(<LayaStatusLine status={status({ withReply: 1, waiting: 1, oldestWaitingMinutes: 2, health: 'waiting' })} load="ready" now={NOW} missingReplyWords={0} />);
+    expect(container.querySelector('[data-mascot]')!.getAttribute('data-mascot')).toBe('grading');
+    rerender(<LayaStatusLine status={status({ withReply: 1, waiting: 1, oldestWaitingMinutes: 40, health: 'stalled' })} load="ready" now={NOW} missingReplyWords={0} />);
+    expect(container.querySelector('[data-mascot]')!.getAttribute('data-mascot')).toBe('drowsy');
+    rerender(<LayaStatusLine status={status({ withReply: 1, graded: 1, health: 'ok' })} load="ready" now={NOW} missingReplyWords={0} />);
+    expect(container.querySelector('[data-mascot]')).toBeNull();
+  });
 });

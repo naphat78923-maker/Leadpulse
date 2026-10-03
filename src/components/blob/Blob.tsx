@@ -41,6 +41,9 @@ export default function Blob({
   const rootRef = useRef<SVGSVGElement | null>(null)
   const stateRef = useRef<BlobState>(state)
   const lookRef = useRef({ yaw: 0, pitch: 0, mix: 0 })
+  // read inside the pointer handler, so switching follow on mid-life (a drag starting)
+  // never restarts the animation loop or its clock
+  const followRef = useRef(follow)
   const maskId = `blob-mask-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
 
   // initialize the engine exactly once, without touching refs during render
@@ -93,6 +96,11 @@ export default function Blob({
   }, [state])
 
   useEffect(() => {
+    followRef.current = follow
+    if (!follow) lookRef.current = { ...lookRef.current, mix: 0 }
+  }, [follow])
+
+  useEffect(() => {
     if (frozenAt !== undefined) {
       paint(frozenAt)
       return
@@ -111,10 +119,9 @@ export default function Blob({
     }
     raf = requestAnimationFrame(tick)
 
-    let onMove: ((e: PointerEvent) => void) | null = null
     let decayTimer: ReturnType<typeof setTimeout> | null = null
-    if (follow) {
-      onMove = (e: PointerEvent) => {
+    const onMove: ((e: PointerEvent) => void) | null = (e: PointerEvent) => {
+        if (!followRef.current) return
         const el = rootRef.current
         if (!el) return
         const box = el.getBoundingClientRect()
@@ -133,16 +140,15 @@ export default function Blob({
         decayTimer = setTimeout(() => {
           lookRef.current = { ...lookRef.current, mix: 0 }
         }, 1800)
-      }
-      window.addEventListener('pointermove', onMove, { passive: true })
     }
+    window.addEventListener('pointermove', onMove, { passive: true })
 
     return () => {
       cancelAnimationFrame(raf)
       if (onMove) window.removeEventListener('pointermove', onMove)
       if (decayTimer) clearTimeout(decayTimer)
     }
-  }, [follow, frozenAt])
+  }, [frozenAt])
 
   const box = `${-R - PAD} ${-R - PAD} ${(R + PAD) * 2} ${(R + PAD) * 2}`
 
