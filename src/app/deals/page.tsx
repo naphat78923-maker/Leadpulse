@@ -47,6 +47,7 @@ import { buildDataGapReport, dealIdsWithGap, isDataGap, type DataGap } from '@/u
 import { buildLayaStatus } from '@/utils/laya-status';
 import { buildWaitingOnYou } from '@/utils/waiting-on-you';
 import { lastContactDates, quietLabel } from '@/utils/last-contact';
+import { buildStalled, daysInLane, laneTimelines, pipelineOutcomes, stallThresholds } from '@/utils/lane-time';
 import { chaseStatusSinceReply } from '@/utils/interaction-event';
 import { calculateLeadScore, scoreToTier, type LeadTier } from '@/utils/lead-scoring';
 import { BoardAttentionFilter, BoardSort, capLane, LANE_CARD_CAP, reviewReasons, REVIEW_LABEL, buildReviewReport, buildReviewFix, filterAndSortBoardDeals, findDealsMatchingSearch, getDoNowCounts, localDateKey } from '@/utils/deal-board';
@@ -87,7 +88,9 @@ function DealsBoard() {
   const searchParams = useSearchParams();
   const requestedGap = searchParams.get('missing');
   const [attentionFilter, setAttentionFilter] = useState<BoardAttentionFilter>(
-    requestedGap ? 'missing-data' : searchParams.get('filter') === 'waiting-on-you' ? 'waiting-on-you' : 'all');
+    requestedGap ? 'missing-data'
+      : searchParams.get('filter') === 'waiting-on-you' ? 'waiting-on-you'
+      : searchParams.get('filter') === 'stalled' ? 'stalled' : 'all');
   const [gapFilter, setGapFilter] = useState<DataGap | 'all'>(isDataGap(requestedGap) ? requestedGap : 'all');
   const [boardSort, setBoardSort] = useState<BoardSort>('do-now');
   /** lanes showing every card instead of the first LANE_CARD_CAP */
@@ -101,7 +104,7 @@ function DealsBoard() {
   const [productFilter, setProductFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<Deal['priority'] | 'all'>('all');
 
-  const { deals: dbDeals, contacts: dbContacts, companies: dbCompanies, meetings: dbMeetings, loading, refresh, createDeal, logActivity, addMeeting } = useCrm();
+  const { deals: dbDeals, contacts: dbContacts, companies: dbCompanies, meetings: dbMeetings, activities, loading, refresh, createDeal, logActivity, addMeeting } = useCrm();
   const { addToast } = useToast();
   const reduceMotion = usePrefersReducedMotion();
   const deals: Deal[] = dbDeals;
@@ -182,6 +185,15 @@ function DealsBoard() {
   );
 
   const [statusNow] = useState(() => Date.now());
+
+  // Time in lane, read from the activity log; stalled = past the lane's threshold.
+  const timelines = useMemo(() => laneTimelines(deals, activities || []), [deals, activities]);
+  const stalled = useMemo(
+    () => buildStalled({ deals: actionBoardDeals, timelines, thresholds: stallThresholds(deals, timelines), now: statusNow }),
+    [actionBoardDeals, deals, timelines, statusNow]
+  );
+  const stalledIds = useMemo(() => new Set(stalled.map(item => item.deal.id)), [stalled]);
+  const outcomes = useMemo(() => pipelineOutcomes(deals, timelines), [deals, timelines]);
   const layaStatus = useMemo(
     () => (layaLoad === 'ready'
       ? buildLayaStatus({ deals: actionBoardDeals, grades: layaGrades, judgments: layaJudgments, now: statusNow })
@@ -190,8 +202,8 @@ function DealsBoard() {
   );
 
   const doNowCounts = useMemo(
-    () => ({ ...getDoNowCounts(actionBoardDeals, todayStr, layaReviewIds), missingData: gapReport.total, waitingOnYou: waitingOnYouIds.size }),
-    [actionBoardDeals, todayStr, layaReviewIds, gapReport.total, waitingOnYouIds]
+    () => ({ ...getDoNowCounts(actionBoardDeals, todayStr, layaReviewIds), missingData: gapReport.total, waitingOnYou: waitingOnYouIds.size, stalled: stalledIds.size }),
+    [actionBoardDeals, todayStr, layaReviewIds, gapReport.total, waitingOnYouIds, stalledIds]
   );
 
   const visibleActionBoardDeals = useMemo(
@@ -204,11 +216,12 @@ function DealsBoard() {
       layaReviewIds,
       missingDataIds,
       waitingOnYouIds,
+      stalledIds,
       sort: boardSort,
       hotness,
       lastContact,
     }),
-    [actionBoardDeals, attentionFilter, searchQuery, productFilter, priorityFilter, todayStr, layaReviewIds, missingDataIds, waitingOnYouIds, boardSort, hotness, lastContact]
+    [actionBoardDeals, attentionFilter, searchQuery, productFilter, priorityFilter, todayStr, layaReviewIds, missingDataIds, waitingOnYouIds, stalledIds, boardSort, hotness, lastContact]
   );
 
   // Same deals the "Needs review" count uses: lane requirements only apply on the board.
@@ -557,6 +570,9 @@ function DealsBoard() {
             layaGrade={layaGrades.get(deal.id)}
             chasesSinceReply={chasesSinceReply}
             quietNote={boardSort === 'quietest' ? quietLabel(lastContact.get(deal.id), todayStr) : null}
+            laneTime={action !== 'outreach' && isOnJourneyBoard(deal) && timelines.has(deal.id)
+              ? { days: daysInLane(timelines.get(deal.id)!, statusNow), stalled: stalledIds.has(deal.id) }
+              : null}
           />
           <p className="sr-only">Open {deal.client} in {lane.label}</p>
         </motion.button>
@@ -638,6 +654,7 @@ function DealsBoard() {
             openPipelineValue={openPipelineValue}
             weightedForecast={weightedForecast}
             sourceRows={sourceRows}
+            outcomes={outcomes}
             compact={compact}
             onToggleCompact={() => setCompact(!compact)}
           />
