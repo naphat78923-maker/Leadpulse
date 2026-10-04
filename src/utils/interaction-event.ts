@@ -164,6 +164,18 @@ export interface DatedChaseCountableMeeting extends ChaseCountableMeeting {
 }
 
 /**
+ * A message from the buyer: an inbound row, nothing else. This is the rule for anything
+ * the app states to Pat as fact ("the buyer replied", "reply logged"). A touch Pat made
+ * is never the buyer's reply, whatever outcome it carries: history was bulk-marked
+ * outbound (20260906_add_meeting_direction) and the old log form put an outcome on plain
+ * sends ("1st DM · neutral"), so an outcome on an outbound row is not evidence of a reply.
+ * chasesSinceLastReply below keeps its own looser rule, as decided for grading.
+ */
+export function isBuyerReplyRow(row: { direction?: string | null }): boolean {
+  return row.direction === 'inbound';
+}
+
+/**
  * Unanswered chases SINCE the buyer's last reply — the grading signal (decided with Pat,
  * 2026-10-01). It resets whenever the buyer replies, so a deal that came back to life is
  * not penalised for earlier silence. A reply is an inbound row or any row carrying a

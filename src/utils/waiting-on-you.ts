@@ -1,16 +1,17 @@
 // ─── Waiting on you: the buyer spoke last ───
 // Pure. A deal is waiting on Pat when the buyer's latest reply has no outbound touch
-// logged after it. A reply is an inbound row or any row carrying a recorded client
-// response (the same rule chasesSinceLastReply uses); an answer is any explicitly
-// outbound row after it. A follow-up scheduled for a later day means Pat already decided
-// when to answer, so the deal stays off the list — unless Laya read the reply as the
-// buyer asking for a next step, which should not sit.
+// logged after it. A reply is an inbound row only (isBuyerReplyRow): a touch Pat made
+// never counts as the buyer speaking, even when it carries an outcome, so this list
+// only ever says "the buyer replied" when a reply was logged. An answer is any
+// explicitly outbound row after it. A follow-up scheduled for a later day means Pat
+// already decided when to answer, so the deal stays off the list — unless Laya read
+// the reply as the buyer asking for a next step, which should not sit.
 
 import type { Deal } from '@/types/crm';
 import type { DealGrade } from './grade';
 import { UNSURE_BAND } from './grade';
 import { isOnJourneyBoard } from './deal-workflow';
-import { isCustomerResponseOutcome, type DatedChaseCountableMeeting } from './interaction-event';
+import { isBuyerReplyRow, type DatedChaseCountableMeeting } from './interaction-event';
 import { daysBetween } from './retentionCadence';
 
 export interface WaitingItem {
@@ -32,7 +33,7 @@ export function unansweredReplyDate(meetings: DatedChaseCountableMeeting[], deal
       (a.date ?? '').localeCompare(b.date ?? '') || (a.created_at ?? '').localeCompare(b.created_at ?? ''));
   let repliedOn: string | null = null;
   for (const row of rows) {
-    if (row.direction === 'inbound' || isCustomerResponseOutcome(row.outcome)) {
+    if (isBuyerReplyRow(row)) {
       repliedOn = DATE_KEY.exec(row.date ?? '')?.[0] ?? null;
     } else if (row.direction === 'outbound') {
       repliedOn = null;

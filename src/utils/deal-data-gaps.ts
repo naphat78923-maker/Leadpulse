@@ -6,7 +6,7 @@
 import type { Deal } from '@/types/crm';
 import { isOnJourneyBoard } from './deal-workflow';
 import { isConcreteNextAction } from './deal-card';
-import { chaseStatusSinceReply, type DatedChaseCountableMeeting } from './interaction-event';
+import { isBuyerReplyRow, type DatedChaseCountableMeeting } from './interaction-event';
 import { latestLoggedReplyNote } from './laya-buyer-response';
 
 export type DataGap = 'reply-words' | 'next-action' | 'contact' | 'value';
@@ -32,9 +32,13 @@ export function isDataGap(value: string | null | undefined): value is DataGap {
   return !!value && (DATA_GAPS as string[]).includes(value);
 }
 
-/** Whether the buyer has replied on this deal, by a logged interaction or a logged reply note. */
+/**
+ * Whether the buyer has replied on this deal: an inbound interaction, or a reply note in
+ * the deal's log. An outbound touch with an outcome is not a reply, so "exact words
+ * missing" is only ever asked for a reply that was actually logged.
+ */
 export function buyerHasReplied(deal: Deal, meetings: DatedChaseCountableMeeting[]): boolean {
-  return chaseStatusSinceReply(meetings, deal.id).buyerReplied || !!latestLoggedReplyNote(deal.last_outcome);
+  return meetings.some(m => m.deal_id === deal.id && isBuyerReplyRow(m)) || !!latestLoggedReplyNote(deal.last_outcome);
 }
 
 /** The gaps of one deal; empty for a deal off the journey board. */
