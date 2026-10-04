@@ -30,8 +30,16 @@ describe('unansweredReplyDate', () => {
     expect(unansweredReplyDate(meetings, 'a')).toBeNull();
   });
 
-  it('counts a call the buyer answered as a reply, and ignores internal notes after it', () => {
-    const meetings = [row('a', '2026-09-28', 'outbound', 'positive', 'call'), row('a', '2026-09-29', 'internal', null, 'note')];
+  it('never counts a touch Pat made as the buyer replying, whatever outcome it carries', () => {
+    // History was bulk-marked outbound and the old form tagged plain sends ("1st DM · neutral").
+    expect(unansweredReplyDate([row('a', '2026-09-10', 'outbound', 'neutral', 'dm')], 'a')).toBeNull();
+    expect(unansweredReplyDate([row('a', '2026-09-28', 'outbound', 'positive', 'call')], 'a')).toBeNull();
+    // An outbound row with an outcome still counts as the answer to an earlier reply.
+    expect(unansweredReplyDate([row('a', '2026-09-20', 'inbound'), row('a', '2026-09-21', 'outbound', 'positive')], 'a')).toBeNull();
+  });
+
+  it('ignores internal notes after a reply', () => {
+    const meetings = [row('a', '2026-09-28', 'inbound'), row('a', '2026-09-29', 'internal', null, 'note')];
     expect(unansweredReplyDate(meetings, 'a')).toBe('2026-09-28');
   });
 

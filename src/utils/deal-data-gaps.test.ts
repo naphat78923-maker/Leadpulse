@@ -44,6 +44,11 @@ describe('buyerHasReplied', () => {
     expect(buyerHasReplied({ ...complete, id: 'other' }, [inbound])).toBe(false);
   });
 
+  it('is false for an outbound touch that only carries an outcome', () => {
+    const sent = [{ deal_id: 'd1', type: 'dm', direction: 'outbound', outcome: 'neutral', date: '2026-09-10' }];
+    expect(buyerHasReplied({ id: 'd1', last_outcome: null } as Deal, sent)).toBe(false);
+  });
+
   it('is true for a logged reply note without an interaction', () => {
     expect(buyerHasReplied({ ...complete, last_outcome: '💬 Client replied — positive: wants a quote' }, [])).toBe(true);
     expect(buyerHasReplied(complete, [])).toBe(false);

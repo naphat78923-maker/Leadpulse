@@ -7,14 +7,16 @@ import clsx from 'clsx';
 import type { Company, Deal, Meeting } from '@/types/crm';
 import CompanyLogo from '@/components/CompanyLogo';
 import RecentChanges from '@/components/RecentChanges';
-import DataHealthCard from '@/components/DataHealthCard';
 import GoalCard from '@/components/GoalCard';
-import DoNextCard from '@/components/DoNextCard';
+import { useCrm } from '@/components/CrmProvider';
+import { useLayaGrades } from '@/hooks/useLayaReviewList';
 import type { HealthTier } from '@/utils/accountHealth';
 import { businessDaysBetween } from '@/utils/business-time';
 import { formatScheduleDate } from '@/utils/deal-schedule';
 import { WORKFLOW_BY_ID, getWorkflowAction } from '@/utils/deal-workflow';
+import { buildDoNext, type DoNextItem, type DoNextKind } from '@/utils/do-next';
 import type { AttentionCandidate } from '@/utils/followup-policy';
+import { laneTimelines } from '@/utils/lane-time';
 import type { CheckInRow, ThisWeekQueue as Queue } from '@/utils/this-week-queue';
 import { checkInSplit, daysOverdue, dueByDay, groupOverdueByAge, touchesLastSevenDays } from '@/utils/this-week-stats';
 
@@ -35,6 +37,9 @@ interface ThisWeekQueueProps {
 type Tab = 'overdue' | 'week' | 'undated';
 
 const CHECK_IN_PREVIEW = 6;
+
+/** Reasons that mean someone is waiting on Pat. Stalled and missing-data reasons live on Pipeline. */
+const WAITING_KINDS: readonly DoNextKind[] = ['asked', 'review', 'waiting'];
 
 const TIER: Record<HealthTier | 'reorder_only', { label: string; dot: string }> = {
   at_risk: { label: 'At-risk', dot: 'bg-clay-coral' },
@@ -228,6 +233,59 @@ function FollowupRow({
   );
 }
 
+/** A deal where the buyer (or Laya) is waiting on Pat: name, the reason, stage, Log. */
+function WaitingRow({
+  item,
+  company,
+  held,
+  onLogDeal,
+  index,
+}: {
+  item: DoNextItem;
+  company?: Company;
+  held: boolean;
+  onLogDeal: (dealId: string) => void;
+  index: number;
+}) {
+  const { deal } = item;
+  const name = company?.name || deal.client || deal.title || 'Deal';
+  const stage = WORKFLOW_BY_ID[getWorkflowAction(deal)]?.shortLabel;
+  return (
+    <li
+      style={rise(index)}
+      className="lp-rise group grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 border-t border-clay-hairline px-1 py-2.5 first:border-t-0 sm:grid-cols-[28px_minmax(0,1fr)_minmax(0,1.3fr)_auto_auto]"
+    >
+      <CompanyLogo src={company?.logo_url} name={name} id={deal.company_id ?? undefined} size={28} className="row-span-2 self-start sm:row-span-1 sm:self-center" />
+      <div className="min-w-0">
+        <Link
+          href={`/deals?deal=${encodeURIComponent(deal.id)}`}
+          aria-label={`Open deal: ${deal.title || name}`}
+          className={clsx('block truncate text-sm font-medium text-clay-ink hover:text-clay-lavender rounded-sm', focusRing)}
+        >
+          {name}
+        </Link>
+        <p className="truncate text-xs text-clay-body sm:hidden">{item.reasons[0].label}</p>
+      </div>
+      <p className="hidden truncate text-xs text-clay-body sm:block" title={item.reasons[0].label}>{item.reasons[0].label}</p>
+      <div className="hidden items-center sm:flex">
+        {stage && <span className="whitespace-nowrap rounded-md bg-clay-surface px-1.5 py-0.5 text-[11px] text-clay-muted">{stage}</span>}
+      </div>
+      {held ? (
+        <span className="text-[11px] font-semibold text-clay-error">On hold</span>
+      ) : (
+        <button
+          type="button"
+          onClick={() => onLogDeal(deal.id)}
+          aria-label={`Log interaction for ${deal.title || name}`}
+          className={clsx('h-8 rounded-lg border border-clay-hairline px-2.5 text-xs font-medium text-clay-ink transition-transform duration-150 ease-out active:scale-[0.97] hover:border-clay-lavender', focusRing)}
+        >
+          Log
+        </button>
+      )}
+    </li>
+  );
+}
+
 function GroupHeader({ label, count }: { label: string; count: number }) {
   return (
     <h3 className="mt-3 mb-1 px-1 text-[11px] font-medium uppercase tracking-wide text-clay-muted first:mt-0">
@@ -323,6 +381,20 @@ export default function ThisWeekQueue({
   const days = useMemo(() => dueByDay(dueThisWeek, today), [dueThisWeek, today]);
   const split = useMemo(() => checkInSplit(checkIns), [checkIns]);
   const touches = useMemo(() => touchesLastSevenDays(meetings, today), [meetings, today]);
+
+  // Deals where the buyer spoke last, or Laya needs a call. Shown once, above the dated lists.
+  const { activities = [] } = useCrm();
+  const { grades } = useLayaGrades(deals, meetings);
+  const [now] = useState(() => Date.now());
+  const waitingOnYou = useMemo(
+    () => buildDoNext({ deals, meetings, grades, timelines: laneTimelines(deals, activities), today, now })
+      .filter(item => WAITING_KINDS.includes(item.reasons[0].kind)),
+    [deals, meetings, grades, activities, today, now],
+  );
+  const heldDealIds = useMemo(
+    () => new Set([...needsReview, ...overdue, ...dueThisWeek, ...needsDate].filter(c => c.holds.length > 0 && c.dealId).map(c => c.dealId!)),
+    [needsReview, overdue, dueThisWeek, needsDate],
+  );
 
   const row = (item: AttentionCandidate, tone: Parameters<typeof FollowupRow>[0]['tone'], index: number) => (
     <FollowupRow
@@ -435,7 +507,7 @@ export default function ThisWeekQueue({
               label="Touches · 7 days"
               value={touches.total}
               onClick={() => openTab('week')}
-              caption={`${touches.total > 0 ? `${touches.positive} positive` : 'No touches logged'} · ${touches.previous} the week before`}
+              caption={`${touches.previous} the week before`}
               chart={<Sparkline series={touches.series} />}
             />
           </div>
@@ -448,6 +520,24 @@ export default function ThisWeekQueue({
                 <div className="mb-3 rounded-lg border border-clay-error/30 bg-clay-error/5 p-2.5">
                   <h3 className="px-1 text-xs font-semibold text-clay-error">Needs a decision · {needsReview.length}</h3>
                   <ul>{needsReview.map((item, i) => row(item, 'review', i))}</ul>
+                </div>
+              )}
+
+              {waitingOnYou.length > 0 && (
+                <div className="mb-3 rounded-lg border border-clay-ochre/40 bg-clay-ochre/5 p-2.5" data-testid="waiting-on-you">
+                  <h3 className="px-1 text-xs font-semibold text-clay-ink">Waiting on you · {waitingOnYou.length}</h3>
+                  <ul>
+                    {waitingOnYou.map((item, i) => (
+                      <WaitingRow
+                        key={item.deal.id}
+                        item={item}
+                        company={item.deal.company_id ? companiesById.get(item.deal.company_id) : undefined}
+                        held={heldDealIds.has(item.deal.id)}
+                        onLogDeal={onLogDeal}
+                        index={i}
+                      />
+                    ))}
+                  </ul>
                 </div>
               )}
 
@@ -505,9 +595,7 @@ export default function ThisWeekQueue({
             </section>
 
             <div className="min-w-0 space-y-4">
-              <DoNextCard deals={deals} meetings={meetings} today={today} />
               <GoalCard deals={deals} today={today} />
-              <DataHealthCard deals={deals} meetings={meetings} />
               <CheckInsCard rows={checkIns} today={today} onLogCompany={onLogCompany} />
               <RecentChanges />
             </div>

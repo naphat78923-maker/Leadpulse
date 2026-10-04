@@ -44,6 +44,7 @@ import LayaStatusLine from '@/components/LayaStatusLine';
 import { buildDataGapReport, dealIdsWithGap, isDataGap, type DataGap } from '@/utils/deal-data-gaps';
 import { buildLayaStatus } from '@/utils/laya-status';
 import { buildWaitingOnYou } from '@/utils/waiting-on-you';
+import { splitToContact } from '@/utils/to-contact';
 import { lastContactDates, quietLabel } from '@/utils/last-contact';
 import { buildStalled, daysInLane, laneTimelines, pipelineOutcomes, stallThresholds } from '@/utils/lane-time';
 import { calculateLeadScore, scoreToTier, type LeadTier } from '@/utils/lead-scoring';
@@ -56,7 +57,9 @@ import { Blob, type BlobState } from '@/components/blob';
 import { LANE_BLOB_STATE } from '@/utils/lane-blob';
 import { EASE_OUT, pressScale, springPress} from '@/lib/motion';
 
-type ViewMode = 'prospects' | 'board' | 'parked' | 'won' | 'lost' | 'table';
+const TO_CONTACT_PREVIEW = 24;
+
+type ViewMode = 'prospects' | 'tocontact' | 'board' | 'parked' | 'won' | 'lost' | 'table';
 
 // Suspense boundary for useSearchParams (via useQuerySelection) — see its docs.
 export default function DealsPage() {
@@ -143,10 +146,13 @@ function DealsBoard() {
     el.scrollBy({ left: dir * el.clientWidth * 0.8, behavior: 'smooth' });
   };
 
-  const actionBoardDeals = useMemo(
-    () => deals.filter(deal => isOnJourneyBoard(deal)),
-    [deals]
+  // Outreach deals with no logged call, email, DM or meeting wait in the To contact tab;
+  // the journey board holds the deals where a conversation has started.
+  const { toContact: toContactDeals, inConversation: actionBoardDeals } = useMemo(
+    () => splitToContact(deals, dbMeetings || []),
+    [deals, dbMeetings]
   );
+  const [showAllToContact, setShowAllToContact] = useState(false);
 
   // Laya's grades for deals with a pasted reply; review ids drive the "Laya review" filter.
   const { grades: layaGrades, judgments: layaJudgments, status: layaLoad } = useLayaGrades(actionBoardDeals, dbMeetings || []);
@@ -569,7 +575,9 @@ function DealsBoard() {
           <p className="zams-eyebrow mb-1">Deals / VG Saveur</p>
           <h1 className="zams-display text-2xl md:text-[28px] leading-tight">Pipeline</h1>
           <p className="mt-1 text-xs text-clay-muted">
-            <strong className="font-semibold text-clay-ink">{stats.active}</strong> active
+            <strong className="font-semibold text-clay-ink">{stats.active}</strong> in conversation
+            <span className="mx-2">·</span>
+            <button onClick={() => setView('tocontact')} className="underline-offset-2 hover:underline"><strong className="font-semibold text-clay-ink">{toContactDeals.length}</strong> to contact</button>
             <span className="mx-2">·</span>
             <button onClick={() => focusAttention('today')} className="font-semibold text-clay-warning-strong underline-offset-2 hover:underline">{stats.dueToday} due today</button>
             <span className="mx-2">·</span>
@@ -586,6 +594,7 @@ function DealsBoard() {
       <nav className="mb-3 flex gap-1 overflow-x-auto no-scrollbar border-b border-clay-hairline" aria-label="Deal views">
         {([
           ['prospects', 'Prospects', null],
+          ['tocontact', 'To contact', toContactDeals.length],
           ['board', 'Journey', stats.active],
           ['parked', 'Parked', stats.parked],
           ['won', 'Won', stats.won],
@@ -885,6 +894,32 @@ function DealsBoard() {
             </DragOverlay>
           </DndContext>
         </>
+      )}
+
+      {view === 'tocontact' && (
+        <section aria-label="To contact">
+          <p className="mb-3 text-sm text-clay-muted">
+            Outreach deals with nothing logged yet. Log the first call, email or DM and the deal moves onto the board.
+          </p>
+          {toContactDeals.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-clay-hairline p-8 text-center text-sm text-clay-muted">Everyone in Outreach has been contacted.</div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+                {(showAllToContact ? toContactDeals : toContactDeals.slice(0, TO_CONTACT_PREVIEW)).map(d => renderDealCard(d))}
+              </div>
+              {toContactDeals.length > TO_CONTACT_PREVIEW && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllToContact(value => !value)}
+                  className="mt-3 h-9 rounded-lg px-2 text-sm font-medium text-clay-lavender hover:bg-clay-surface"
+                >
+                  {showAllToContact ? 'Show fewer' : `Show all ${toContactDeals.length}`}
+                </button>
+              )}
+            </>
+          )}
+        </section>
       )}
 
       {(view === 'parked' || view === 'won' || view === 'lost') && (() => {

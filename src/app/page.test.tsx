@@ -133,6 +133,30 @@ describe('This week page', () => {
     expect(screen.getByRole('link', { name: /open deal: soon deal/i })).toBeTruthy();
   });
 
+  it('puts a deal the buyer replied on at the top, and never one where only Pat reached out', () => {
+    setCrm({
+      deals: [
+        makeDeal({ id: 'replied', title: 'Replied deal', client: 'Replied Co', company_id: null, followup_date: null }),
+        makeDeal({ id: 'sent', title: 'Sent deal', client: 'Sent Co', company_id: null, followup_date: null }),
+      ],
+      meetings: [
+        { id: 'm1', deal_id: 'replied', date: addDaysToDateKey(today(), -5), type: 'dm', direction: 'inbound', outcome: null },
+        // Pat's own DM, tagged by the old form: not a reply.
+        { id: 'm2', deal_id: 'sent', date: addDaysToDateKey(today(), -5), type: 'dm', direction: 'outbound', outcome: 'neutral' },
+      ],
+    });
+    render(<TodayPage />);
+
+    const block = screen.getByTestId('waiting-on-you');
+    expect(block.textContent).toMatch(/Waiting on you · 1/);
+    expect(block.textContent).toMatch(/Replied Co/);
+    expect(block.textContent).toMatch(/Buyer replied 5 days ago, nothing sent since/);
+    expect(block.textContent).not.toMatch(/Sent Co/);
+    // One list: no separate Do next or Missing data cards on the daily page.
+    expect(screen.queryByText(/^Do next/)).toBeNull();
+    expect(screen.queryByText(/^Missing data/)).toBeNull();
+  });
+
   it('keeps distinct deals for one company and honors parked/closed deal rules', () => {
     setCrm({
       deals: [
