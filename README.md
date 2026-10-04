@@ -9,21 +9,29 @@ A solo-operator B2B CRM for butter & condensed-milk sales. Built to solve one pr
 **In daily production use** (solo mode, no auth). The app runs on a live Supabase backend with the full sales book — companies, contacts, deals, and every logged touch.
 
 - **Deployed:** Vercel, auto-deploys from `main`
-- **Data:** Supabase Postgres — 20 migrations applied, soft-delete + undo on all entities
-- **Tests:** 44 Vitest suites covering workflow, scoring, scheduling, and component logic
+- **Data:** Supabase Postgres — 25 migrations in `supabase/migrations/`, soft-delete + undo on all entities
+- **Tests:** 92 Vitest files (about 900 tests) covering workflow, scheduling, scoring and component logic. They run locally with `npm test`; no CI runs them yet
 - **Installable:** PWA manifest + iOS meta ship with every build — "Add to Home Screen" opens it standalone
 
 ## How It Works
 
-The app is organized around a **daily action loop**, not a database browser:
+The app is three pages, built around one weekly loop: see who needs you, act, log it.
 
-1. **Today** (`/`) — "Do this next" hero surfaces the single most urgent move (overdue follow-up > due today > needs attention), then a priority-ordered queue. A pulse strip shows touch counts for the last 7 days.
-2. **Act** — From any card: log a touch (call / email / DM / meeting / sample), snooze, or advance the deal's workflow lane. Every action writes to the activity log with **undo**.
-3. **Nudges** (`/nudges`) — Deals that go quiet climb a nudge ladder (warm → remind → firm → parking) derived from days-since-contact and send counts. This is the "never drop a follow-up" engine.
-4. **Deals** (`/deals`) — The working board. Rows carry priority borders, lead-score tiers (S/A/B/C/D), and lane gates that block advancement when required details are missing.
-5. **Retention** (`/retention`) + **Signals** (`/signals`) — Account health, reorder cadence detection, and buying-signal surfacing for existing customers, fed by order history (`account_events`).
+1. **This week** (`/`) — the daily page.
+   - Four stat cards: Overdue, Due this week, Check-ins, Touches in the last 7 days.
+   - **Waiting on you**: deals where the buyer replied and nothing has been sent since. A reply means a logged inbound interaction, never one of your own messages.
+   - Follow-ups in three tabs: **Overdue** (grouped by age), **This week** (grouped by day), **No date**.
+   - Side column: the monthly goal, customers to check in with, and recent changes with **Undo**.
+2. **Pipeline** (`/deals`) — the deals.
+   - **Prospects**: accounts with no deal yet, with a saved review decision and "Start a deal".
+   - **To contact**: Outreach deals with no logged call, email, DM or meeting. Logging the first touch moves a deal onto the board.
+   - **Journey**: the board of deals in conversation, with filters, sorts and a "Needs attention" menu (waiting on you, needs review, stalled, missing data).
+   - **Parked / Won / Lost / Table**: exits and a searchable table of every deal.
+3. **Accounts** (`/companies`) — companies with their people, contact channels (company routes such as a general LINE or info@ address), activity and customer health.
 
-Supporting surfaces: **Contacts, Companies, Prospects** (review queue for new leads), **Meetings** (full interaction log), **Activity** (undoable action feed), **Analytics** (conversion + revenue), **Pipeline** (kanban).
+From any row or card you can log a touch (call / email / DM / meeting / note), snooze, or move the deal's lane. Every change is logged with **undo**.
+
+`/lab` is a hidden page for Laya experiments (fit judging and the terminal). Old URLs (`/activity`, `/retention`, `/signals`, `/prospects`, `/contacts`, `/meetings`, `/add`) redirect to the page that replaced them.
 
 ### Workflow lanes
 
@@ -57,7 +65,7 @@ npm run dev        # http://localhost:3000
 ```bash
 npm run dev     # dev server
 npm run build   # production build
-npm run test    # vitest run (57 suites)
+npm run test    # vitest run (92 files)
 npm run lint    # eslint
 npm run laya:serve  # local Laya worker for lead recommendations
 ```
@@ -272,37 +280,40 @@ npm run laya:serve
 
 ```
 src/
-├── app/                  # Routes: today, deals, nudges, signals, retention,
-│   │                     #   prospects, contacts, companies, meetings, activity,
-│   │                     #   analytics, pipeline, add, api/
+├── app/                  # Routes: / (This week), /deals (Pipeline),
+│   │                     #   /companies (Accounts), /lab, api/
 │   ├── layout.tsx        # Root layout: sidebar, theme, PWA meta
 │   └── manifest.ts       # PWA manifest
-├── components/           # CrmProvider (data layer + undo), DealDetail,
-│   │                     #   LogInteractionModal, NudgeLadderRail, LaneGateModal,
-│   │                     #   StakeholderMiniMap, motion/ …
+├── components/           # CrmProvider (data layer + undo), ThisWeekQueue,
+│   │                     #   DealDetail, CompanyDetail, LogInteractionModal,
+│   │                     #   ProspectsTab, Laya* cards, motion/, blob/ …
+│   ├── pipeline/         # Pipeline pieces: toolbar, table, review queue,
+│   │                     #   drag-and-drop lanes, bulk bar
 │   └── *.test.tsx        # Component tests colocated
+├── hooks/                # useQuerySelection (?deal= / ?company= links),
+│                         #   useReorderSignals, useLayaReviewList
 ├── lib/                  # crm.ts (Supabase data access), supabase.ts, historical
 ├── utils/                # Pure domain logic, all unit-tested:
-│                         #   deal-workflow, lead-scoring, deal-schedule,
-│                         #   reorderPolicy, prospectFit, stakeholder-map, format…
-├── types/                # crm.ts (live model) · lead.ts (legacy, used by /add)
-└── data/                 # crmData fallback + original sheet import
-supabase/migrations/      # 20 sequential schema migrations
-scripts/                  # Sheet import, Supabase setup/test, report generators
+│                         #   deal-workflow, followup-policy, this-week-queue,
+│                         #   this-week-stats, waiting-on-you, to-contact,
+│                         #   lead-scoring, retention-touch, laya-* …
+└── types/                # crm.ts (the data model)
+supabase/migrations/      # Schema migrations
+scripts/                  # Sheet import, Laya worker and evals, report generators
 .hermes/plans/            # Design & delivery planning docs (de-identified)
 docs/                     # Visual system spec, historical-sales proposal
 ```
 
 ## Roadmap
 
-- [x] Phase 1: Core UI — Today, Pipeline, Add Lead
-- [x] Phase 2: Supabase backend + real data import
-- [x] Phase 3: Log interaction modal (call/email/DM/meeting/sample/note) + undoable activity log
-- [x] Phase 4: Nudge flow automation (derived nudge ladder)
-- [x] Phase 6 (partial): Analytics + retention/reorder signals
-- [ ] Phase 5: Telegram + Web Push notifications (`node-telegram-bot-api` installed, not wired)
-- [ ] Security hardening: env-based Supabase keys, tighten RLS "allow all" policies
-- [ ] Prospect review queue GA; stakeholder mini-map rollout
+- [x] Core CRM on Supabase with real data, log form and undoable activity log
+- [x] Consolidated from nine pages to three: This week, Pipeline, Accounts
+- [x] Retention check-ins and reorder signals folded into This week
+- [x] Laya grading foundation (local model, pasted buyer replies)
+- [ ] Run tests automatically on every PR (CI)
+- [ ] One-tap contact actions and message templates
+- [ ] Telegram + Web Push notifications (`node-telegram-bot-api` installed, not wired)
+- [ ] Security hardening: add a login, env-based Supabase keys, tighten RLS "allow all" policies
 
 ## Design Decisions
 
