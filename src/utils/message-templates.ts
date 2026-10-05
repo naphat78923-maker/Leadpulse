@@ -90,6 +90,13 @@ export function segmentPainFor(company: ClassifiableCompany | null | undefined):
   return PAIN_BY_ROLE[classifyCompanyRole(company).role] ?? GENERAL;
 }
 
+const TRADE_SEGMENTS: ReadonlySet<SegmentPain> = new Set([TRADE, RETAIL]);
+
+/** Importers, distributors, wholesalers and retailers resell: they have a range, not a menu. */
+export function isTradeAccount(company: ClassifiableCompany | null | undefined): boolean {
+  return TRADE_SEGMENTS.has(segmentPainFor(company));
+}
+
 export interface DraftInput {
   kind: TemplateKind;
   language: DraftLanguage;
@@ -99,6 +106,8 @@ export interface DraftInput {
   product?: string | null;
   /** the buyer's own menu item or recipe, typed by Pat; a [blank] when empty */
   application?: string | null;
+  /** true for accounts that resell: the draft speaks of their range, not their menu */
+  trade?: boolean;
   /** unanswered sends so far; picks which of the four nudges to draft */
   sendCount?: number;
 }
@@ -134,6 +143,7 @@ export function buildDraft(input: DraftInput): Draft {
   const milk = isCondensedMilk(input.product);
   const app = input.application?.trim();
   const step = nudgeStep(input.sendCount);
+  const trade = input.trade === true;
 
   if (input.language === 'thai') {
     // A space after คุณ only before a Latin-script name.
@@ -143,6 +153,14 @@ export function buildDraft(input: DraftInput): Draft {
     const forApp = app ? `สำหรับ ${app} ` : '';
     switch (input.kind) {
       case 'nudge':
+        if (trade) {
+          return { subject: `${BRAND} x ${company || BRAND}`, body: [
+            `${hello} ขออนุญาตติดตามข้อความก่อนหน้าเรื่อง${product} ครับ สนใจให้ผมส่ง${sample}ให้ทีมพิจารณาไหมครับ`,
+            `${hello} ขออนุญาตติดตามอีกครั้งนะครับ ตัวอย่างน่าจะช่วยให้ประเมินได้เร็วที่สุดว่า${product} เหมาะกับกลุ่มสินค้าของคุณหรือไม่ สนใจให้ผมส่ง${sample}ไหมครับ`,
+            `${hello} ทีมยังสนใจพิจารณา${product} อยู่ไหมครับ หรือสะดวกให้ผมติดต่อกลับในช่วงที่เหมาะกว่านี้ครับ`,
+            `${hello} ผมขอพักเรื่อง${product} ไว้ก่อนนะครับ หากในอนาคตสนใจ สามารถทักมาได้ครับ`,
+          ][step - 1] };
+        }
         return { subject: `${BRAND} x ${company || BRAND}`, body: [
             `${hello} ขออนุญาตติดตามข้อความก่อนหน้าเรื่อง${product}${app ? ` สำหรับ ${app}` : ''} ครับ สนใจให้ผมส่ง${sample}ให้ทีมครัวลองไหมครับ`,
             `${hello} ขออนุญาตติดตามอีกครั้งนะครับ ถ้าเริ่มลองกับ ${app || 'เมนูเดียว'} ก่อน ก็ไม่ต้องเปลี่ยนทั้งไลน์เมนูครับ สนใจให้ผมส่ง${sample}สำหรับทดลองไหมครับ`,
@@ -192,6 +210,13 @@ export function buildDraft(input: DraftInput): Draft {
           body: `${hello} แพทจาก ${BRAND} ครับ ช่วงนี้ต้องการ${product} เพิ่มไหมครับ แจ้งจำนวนได้เลย ผมจะจัดส่งให้ครับ`,
         };
       default:
+        if (trade) {
+          return {
+            subject: `${BRAND} x ${company || BRAND}`,
+            body: `${hello} ผมแพทจาก ${BRAND} ครับ เห็นว่าทางบริษัทมีจำหน่าย ${app || '[สินค้าที่จำหน่าย]'} เลยคิดว่า${product} อาจเหมาะกับกลุ่มสินค้าของคุณครับ สนใจรับ${sample}เพื่อพิจารณาไหมครับ`
+              + `\n\n${milk ? '' : `${PROOF.thai}\n`}${WHOLESALE_LINK}`,
+          };
+        }
         return {
           subject: `${BRAND} x ${company || BRAND}`,
           body: `${hello} ผมแพทจาก ${BRAND} ครับ เห็นว่าทางร้านมี ${app || '[เมนู]'} เลยคิดว่า${product} อาจน่าลองกับเมนูนี้ครับ สนใจรับ${sample}สำหรับทดลองไหมครับ`
@@ -207,6 +232,14 @@ export function buildDraft(input: DraftInput): Draft {
   const theSample = milk ? 'a free sample' : 'the free 2 × 500g sample';
   switch (input.kind) {
     case 'nudge':
+      if (trade) {
+        return { subject: `${BRAND} x ${company || BRAND}`, body: [
+          `${hello} following up on my message about ${product}. Would you like me to send ${theSample} for your team to assess?`,
+          `${hello} one more thought. A sample is the quickest way to judge whether ${product} fits your range${app ? ` next to ${app}` : ''}. Shall I send ${theSample}?`,
+          `${hello} is the team still interested in assessing ${product}, or would it be better if I came back at a later time?`,
+          `${hello} I'll leave the ${product} discussion here for now. If it becomes relevant later, you're welcome to message me.`,
+        ][step - 1] };
+      }
       return { subject: `${BRAND} x ${company || BRAND}`, body: [
         `${hello} following up on my message about ${product}${forApp}. Would you like me to send ${theSample} for your kitchen to try?`,
         `${hello} one more thought. Testing in just ${app || 'one recipe'} keeps it simple: nothing else on your menu has to change. Shall I send ${theSample} for that?`,
@@ -256,6 +289,13 @@ export function buildDraft(input: DraftInput): Draft {
         body: `${hello} Pat from ${BRAND} here. Do you need more ${product} for the coming weeks? Tell me the quantity and I'll arrange delivery.`,
       };
     default:
+      if (trade) {
+        return {
+          subject: `${BRAND} x ${company || BRAND}`,
+          body: `${hello} Pat from ${BRAND} here. I saw you carry ${app || '[a product they carry]'}. Would a ${sample} be useful to assess for your range?`
+            + `\n\n${milk ? '' : `${PROOF.english}\n`}${WHOLESALE_LINK}`,
+        };
+      }
       return {
         subject: `${BRAND} x ${company || BRAND}`,
         body: `${hello} Pat from ${BRAND} here. I saw ${app || '[menu item]'} on your menu. Would a ${sample} be useful to test with it?`

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TEMPLATE_KINDS, buildDraft, defaultDraftLanguage, defaultTemplateKind, hasBlanks, nudgeStep, segmentPainFor } from './message-templates';
+import { TEMPLATE_KINDS, buildDraft, defaultDraftLanguage, defaultTemplateKind, hasBlanks, isTradeAccount, nudgeStep, segmentPainFor } from './message-templates';
 
 describe('segmentPainFor', () => {
   it('picks the pain line from the account role', () => {
@@ -71,6 +71,23 @@ describe('buildDraft', () => {
         expect(at(kind, n).match(/\?/g)?.length ?? 0).toBe(n === 4 ? 0 : 1);
       }
     }
+  });
+
+  it('speaks of a range, not a menu, to accounts that resell', () => {
+    const distributor = { name: 'Fine Foods Trading', industry: 'importer/distributor', tags: ['distributor'] };
+    expect(isTradeAccount(distributor)).toBe(true);
+    expect(isTradeAccount({ name: 'Crumb House', industry: 'bakery chain', tags: ['bakery'] })).toBe(false);
+
+    const first = buildDraft({ ...base, kind: 'first_approach', trade: true, application: 'Elle & Vire butter' }).body;
+    expect(first).toContain('I saw you carry Elle & Vire butter.');
+    expect(first).toContain('useful to assess for your range?');
+    expect(first).toContain('St. Regis and Le Cordon Bleu Dusit Thani');
+    for (const sendCount of [1, 2, 3, 4]) {
+      for (const language of ['english', 'thai'] as const) {
+        expect(buildDraft({ ...base, kind: 'nudge', language, trade: true, application: 'Elle & Vire butter', sendCount }).body).not.toMatch(/menu|kitchen|เมนู|ครัว/);
+      }
+    }
+    expect(buildDraft({ ...base, kind: 'first_approach', language: 'thai', trade: true }).body).toContain('[สินค้าที่จำหน่าย]');
   });
 
   it('asks one thing per sample step', () => {

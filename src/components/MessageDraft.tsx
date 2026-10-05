@@ -22,6 +22,7 @@ import {
   defaultTemplateKind,
   hasBlanks,
   isNudge,
+  isTradeAccount,
   nudgeStep,
   segmentPainFor,
   type DraftLanguage,
@@ -72,6 +73,7 @@ export default function MessageDraft({
   }, [contacts, deal.contact_ids, company]);
 
   const pain = useMemo(() => segmentPainFor(company), [company]);
+  const trade = useMemo(() => isTradeAccount(company), [company]);
   const [kind, setKind] = useState<TemplateKind>(() => defaultTemplateKind({
     lane: getWorkflowAction(deal), companyStatus: company?.status, sampleStatus: deal.sample_status, sendCount,
   }));
@@ -85,8 +87,8 @@ export default function MessageDraft({
   const [edited, setEdited] = useState<string | null>(null);
 
   const draft = useMemo(
-    () => buildDraft({ kind, language, companyName: company?.name ?? deal.client ?? '', contactName: person?.name, product: deal.product, application, sendCount: step }),
-    [kind, language, company, deal.client, deal.product, person, application, step],
+    () => buildDraft({ kind, language, companyName: company?.name ?? deal.client ?? '', contactName: person?.name, product: deal.product, application, trade, sendCount: step }),
+    [kind, language, company, deal.client, deal.product, person, application, trade, step],
   );
   const body = edited ?? draft.body;
   const title = isNudge(kind) ? `Nudge ${step} of ${NUDGE_LIMIT} sent` : `${TEMPLATE_LABEL[kind]} message sent`;
@@ -141,7 +143,7 @@ export default function MessageDraft({
       {USES_APPLICATION.has(kind) && (
         <input
           aria-label="Their menu item or recipe"
-          placeholder="What they make, e.g. croissants (saved to the account)"
+          placeholder={trade ? 'What they carry, e.g. Elle & Vire butter (saved to the account)' : 'What they make, e.g. croissants (saved to the account)'}
           value={application}
           onChange={event => { setApplication(event.target.value); setEdited(null); }}
           onBlur={() => { if (company && application.trim() !== (company.what_they_make ?? '').trim()) onSaveApplication?.(application.trim()); }}
