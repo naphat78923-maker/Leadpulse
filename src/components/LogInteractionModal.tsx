@@ -35,6 +35,10 @@ interface LogInteractionModalProps {
   initialCompanyId?: string;
   /** open on this event instead of "I reached out" */
   initialKind?: InteractionEventKind;
+  /** open on this channel instead of Call, e.g. after sending a drafted email */
+  initialChannel?: 'call' | 'email' | 'dm' | 'meeting';
+  /** prefilled first line (the title), e.g. "First outreach message sent" */
+  initialNotes?: string;
   /** "Paste reply": the buyer's exact words come first and take focus; the summary is optional */
   pasteReplyFirst?: boolean;
 }
@@ -133,6 +137,8 @@ export default function LogInteractionModal({
   initialContactIds,
   initialCompanyId,
   initialKind,
+  initialChannel,
+  initialNotes,
   pasteReplyFirst = false,
 }: LogInteractionModalProps) {
   const { refresh, logActivity } = useCrm();
@@ -180,11 +186,11 @@ export default function LogInteractionModal({
       setNextWorkflowAction(initialDeal ? getWorkflowAction(initialDeal) : '');
       setSampleStatus('');
       setKind(initialKind ?? 'outbound_attempt');
-      setChannel('call');
+      setChannel(initialChannel ?? 'call');
       setFollowupChoice('keep');
       setFollowupTouched(false);
       setConfirmSuccess(false);
-      setNotes('');
+      setNotes(initialNotes ?? '');
       setBuyerWords('');
       setDate(localDateKey());
       setEditingDate(false);

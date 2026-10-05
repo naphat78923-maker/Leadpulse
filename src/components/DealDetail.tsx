@@ -41,6 +41,7 @@ import StakeholderMiniMap from '@/components/StakeholderMiniMap';
 import LayaScoreCard from '@/components/LayaScoreCard';
 import DealFactsPanel from '@/components/DealFactsPanel';
 import QuickReplyBox from '@/components/QuickReplyBox';
+import MessageDraft, { type DraftChannel } from '@/components/MessageDraft';
 import DealTimeline from '@/components/DealTimeline';
 import LayaGradePanel from '@/components/LayaGradePanel';
 import type { OutreachLanguage } from '@/types/crm';
@@ -83,6 +84,8 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
+  // Set when the log form is opened from a sent draft: the channel used and a title.
+  const [logPrefill, setLogPrefill] = useState<{ channel: DraftChannel; notes: string } | null>(null);
   const [exitKind, setExitKind] = useState<'won' | 'lost' | 'park' | null>(null);
 
   // The form is derived from the LATEST record plus the user's own unsaved edits —
@@ -652,6 +655,16 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
                 )}
               </div>
             </PanelSection>
+            {!isClosed && (
+              <PanelSection title="Draft a message">
+                <MessageDraft
+                  deal={deal}
+                  company={dealCompany}
+                  contacts={contacts}
+                  onLog={(channel, notes) => { setLogPrefill({ channel, notes }); setLogOpen(true); }}
+                />
+              </PanelSection>
+            )}
             <PanelSection title="Drafting brief" open={editing}>
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -863,7 +876,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
       {logOpen && (
         <LogInteractionModal
           isOpen={logOpen}
-          onClose={() => setLogOpen(false)}
+          onClose={() => { setLogOpen(false); setLogPrefill(null); }}
           // Persist the interaction ONLY. The modal owns closing, its success toast, and its
           // partial-failure/retry state — closing it here would destroy the very error surface
           // that tells the user half the action saved.
@@ -875,6 +888,8 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
           contacts={contacts}
           companies={companies}
           selectedDealId={deal.id}
+          initialChannel={logPrefill?.channel}
+          initialNotes={logPrefill?.notes}
         />
       )}
 
