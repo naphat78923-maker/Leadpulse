@@ -45,7 +45,7 @@ describe('MessageDraft', () => {
   it('starts in Thai for a Thai account', () => {
     render(<MessageDraft deal={deal} company={{ ...company, address: 'Sukhumvit, Bangkok' }} contacts={[person]} onLog={vi.fn()} />);
     expect(screen.getByRole('radio', { name: 'ไทย' }).getAttribute('aria-checked')).toBe('true');
-    expect(draftText().startsWith('สวัสดีครับคุณNok')).toBe(true);
+    expect(draftText().startsWith('สวัสดีครับคุณ Nok')).toBe(true);
   });
 
   it('keeps an edit until the situation or language changes', () => {
@@ -54,7 +54,7 @@ describe('MessageDraft', () => {
     fireEvent.change(screen.getByLabelText('Message draft'), { target: { value: 'My own words' } });
     expect(draftText()).toBe('My own words');
     fireEvent.click(screen.getByRole('radio', { name: 'ไทย' }));
-    expect(draftText().startsWith('สวัสดีครับคุณNok')).toBe(true);
+    expect(draftText().startsWith('สวัสดีครับคุณ Nok')).toBe(true);
     fireEvent.change(situation(), { target: { value: 'paid_trial' } });
     expect(draftText()).toMatch(/ออเดอร์ทดลอง \[ขนาด\] ราคา \[ราคา\]/);
     expect(screen.queryByLabelText('Their menu item or recipe')).toBeNull();

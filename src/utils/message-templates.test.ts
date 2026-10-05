@@ -93,6 +93,12 @@ describe('defaultDraftLanguage', () => {
     expect(defaultDraftLanguage({ buyerReply: 'Please send the spec sheet', company: { address: 'Bangkok' } })).toBe('english');
   });
 
+  it('starts hotels in English, unless the buyer wrote in Thai', () => {
+    const hotel = { name: 'Grand Riverside', industry: 'hotel', tags: ['hotel'], address: 'Sukhumvit, Bangkok' };
+    expect(defaultDraftLanguage({ company: hotel, contactPhone: '02 000 0000' })).toBe('english');
+    expect(defaultDraftLanguage({ company: hotel, buyerReply: 'สนใจครับ' })).toBe('thai');
+  });
+
   it('then Thai for an account that looks Thai, English otherwise', () => {
     expect(defaultDraftLanguage({ contactName: 'นก' })).toBe('thai');
     expect(defaultDraftLanguage({ company: { name: 'Crumb House', address: 'Sukhumvit, Bangkok' } })).toBe('thai');

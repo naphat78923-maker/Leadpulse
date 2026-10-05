@@ -122,7 +122,8 @@ export function buildDraft(input: DraftInput): Draft {
   const step = nudgeStep(input.sendCount);
 
   if (input.language === 'thai') {
-    const hello = first ? `สวัสดีครับคุณ${first}` : 'สวัสดีครับ';
+    // A space after คุณ only before a Latin-script name.
+    const hello = first ? `สวัสดีครับคุณ${THAI_SCRIPT.test(first) ? '' : ' '}${first}` : 'สวัสดีครับ';
     const product = milk ? 'นมข้นหวานจากพืช' : 'เนย dairy-free';
     const sample = milk ? 'ตัวอย่างฟรี' : 'ตัวอย่างฟรีขนาด 500 กรัม 2 ก้อน';
     const forApp = app ? `สำหรับ ${app} ` : '';
@@ -134,15 +135,15 @@ export function buildDraft(input: DraftInput): Draft {
             `${hello} ขออนุญาตติดตามข้อความก่อนหน้าเรื่อง${product}${app ? ` สำหรับ ${app}` : ''} ครับ สนใจให้ผมส่ง${sample}ให้ทีมครัวลองไหมครับ`,
             `${hello} ขออนุญาตติดตามอีกครั้งนะครับ ถ้าเริ่มลองกับ ${app || 'เมนูเดียว'} ก่อน ก็ไม่ต้องเปลี่ยนทั้งไลน์เมนูครับ สนใจให้ผมส่ง${sample}สำหรับทดลองไหมครับ`,
             `${hello} ทีมยังสนใจลอง${product} ${forApp}อยู่ไหมครับ หรือสะดวกให้ผมติดต่อกลับในช่วงที่เหมาะกว่านี้ครับ`,
-            `${hello} ผมขอพักเรื่อง${product}ไว้ก่อนนะครับ หากในอนาคตสนใจ${app ? `นำไปใช้กับ ${app} ` : ' '}สามารถทักมาได้ครับ`,
+            `${hello} ผมขอพักเรื่อง${product} ไว้ก่อนนะครับ หากในอนาคตสนใจ${app ? `นำไปใช้กับ ${app} ` : ' '}สามารถทักมาได้ครับ`,
           ][step - 1],
         };
       case 'confirm_receipt':
-        return { subject: `${BRAND} sample`, body: `${hello} ตัวอย่าง${product}ที่ส่งไปเมื่อ [วันที่ส่ง] ได้รับเรียบร้อยไหมครับ` };
+        return { subject: `${BRAND} sample`, body: `${hello} ตัวอย่าง${product} ที่ส่งไปเมื่อ [วันที่ส่ง] ได้รับเรียบร้อยไหมครับ` };
       case 'test_plan':
-        return { subject: `${BRAND} sample`, body: `${hello} ทีมอยากลองตัวอย่าง${product}กับเมนูไหนก่อนครับ` };
+        return { subject: `${BRAND} sample`, body: `${hello} ทีมอยากลองตัวอย่าง${product} กับเมนูไหนก่อนครับ` };
       case 'test_result':
-        return { subject: `${BRAND} sample`, body: `${hello} ผลทดลอง${product}กับ ${app || '[เมนูที่ทดลอง]'} เป็นอย่างไรบ้างครับ` };
+        return { subject: `${BRAND} sample`, body: `${hello} ผลทดลอง${product} กับ ${app || '[เมนูที่ทดลอง]'} เป็นอย่างไรบ้างครับ` };
       case 'paid_trial':
         return {
           subject: `${BRAND} paid trial`,
@@ -151,17 +152,17 @@ export function buildDraft(input: DraftInput): Draft {
       case 'first_order_quote':
         return {
           subject: `${BRAND} first order`,
-          body: `${hello} ดีใจที่${product}ใช้ได้กับ ${app || '[เมนูที่ทดลอง]'} นะครับ สะดวกให้ผมเตรียมใบเสนอราคาสำหรับการผลิตรอบถัดไปไหมครับ`,
+          body: `${hello} ดีใจที่${product} ใช้ได้กับ ${app || '[เมนูที่ทดลอง]'} นะครับ สะดวกให้ผมเตรียมใบเสนอราคาสำหรับการผลิตรอบถัดไปไหมครับ`,
         };
       case 'check_in':
         return {
           subject: `${BRAND} order`,
-          body: `${hello} แพทจาก ${BRAND} ครับ ช่วงนี้ต้องการ${product}เพิ่มไหมครับ แจ้งจำนวนได้เลย ผมจะจัดส่งให้ครับ`,
+          body: `${hello} แพทจาก ${BRAND} ครับ ช่วงนี้ต้องการ${product} เพิ่มไหมครับ แจ้งจำนวนได้เลย ผมจะจัดส่งให้ครับ`,
         };
       default:
         return {
           subject: `${BRAND} x ${company || BRAND}`,
-          body: `${hello} ผมแพทจาก ${BRAND} ครับ เห็นว่าทางร้านมี ${app || '[เมนู]'} เลยคิดว่า${product}อาจน่าลองกับเมนูนี้ครับ สนใจรับ${sample}สำหรับทดลองไหมครับ`
+          body: `${hello} ผมแพทจาก ${BRAND} ครับ เห็นว่าทางร้านมี ${app || '[เมนู]'} เลยคิดว่า${product} อาจน่าลองกับเมนูนี้ครับ สนใจรับ${sample}สำหรับทดลองไหมครับ`
             + `\n\n${milk ? '' : `${PROOF.thai}\n`}${WHOLESALE_LINK}`,
         };
     }
@@ -233,19 +234,21 @@ const THAI_SCRIPT = /[฀-๿]/;
 
 /**
  * Thai for Thai buyers. In order: the language set on the contact, the language the buyer
- * last wrote in, a Thai-script name, then any sign the account is in Thailand.
+ * last wrote in, English for hotels (Pat, 2026-10-05), a Thai-script name, then any sign
+ * the account is in Thailand.
  */
 export function defaultDraftLanguage(input: {
   contactLanguage?: string | null;
   buyerReply?: string | null;
   contactName?: string | null;
   contactPhone?: string | null;
-  company?: { name?: string | null; address?: string | null; website?: string | null; tags?: string[] | null } | null;
+  company?: { name?: string | null; industry?: string | null; address?: string | null; website?: string | null; tags?: string[] | null } | null;
 }): DraftLanguage {
   if (input.contactLanguage === 'thai' || input.contactLanguage === 'english') return input.contactLanguage;
   const reply = input.buyerReply?.trim();
   if (reply) return THAI_SCRIPT.test(reply) ? 'thai' : 'english';
   const c = input.company;
+  if (c && classifyCompanyRole(c).role === 'foodservice_hotel') return 'english';
   if (THAI_SCRIPT.test(`${input.contactName ?? ''}${c?.name ?? ''}`)) return 'thai';
   if (/thai|bangkok|[฀-๿]/i.test(`${c?.address ?? ''} ${(c?.tags ?? []).join(' ')}`)) return 'thai';
   if (/\.th(\/|$)/i.test(c?.website?.trim() ?? '')) return 'thai';
