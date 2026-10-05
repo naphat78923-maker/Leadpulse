@@ -144,6 +144,8 @@ export default function LogInteractionModal({
   const { refresh, logActivity } = useCrm();
   const { addToast } = useToast();
   const [kind, setKind] = useState<InteractionEventKind>(initialKind ?? 'outbound_attempt');
+  /** reply mode hides Pat's own note until he asks for it */
+  const [noteOpen, setNoteOpen] = useState(false);
   const [channel, setChannel] = useState<Channel>('call');
   const [notes, setNotes] = useState('');
   /** The buyer's exact words — written to deals.buyer_reply, the only text Laya judges. */
@@ -186,6 +188,7 @@ export default function LogInteractionModal({
       setNextWorkflowAction(initialDeal ? getWorkflowAction(initialDeal) : '');
       setSampleStatus('');
       setKind(initialKind ?? 'outbound_attempt');
+      setNoteOpen(false);
       setChannel(initialChannel ?? 'call');
       setFollowupChoice('keep');
       setFollowupTouched(false);
@@ -239,6 +242,8 @@ export default function LogInteractionModal({
   const chooseKind = (next: InteractionEventKind) => {
     setKind(next);
     setSaveError(null);
+    // A reply arrives by message, email or phone; a meeting is logged as one Pat held.
+    if (next === 'customer_response' && channel === 'meeting') setChannel('dm');
     if (!deal || !dealAction) return;
     // The safe default is always the current lane: a target the new event does not
     // permit is dropped rather than silently kept.
@@ -263,6 +268,7 @@ export default function LogInteractionModal({
     setNextWorkflowAction('');
     setSampleStatus('');
     setKind('outbound_attempt');
+    setNoteOpen(false);
     setConfirmSuccess(false);
     setSaveError(null);
     setPendingDealUpdate(null);
@@ -438,7 +444,7 @@ export default function LogInteractionModal({
 
   // The buyer's exact words — the only text Laya reads. "Paste reply" puts it first and focuses it.
   const buyerWordsRow = kind === 'customer_response' && deal ? (
-    <Row label={pasteReplyFirst ? 'Their exact words' : 'Their exact words (optional)'} hint="Laya reads only this">
+    <Row label="Their reply">
       <textarea
         value={buyerWords}
         onChange={e => setBuyerWords(e.target.value)}
@@ -540,7 +546,7 @@ export default function LogInteractionModal({
 
           {kind !== 'internal_note' && (
             <div role="radiogroup" aria-label="Channel" className="flex flex-wrap gap-2">
-              {CHANNELS.map(option => (
+              {CHANNELS.filter(option => kind !== 'customer_response' || option.value !== 'meeting').map(option => (
                 <Chip key={option.value} selected={channel === option.value} onClick={() => setChannel(option.value)}>
                   {option.icon}
                   {option.label}
@@ -549,19 +555,24 @@ export default function LogInteractionModal({
             </div>
           )}
 
-          {pasteReplyFirst && buyerWordsRow}
+          {/* A reply is its own content: their words first, Pat's note only if he wants one. */}
+          {buyerWordsRow}
 
-          <textarea
-            value={notes}
-            onChange={e => setNotes(e.target.value)}
-            rows={3}
-            aria-label="What happened"
-            placeholder={pasteReplyFirst ? 'Your summary (optional)' : 'What happened? (first line becomes the title)'}
-            className="w-full resize-none rounded-xl border border-clay-hairline bg-transparent px-3.5 py-3 text-sm text-clay-ink placeholder:text-clay-muted focus:border-clay-ink/40 focus:outline-none focus:ring-2 focus:ring-clay-ink/10"
-          />
-
-          {!pasteReplyFirst && buyerWordsRow}
-
+          {buyerWordsRow && !noteOpen && !notes.trim() ? (
+            <button type="button" onClick={() => setNoteOpen(true)} className="text-sm text-clay-muted underline decoration-clay-hairline underline-offset-2 hover:text-clay-ink">
+              Add my own note
+            </button>
+          ) : (
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              rows={3}
+              autoFocus={noteOpen}
+              aria-label="What happened"
+              placeholder={buyerWordsRow ? 'Your summary (optional)' : 'What happened? (first line becomes the title)'}
+              className="w-full resize-none rounded-xl border border-clay-hairline bg-transparent px-3.5 py-3 text-sm text-clay-ink placeholder:text-clay-muted focus:border-clay-ink/40 focus:outline-none focus:ring-2 focus:ring-clay-ink/10"
+            />
+          )}
 
           {!selectedDealId && (
             <Row label="Deal">
@@ -606,7 +617,7 @@ export default function LogInteractionModal({
               >
                 {followupChoice === 'pick' && !isQuickDate && followupDate ? shortDate(followupDate) : 'Pick…'}
               </Chip>
-              {!laneRequiresDate && (
+              {!laneRequiresDate && kind !== 'customer_response' && (
                 // With a saved date, None clears it; without one, None simply keeps there being none.
                 <Chip
                   selected={deal?.followup_date ? followupChoice === 'clear' : followupChoice === 'keep'}
@@ -625,6 +636,14 @@ export default function LogInteractionModal({
                 onChange={e => { setFollowupTouched(true); setFollowupChoice('pick'); setFollowupDate(e.target.value); }}
                 className="mt-2 h-9 w-full rounded-lg border border-clay-hairline bg-transparent px-3 text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-clay-ink/10"
               />
+            )}
+            {kind === 'customer_response' && !laneRequiresDate && deal?.followup_date && followupChoice === 'pick' && !isQuickDate && (
+              <button type="button" onClick={() => chooseFollowup('clear')} className="mt-1.5 text-xs text-clay-muted underline decoration-clay-hairline underline-offset-2 hover:text-clay-ink">
+                Remove the follow-up date instead
+              </button>
+            )}
+            {kind === 'customer_response' && followupChoice === 'clear' && (
+              <p className="mt-1.5 text-xs text-clay-muted">The follow-up date will be removed.</p>
             )}
             {suggestedDays !== null && (
               <p data-followup-suggested className="mt-1.5 text-xs text-clay-muted">

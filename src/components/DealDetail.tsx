@@ -661,6 +661,12 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
                   deal={deal}
                   company={dealCompany}
                   contacts={contacts}
+                  sendCount={sendCount}
+                  onSaveApplication={dealCompany ? value => {
+                    crm.updateCompany(dealCompany.id, { what_they_make: value || null })
+                      .then(() => { addToast('Saved to the account'); onSaved(); })
+                      .catch(() => addToast('Could not save to the account', 'error'));
+                  } : undefined}
                   onLog={(channel, notes) => { setLogPrefill({ channel, notes }); setLogOpen(true); }}
                 />
               </PanelSection>

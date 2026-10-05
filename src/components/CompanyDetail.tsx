@@ -161,6 +161,7 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
     tags: (company.tags || []).join(', '),
     address: company.address || '',
     website: company.website || '',
+    what_they_make: company.what_they_make || '',
     notes: company.notes || '',
   });
 
@@ -182,6 +183,7 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
         tags: (updated.tags || []).join(', '),
         address: updated.address || '',
         website: updated.website || '',
+        what_they_make: updated.what_they_make || '',
         notes: updated.notes || '',
       });
       setEditing(false);
@@ -393,6 +395,22 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
               />
             ) : (
               company.website || '—'
+            )}
+          </div>
+
+          <div className="text-clay-body">
+            <span className="text-clay-muted">What they make: </span>
+            {editing ? (
+              <input
+                type="text"
+                aria-label="What they make"
+                placeholder="e.g. croissants, mille-feuille"
+                value={editData.what_they_make}
+                onChange={e => setEditData(prev => ({ ...prev, what_they_make: e.target.value }))}
+                className="inline-block w-2/3 px-2 py-1 border border-clay-hairline rounded text-base bg-white dark:bg-clay-card"
+              />
+            ) : (
+              company.what_they_make || '—'
             )}
           </div>
 

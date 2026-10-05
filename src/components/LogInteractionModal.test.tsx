@@ -259,6 +259,7 @@ describe('LogInteractionModal save recovery', () => {
     );
 
     fireEvent.click(screen.getByRole('radio', { name: /They replied/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add my own note' }));
     fireEvent.change(screen.getByLabelText('What happened'), { target: { value: 'Alice asked for a quote' } });
     fireEvent.change(screen.getByLabelText('Their exact words'), { target: { value: '  Please quote 20 kg.  ' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -300,12 +301,28 @@ describe('LogInteractionModal save recovery', () => {
     );
     expect(screen.getByRole('radio', { name: /They replied/i }).getAttribute('aria-checked')).toBe('true');
     const words = screen.getByLabelText('Their exact words');
-    const notes = screen.getByLabelText('What happened');
     expect(document.activeElement).toBe(words);
-    // The words come before the summary, and the summary is labelled optional.
+    expect(screen.getByText('Their reply')).toBeTruthy();
+    // Pat's own summary stays out of the way until he asks for it, and then comes after the words.
+    expect(screen.queryByLabelText('What happened')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Add my own note' }));
+    const notes = screen.getByLabelText('What happened');
     expect(words.compareDocumentPosition(notes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(notes.getAttribute('placeholder')).toBe('Your summary (optional)');
-    expect(screen.getByText('Their exact words')).toBeTruthy();
+  });
+
+  it('keeps a reply to three ways it can arrive and no "None" follow-up chip', () => {
+    render(
+      <LogInteractionModal isOpen onClose={vi.fn()} onSave={vi.fn()} deals={[deal]} contacts={[]} companies={[]} selectedDealId={deal.id} />
+    );
+    fireEvent.click(screen.getByRole('radio', { name: 'Meeting' }));
+    expect(screen.getByRole('radio', { name: 'None' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('radio', { name: /They replied/i }));
+    expect(screen.queryByRole('radio', { name: 'Meeting' })).toBeNull();
+    expect(screen.getByRole('radio', { name: 'DM' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.queryByRole('radio', { name: 'None' })).toBeNull();
+    expect(screen.queryByText(/Laya/)).toBeNull();
   });
 
   it('saves pasted words from "Paste reply" with no summary typed', async () => {
