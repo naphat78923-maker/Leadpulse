@@ -661,6 +661,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
                   deal={deal}
                   company={dealCompany}
                   contacts={contacts}
+                  sendCount={sendCount}
                   onLog={(channel, notes) => { setLogPrefill({ channel, notes }); setLogOpen(true); }}
                 />
               </PanelSection>
