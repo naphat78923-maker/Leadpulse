@@ -38,7 +38,7 @@ export default function QuickReplyBox({ deal }: { deal: Deal }) {
       await refresh();
       setWords('');
       setSaved(true);
-      addToast('Reply saved — Laya will grade it');
+      addToast('Reply saved');
     } catch {
       setError('Could not save the reply. Check the deal and try again.');
     } finally {
