@@ -16,6 +16,8 @@ export interface Company {
   size: string | null;
   address: string | null;
   website: string | null;
+  /** what the account makes or sells, in its own words; drafts name it */
+  what_they_make?: string | null;
   logo_url?: string | null;
   notes: string | null;
   created_at: string;

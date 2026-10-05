@@ -42,6 +42,7 @@ export default function MessageDraft({
   contacts,
   sendCount = 0,
   onLog,
+  onSaveApplication,
 }: {
   deal: Deal;
   company?: Company;
@@ -51,6 +52,8 @@ export default function MessageDraft({
   sendCount?: number;
   /** open the log form for this deal, set to the channel used and titled after the draft */
   onLog: (channel: DraftChannel, title: string) => void;
+  /** keep what Pat typed as the account's "what they make", so the next draft starts with it */
+  onSaveApplication?: (value: string) => void;
 }) {
   const { addToast } = useToast();
 
@@ -75,7 +78,7 @@ export default function MessageDraft({
   const [language, setLanguage] = useState<DraftLanguage>(() => defaultDraftLanguage({
     contactLanguage: person?.outreach_language, buyerReply: deal.buyer_reply, contactName: person?.name, contactPhone: phone, company,
   }));
-  const [application, setApplication] = useState('');
+  const [application, setApplication] = useState(company?.what_they_make ?? '');
   // Which of the four nudges: from the unanswered sends, until Pat picks another.
   const [step, setStep] = useState(() => nudgeStep(sendCount));
   // null = show the generated draft; a string = Pat's edit, kept until he switches template or language.
@@ -138,9 +141,10 @@ export default function MessageDraft({
       {USES_APPLICATION.has(kind) && (
         <input
           aria-label="Their menu item or recipe"
-          placeholder="Their menu item or recipe, e.g. croissants"
+          placeholder="What they make, e.g. croissants (saved to the account)"
           value={application}
           onChange={event => { setApplication(event.target.value); setEdited(null); }}
+          onBlur={() => { if (company && application.trim() !== (company.what_they_make ?? '').trim()) onSaveApplication?.(application.trim()); }}
           className="h-8 w-full rounded-lg border border-clay-hairline bg-transparent px-2.5 text-xs text-clay-ink placeholder:text-clay-muted focus:border-clay-ink/40 focus:outline-none"
         />
       )}

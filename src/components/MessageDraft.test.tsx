@@ -32,6 +32,19 @@ describe('MessageDraft', () => {
     expect(screen.getByRole('link', { name: /^Call/ }).getAttribute('href')).toBe('tel:+6560000000');
   });
 
+  it('starts from what the account makes, and saves a new value to the account', () => {
+    const onSaveApplication = vi.fn();
+    render(<MessageDraft deal={deal} company={{ ...company, what_they_make: 'kouign-amann' }} contacts={[person]} onLog={vi.fn()} onSaveApplication={onSaveApplication} />);
+
+    expect(draftText()).toContain('I saw kouign-amann on your menu.');
+    const box = screen.getByLabelText('Their menu item or recipe');
+    fireEvent.blur(box);
+    expect(onSaveApplication).not.toHaveBeenCalled();
+    fireEvent.change(box, { target: { value: 'brioche' } });
+    fireEvent.blur(box);
+    expect(onSaveApplication).toHaveBeenCalledWith('brioche');
+  });
+
   it('starts on the right nudge once messages have gone unanswered', () => {
     const onLog = vi.fn();
     render(<MessageDraft deal={deal} company={company} contacts={[person]} sendCount={3} onLog={onLog} />);
