@@ -10,33 +10,47 @@ export type TemplateKind =
   | 'first_approach'
   | 'nudge'
   | 'confirm_receipt'
+  | 'nudge_receipt'
   | 'test_plan'
+  | 'nudge_plan'
   | 'test_result'
+  | 'nudge_test'
   | 'paid_trial'
   | 'first_order_quote'
   | 'check_in';
 export type DraftLanguage = 'english' | 'thai';
 
 export const TEMPLATE_KINDS: TemplateKind[] = [
-  'first_approach', 'nudge', 'confirm_receipt', 'test_plan', 'test_result', 'paid_trial', 'first_order_quote', 'check_in',
+  'first_approach', 'nudge', 'confirm_receipt', 'nudge_receipt', 'test_plan', 'nudge_plan', 'test_result', 'nudge_test',
+  'paid_trial', 'first_order_quote', 'check_in',
 ];
 
 export const TEMPLATE_LABEL: Record<TemplateKind, string> = {
   first_approach: 'First approach',
-  nudge: 'Nudge, no reply yet',
+  nudge: 'Nudge: no reply to first approach',
   confirm_receipt: 'Sample sent: did it arrive?',
+  nudge_receipt: 'Nudge: sample sent, no word',
   test_plan: 'Sample arrived: which recipe?',
+  nudge_plan: 'Nudge: sample arrived, no test yet',
   test_result: 'Test done: how did it go?',
+  nudge_test: 'Nudge: tested, no feedback',
   paid_trial: 'Second sample asked: paid trial',
   first_order_quote: 'Test passed: first-order quote',
   check_in: 'Customer check-in',
 };
 
-/** The nudge sequence stops at four; the fourth closes the loop. */
+/**
+ * The nudge sequence stops at four, and each stage a deal can stall at has its own four:
+ * reminder, a new reason to reply, a yes-or-later question, then a calm exit with no ask.
+ */
 export const NUDGE_LIMIT = 4;
 
+export function isNudge(kind: TemplateKind): boolean {
+  return kind.startsWith('nudge');
+}
+
 /** Situations whose wording names the buyer's menu item or recipe. */
-export const USES_APPLICATION: ReadonlySet<TemplateKind> = new Set(['first_approach', 'nudge', 'test_result', 'first_order_quote']);
+export const USES_APPLICATION: ReadonlySet<TemplateKind> = new Set(['first_approach', 'nudge', 'nudge_plan', 'test_result', 'nudge_test', 'first_order_quote']);
 
 export interface SegmentPain {
   /** short name of the buyer segment */
@@ -129,15 +143,33 @@ export function buildDraft(input: DraftInput): Draft {
     const forApp = app ? `สำหรับ ${app} ` : '';
     switch (input.kind) {
       case 'nudge':
-        return {
-          subject: `${BRAND} x ${company || BRAND}`,
-          body: [
+        return { subject: `${BRAND} x ${company || BRAND}`, body: [
             `${hello} ขออนุญาตติดตามข้อความก่อนหน้าเรื่อง${product}${app ? ` สำหรับ ${app}` : ''} ครับ สนใจให้ผมส่ง${sample}ให้ทีมครัวลองไหมครับ`,
             `${hello} ขออนุญาตติดตามอีกครั้งนะครับ ถ้าเริ่มลองกับ ${app || 'เมนูเดียว'} ก่อน ก็ไม่ต้องเปลี่ยนทั้งไลน์เมนูครับ สนใจให้ผมส่ง${sample}สำหรับทดลองไหมครับ`,
             `${hello} ทีมยังสนใจลอง${product} ${forApp}อยู่ไหมครับ หรือสะดวกให้ผมติดต่อกลับในช่วงที่เหมาะกว่านี้ครับ`,
             `${hello} ผมขอพักเรื่อง${product} ไว้ก่อนนะครับ หากในอนาคตสนใจ${app ? `นำไปใช้กับ ${app} ` : ' '}สามารถทักมาได้ครับ`,
-          ][step - 1],
-        };
+        ][step - 1] };
+      case 'nudge_receipt':
+        return { subject: `${BRAND} sample`, body: [
+          `${hello} ขออนุญาตสอบถามเรื่องตัวอย่าง${product} ที่ส่งไปครับ ถึงครัวเรียบร้อยไหมครับ`,
+          `${hello} เผื่อตัวอย่าง${product} ไปอยู่ที่แผนกอื่นหรือหน้าเคาน์เตอร์ ผมควรสอบถามกับท่านใดดีครับ`,
+          `${hello} ตัวอย่าง${product} ได้รับแล้วหรือยังครับ หรือให้ผมตรวจสอบกับบริษัทขนส่งทางฝั่งผมดีครับ`,
+          `${hello} ผมขอพักเรื่องตัวอย่างไว้ก่อนนะครับ หากยังไม่ได้รับ หรือทีมอยากทดลองภายหลัง สามารถทักมาได้ครับ`,
+        ][step - 1] };
+      case 'nudge_plan':
+        return { subject: `${BRAND} sample`, body: [
+          `${hello} ขออนุญาตติดตามเรื่องตัวอย่าง${product} ครับ ทีมอยากลองกับเมนูไหนก่อนครับ`,
+          `${hello} ขอเสนอแนวทางครับ ลองกับ ${app || 'เมนูเดิมเมนูเดียว'} เพียงรอบเดียวก็พอประเมินได้แล้ว แบบนี้สะดวกสำหรับทีมไหมครับ`,
+          `${hello} ทีมยังมีแผนทดลองตัวอย่าง${product} อยู่ไหมครับ หรือสะดวกให้ผมติดต่อกลับในช่วงที่เหมาะกว่านี้ครับ`,
+          `${hello} ผมขอฝากตัวอย่าง${product} ไว้ก่อนนะครับ หากทีมได้ทดลองภายหลัง ยินดีรับฟังผลเสมอครับ`,
+        ][step - 1] };
+      case 'nudge_test':
+        return { subject: `${BRAND} sample`, body: [
+          `${hello} ขออนุญาตติดตามผลทดลอง${product}${app ? ` กับ ${app}` : ''} ครับ เป็นอย่างไรบ้างครับ`,
+          `${hello} ตอบสั้น ๆ ได้เลยครับ ${product}${app ? ` กับ ${app}` : ''} ใช้ได้ดี ยังไม่ลงตัว หรือยังไม่ได้ทดลองครับ`,
+          `${hello} ทีมยังสะดวกแจ้งผลทดลอง${product} อยู่ไหมครับ หรือสะดวกให้ผมติดต่อกลับในช่วงที่เหมาะกว่านี้ครับ`,
+          `${hello} ผมขอพักเรื่องผลทดลอง${product} ไว้ก่อนนะครับ หากทีมมีความเห็นภายหลัง สามารถทักมาได้ครับ`,
+        ][step - 1] };
       case 'confirm_receipt':
         return { subject: `${BRAND} sample`, body: `${hello} ตัวอย่าง${product} ที่ส่งไปเมื่อ [วันที่ส่ง] ได้รับเรียบร้อยไหมครับ` };
       case 'test_plan':
@@ -175,15 +207,33 @@ export function buildDraft(input: DraftInput): Draft {
   const theSample = milk ? 'a free sample' : 'the free 2 × 500g sample';
   switch (input.kind) {
     case 'nudge':
-      return {
-        subject: `${BRAND} x ${company || BRAND}`,
-        body: [
-          `${hello} following up on my message about ${product}${forApp}. Would you like me to send ${theSample} for your kitchen to try?`,
-          `${hello} one more thought. Testing in just ${app || 'one recipe'} keeps it simple: nothing else on your menu has to change. Shall I send ${theSample} for that?`,
-          `${hello} is the team still interested in trying ${product}${forApp}, or would it be better if I came back at a later time?`,
-          `${hello} I'll leave the ${product} discussion here for now. If it becomes relevant${forApp} later, you're welcome to message me.`,
-        ][step - 1],
-      };
+      return { subject: `${BRAND} x ${company || BRAND}`, body: [
+        `${hello} following up on my message about ${product}${forApp}. Would you like me to send ${theSample} for your kitchen to try?`,
+        `${hello} one more thought. Testing in just ${app || 'one recipe'} keeps it simple: nothing else on your menu has to change. Shall I send ${theSample} for that?`,
+        `${hello} is the team still interested in trying ${product}${forApp}, or would it be better if I came back at a later time?`,
+        `${hello} I'll leave the ${product} discussion here for now. If it becomes relevant${forApp} later, you're welcome to message me.`,
+      ][step - 1] };
+    case 'nudge_receipt':
+      return { subject: `Your ${BRAND} sample`, body: [
+        `${hello} checking on the ${product} sample I sent. Has it reached your kitchen?`,
+        `${hello} in case the ${product} sample was left at reception or with another team: who should I ask about it?`,
+        `${hello} has the ${product} sample arrived, or should I check with the courier on my side?`,
+        `${hello} I'll leave the sample here for now. If it hasn't turned up, or the team would like to test later, you're welcome to message me.`,
+      ][step - 1] };
+    case 'nudge_plan':
+      return { subject: `Your ${BRAND} sample`, body: [
+        `${hello} following up on the ${product} sample. Which recipe would the team like to try it in first?`,
+        `${hello} one idea for the sample: a single batch of ${app || 'one existing recipe'} is enough to judge it. Would that work for the team?`,
+        `${hello} is the team still planning to test the ${product} sample, or would it be better if I came back at a later time?`,
+        `${hello} I'll leave the ${product} sample with you for now. If the team tests it later, I'd be glad to hear how it goes.`,
+      ][step - 1] };
+    case 'nudge_test':
+      return { subject: `Your ${BRAND} sample`, body: [
+        `${hello} following up on the ${product} test${app ? ` in ${app}` : ''}. How did it go?`,
+        `${hello} a one-line answer is fine: did the ${product} work${app ? ` in ${app}` : ''}, not quite, or not tested yet?`,
+        `${hello} is feedback on the ${product} test still coming, or would it be better if I came back at a later time?`,
+        `${hello} I'll leave the ${product} test here for now. If the team has feedback later, you're welcome to message me.`,
+      ][step - 1] };
     case 'confirm_receipt':
       return { subject: `Your ${BRAND} sample`, body: `${hello} I sent the ${product} sample on [date sent]. Has it arrived safely?` };
     case 'test_plan':
@@ -224,10 +274,15 @@ export function defaultTemplateKind(input: {
   sampleStatus?: string | null;
   sendCount?: number;
 }): TemplateKind {
-  if (input.lane === 'testing') return 'test_result';
-  if (input.lane === 'sample') return input.sampleStatus === 'received' ? 'test_plan' : 'confirm_receipt';
-  if (input.companyStatus === 'active_customer') return 'check_in';
-  return (input.sendCount ?? 0) > 0 ? 'nudge' : 'first_approach';
+  const chasing = (input.sendCount ?? 0) > 0;
+  const customer = input.companyStatus === 'active_customer';
+  // Lanes: sample = tracking delivery, testing = delivered and the test is to be booked,
+  // reschedule (Follow-up) = feedback due.
+  if (input.lane === 'sample' && input.sampleStatus !== 'received') return chasing ? 'nudge_receipt' : 'confirm_receipt';
+  if (input.lane === 'sample' || input.lane === 'testing') return chasing ? 'nudge_plan' : 'test_plan';
+  if (input.lane === 'reschedule' && !customer) return chasing ? 'nudge_test' : 'test_result';
+  if (customer) return 'check_in';
+  return chasing ? 'nudge' : 'first_approach';
 }
 
 const THAI_SCRIPT = /[฀-๿]/;

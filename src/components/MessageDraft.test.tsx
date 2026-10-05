@@ -40,6 +40,20 @@ describe('MessageDraft', () => {
     expect(draftText()).toMatch(/is the team still interested/);
     fireEvent.click(screen.getByRole('button', { name: 'Sent it, log' }));
     expect(onLog).toHaveBeenLastCalledWith('dm', 'Nudge 3 of 4 sent');
+
+    // Pat can pick another nudge than the count suggests.
+    fireEvent.click(screen.getByRole('radio', { name: 'Nudge 4 of 4' }));
+    expect(draftText()).toMatch(/I'll leave the dairy-free butter discussion here for now/);
+  });
+
+  it('nudges about the test, not a new sample, when a deal stalls after testing', () => {
+    const stalled = { ...deal, workflow_action: 'reschedule' } as unknown as Deal;
+    render(<MessageDraft deal={stalled} company={company} contacts={[person]} sendCount={2} onLog={vi.fn()} />);
+
+    expect(situation().value).toBe('nudge_test');
+    expect(screen.getByRole('radio', { name: 'Nudge 2 of 4' }).getAttribute('aria-checked')).toBe('true');
+    expect(draftText()).toMatch(/a one-line answer is fine/);
+    expect(draftText()).not.toMatch(/500g/);
   });
 
   it('starts in Thai for a Thai account', () => {

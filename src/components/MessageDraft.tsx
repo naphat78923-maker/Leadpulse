@@ -21,6 +21,7 @@ import {
   defaultDraftLanguage,
   defaultTemplateKind,
   hasBlanks,
+  isNudge,
   nudgeStep,
   segmentPainFor,
   type DraftLanguage,
@@ -75,16 +76,17 @@ export default function MessageDraft({
     contactLanguage: person?.outreach_language, buyerReply: deal.buyer_reply, contactName: person?.name, contactPhone: phone, company,
   }));
   const [application, setApplication] = useState('');
+  // Which of the four nudges: from the unanswered sends, until Pat picks another.
+  const [step, setStep] = useState(() => nudgeStep(sendCount));
   // null = show the generated draft; a string = Pat's edit, kept until he switches template or language.
   const [edited, setEdited] = useState<string | null>(null);
 
   const draft = useMemo(
-    () => buildDraft({ kind, language, companyName: company?.name ?? deal.client ?? '', contactName: person?.name, product: deal.product, application, sendCount }),
-    [kind, language, company, deal.client, deal.product, person, application, sendCount],
+    () => buildDraft({ kind, language, companyName: company?.name ?? deal.client ?? '', contactName: person?.name, product: deal.product, application, sendCount: step }),
+    [kind, language, company, deal.client, deal.product, person, application, step],
   );
   const body = edited ?? draft.body;
-  const step = nudgeStep(sendCount);
-  const title = kind === 'nudge' ? `Nudge ${step} of ${NUDGE_LIMIT} sent` : `${TEMPLATE_LABEL[kind]} message sent`;
+  const title = isNudge(kind) ? `Nudge ${step} of ${NUDGE_LIMIT} sent` : `${TEMPLATE_LABEL[kind]} message sent`;
 
   const copy = async () => {
     try {
@@ -109,7 +111,7 @@ export default function MessageDraft({
           className="h-8 min-w-0 flex-1 rounded-lg border border-clay-hairline bg-transparent px-2 text-xs text-clay-ink focus:border-clay-ink/40 focus:outline-none"
         >
           {TEMPLATE_KINDS.map(k => (
-            <option key={k} value={k}>{k === 'nudge' ? `${TEMPLATE_LABEL[k]} (${step} of ${NUDGE_LIMIT})` : TEMPLATE_LABEL[k]}</option>
+            <option key={k} value={k}>{TEMPLATE_LABEL[k]}</option>
           ))}
         </select>
         <div role="radiogroup" aria-label="Language" className="flex gap-1.5">
@@ -120,6 +122,18 @@ export default function MessageDraft({
           ))}
         </div>
       </div>
+
+      {isNudge(kind) && (
+        <div role="radiogroup" aria-label="Which nudge" className="flex items-center gap-1.5">
+          <span className="text-xs text-clay-muted">Nudge</span>
+          {Array.from({ length: NUDGE_LIMIT }, (_, i) => i + 1).map(n => (
+            <button key={n} type="button" role="radio" aria-checked={step === n} aria-label={`Nudge ${n} of ${NUDGE_LIMIT}`} onClick={() => { setStep(n); setEdited(null); }} className={chip(step === n)}>
+              {n}
+            </button>
+          ))}
+          <span className="text-xs text-clay-muted">{['reminder', 'new reason', 'yes or later', 'calm exit'][step - 1]}</span>
+        </div>
+      )}
 
       {USES_APPLICATION.has(kind) && (
         <input

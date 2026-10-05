@@ -55,6 +55,24 @@ describe('buildDraft', () => {
     expect(nudgeStep(0)).toBe(1);
   });
 
+  it('words each stage\'s nudges for that stage: ask about the sample or the test, never offer a new sample', () => {
+    const at = (kind: 'nudge_receipt' | 'nudge_plan' | 'nudge_test', sendCount: number) =>
+      buildDraft({ ...base, kind, contactName: 'Nok', application: 'brioche', sendCount }).body;
+
+    expect(at('nudge_receipt', 1)).toMatch(/Has it reached your kitchen\?/);
+    expect(at('nudge_receipt', 3)).toMatch(/has the dairy-free butter sample arrived, or should I check with the courier/);
+    expect(at('nudge_plan', 1)).toMatch(/Which recipe would the team like to try it in first\?/);
+    expect(at('nudge_plan', 2)).toMatch(/a single batch of brioche is enough to judge it/);
+    expect(at('nudge_test', 2)).toMatch(/did the dairy-free butter work in brioche, not quite, or not tested yet\?/);
+    expect(at('nudge_test', 3)).toMatch(/is feedback on the dairy-free butter test still coming/);
+    for (const kind of ['nudge_receipt', 'nudge_plan', 'nudge_test'] as const) {
+      for (const n of [1, 2, 3, 4]) {
+        expect(at(kind, n)).not.toMatch(/free (2|sample)|500g/);
+        expect(at(kind, n).match(/\?/g)?.length ?? 0).toBe(n === 4 ? 0 : 1);
+      }
+    }
+  });
+
   it('asks one thing per sample step', () => {
     for (const kind of ['confirm_receipt', 'test_plan', 'test_result'] as const) {
       expect(buildDraft({ ...base, kind, application: 'brioche' }).body.match(/\?/g)).toHaveLength(1);
@@ -72,12 +90,16 @@ describe('buildDraft', () => {
 });
 
 describe('defaultTemplateKind', () => {
-  it('follows where the deal is', () => {
+  it('follows where the deal is, and switches to that stage\'s nudge once a message goes unanswered', () => {
     expect(defaultTemplateKind({ lane: 'outreach', companyStatus: 'prospect', sendCount: 0 })).toBe('first_approach');
-    expect(defaultTemplateKind({ lane: 'outreach', companyStatus: 'prospect', sendCount: 2 })).toBe('nudge');
+    expect(defaultTemplateKind({ lane: 'reply', companyStatus: 'prospect', sendCount: 2 })).toBe('nudge');
     expect(defaultTemplateKind({ lane: 'sample', sampleStatus: 'sent' })).toBe('confirm_receipt');
+    expect(defaultTemplateKind({ lane: 'sample', sampleStatus: 'sent', sendCount: 3 })).toBe('nudge_receipt');
     expect(defaultTemplateKind({ lane: 'sample', sampleStatus: 'received' })).toBe('test_plan');
-    expect(defaultTemplateKind({ lane: 'testing' })).toBe('test_result');
+    expect(defaultTemplateKind({ lane: 'testing' })).toBe('test_plan');
+    expect(defaultTemplateKind({ lane: 'testing', sendCount: 2 })).toBe('nudge_plan');
+    expect(defaultTemplateKind({ lane: 'reschedule' })).toBe('test_result');
+    expect(defaultTemplateKind({ lane: 'reschedule', sendCount: 1 })).toBe('nudge_test');
     expect(defaultTemplateKind({ lane: 'reschedule', companyStatus: 'active_customer', sendCount: 3 })).toBe('check_in');
   });
 });
