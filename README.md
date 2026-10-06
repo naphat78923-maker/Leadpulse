@@ -312,7 +312,8 @@ docs/                     # Visual system spec, historical-sales proposal
 - [x] Laya grading foundation (local model, pasted buyer replies)
 - [ ] Run tests automatically on every PR (CI)
 - [ ] One-tap contact actions and message templates
-- [ ] Telegram + Web Push notifications (`node-telegram-bot-api` installed, not wired)
+- [x] Telegram morning digest (`/api/cron/digest`, weekdays 08:00 Bangkok; needs `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `CRON_SECRET`)
+- [ ] Web Push notifications
 - [ ] Security hardening: add a login, env-based Supabase keys, tighten RLS "allow all" policies
 
 ## Design Decisions
