@@ -34,41 +34,66 @@ describe('buildDraft', () => {
     expect(draft.body).toContain('[menu item]');
     expect(hasBlanks(draft.body)).toBe(true);
 
-    expect(buildDraft({ ...base, kind: 'paid_trial' }).body).toContain('[pack size] at [price]');
+    expect(buildDraft({ ...base, kind: 'paid_trial' }).body).toContain('[pack size] at [price and terms]');
     expect(buildDraft({ ...base, kind: 'confirm_receipt' }).body).toContain('[date sent]');
   });
 
-  it('keeps the 2 × 500g offer and the butter proof line off condensed milk', () => {
-    const draft = buildDraft({ ...base, kind: 'first_approach', product: 'Condensed Milk', application: 'Thai tea' });
-    expect(draft.body).toContain('free sample of our plant-based condensed milk');
-    expect(draft.body).not.toMatch(/500g|St\. Regis/);
+  it('offers condensed milk no free sample: it asks how they would use it, and says plant-based', () => {
+    const milk = { ...base, product: 'Condensed Milk', application: 'Thai tea' };
+    for (const trade of [false, true]) {
+      for (const language of ['english', 'thai'] as const) {
+        for (const kind of ['first_approach', 'nudge'] as const) {
+          for (const sendCount of [1, 2, 3, 4]) {
+            const { body } = buildDraft({ ...milk, kind, language, trade, sendCount });
+            expect(body).not.toMatch(/free|500|ฟรี|St\. Regis/);
+            expect(body).toMatch(/plant-based condensed milk|นมข้นหวานจากพืช/);
+          }
+        }
+      }
+    }
+    expect(buildDraft({ ...milk, kind: 'first_approach' }).body).toMatch(/How would your team want to use it in that recipe\?/);
+    expect(buildDraft({ ...milk, kind: 'first_approach', trade: true }).body).toMatch(/Which customer group would you have in mind for it\?/);
   });
 
   it('drafts the nudge that matches the unanswered sends, and stops at the fourth', () => {
     const nudge = (sendCount: number) => buildDraft({ ...base, kind: 'nudge', application: 'croissants', sendCount }).body;
-    expect(nudge(1)).toMatch(/following up on my message about dairy-free butter for croissants/);
-    expect(nudge(2)).toMatch(/Testing in just croissants keeps it simple/);
-    expect(nudge(3)).toMatch(/still interested .* or would it be better if I came back at a later time\?/);
-    expect(nudge(4)).toMatch(/I'll leave the dairy-free butter discussion here for now/);
+    // The first nudge repeats the sample that was offered and never sent.
+    expect(nudge(1)).toMatch(/following up on my message about dairy-free butter for croissants.*the free 2 × 500g sample/);
+    // The second needs a real new fact, left as a blank.
+    expect(nudge(2)).toContain('[new relevant information]');
+    expect(nudge(2)).not.toMatch(/sample/);
+    expect(nudge(3)).toMatch(/still be interested .* or would it be better for me to reconnect at a later time\?/);
+    expect(nudge(4)).toMatch(/I'll leave the VG Saveur dairy-free butter discussion here for now/);
     expect(nudge(4)).not.toContain('?');
     expect(nudge(9)).toBe(nudge(4));
     expect(nudgeStep(0)).toBe(1);
   });
 
-  it('words each stage\'s nudges for that stage: ask about the sample or the test, never offer a new sample', () => {
-    const at = (kind: 'nudge_receipt' | 'nudge_plan' | 'nudge_test', sendCount: number) =>
-      buildDraft({ ...base, kind, contactName: 'Nok', application: 'brioche', sendCount }).body;
+  it('words each stage\'s nudges for that stage, keeps the recipe in every step, and never offers a new sample', () => {
+    const at = (kind: 'nudge_receipt' | 'nudge_plan' | 'nudge_test', sendCount: number, language: 'english' | 'thai' = 'english') =>
+      buildDraft({ ...base, kind, language, contactName: 'Nok', application: 'Shibuya toast', sendCount }).body;
 
-    expect(at('nudge_receipt', 1)).toMatch(/Has it reached your kitchen\?/);
-    expect(at('nudge_receipt', 3)).toMatch(/has the dairy-free butter sample arrived, or should I check with the courier/);
-    expect(at('nudge_plan', 1)).toMatch(/Which recipe would the team like to try it in first\?/);
-    expect(at('nudge_plan', 2)).toMatch(/a single batch of brioche is enough to judge it/);
-    expect(at('nudge_test', 2)).toMatch(/did the dairy-free butter work in brioche, not quite, or not tested yet\?/);
-    expect(at('nudge_test', 3)).toMatch(/is feedback on the dairy-free butter test still coming/);
+    // Receipt nudges speak to a team (a distributor has no kitchen) and never park a missing parcel.
+    expect(at('nudge_receipt', 1)).toMatch(/Has your team received it\?/);
+    expect(at('nudge_receipt', 2)).toContain('[tracking link]');
+    expect(at('nudge_receipt', 4)).toMatch(/hasn't arrived or there's a delivery issue/);
+    // No claim that one batch settles it.
+    expect(at('nudge_plan', 2)).not.toMatch(/enough to judge/);
+    // A tested deal is never asked whether it tested.
+    expect(at('nudge_test', 2)).toMatch(/a good fit for Shibuya toast overall\?/);
+    expect(at('nudge_test', 2)).not.toMatch(/not tested/);
+    for (const kind of ['nudge_plan', 'nudge_test'] as const) {
+      for (const n of [1, 2, 3, 4]) {
+        for (const language of ['english', 'thai'] as const) expect(at(kind, n, language)).toContain('Shibuya toast');
+      }
+    }
     for (const kind of ['nudge_receipt', 'nudge_plan', 'nudge_test'] as const) {
       for (const n of [1, 2, 3, 4]) {
         expect(at(kind, n)).not.toMatch(/free (2|sample)|500g/);
-        expect(at(kind, n).match(/\?/g)?.length ?? 0).toBe(n === 4 ? 0 : 1);
+        // (The second test-plan nudge talks about the recipe and names no product.)
+        if (!(kind === 'nudge_plan' && n === 2)) expect(at(kind, n)).toContain('dairy-free');
+        // Latin text is never glued to the Thai word after it.
+        expect(at(kind, n, 'thai')).not.toMatch(/VG Saveur[\u0E00-\u0E7F]|dairy-free[\u0E00-\u0E7F]/);
       }
     }
   });
