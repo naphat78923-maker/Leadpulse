@@ -12,11 +12,34 @@ import LayaLeadTierBadge from '@/components/LayaLeadTierBadge';
 import { useQuerySelection } from '@/hooks/useQuerySelection';
 import { bestLeadSignal, type LeadSignal } from '@/utils/lead-scoring';
 import { isCompanyRoute } from '@/utils/contact-identity';
-import { Search, Plus, Loader2 } from 'lucide-react';
+import { useBusinessDateKey } from '@/utils/useBusinessDateKey';
+import { BadgeCheck, CircleX, Clock, Loader2, Moon, Plus, Search, Sprout, Tag, User, Users, type LucideIcon } from 'lucide-react';
 import clsx from 'clsx';
 import { PageTransition } from '@/components/motion';
 
 type ViewMode = 'all' | 'by_status';
+
+const STATUS_ICON: Record<Company['status'], LucideIcon> = {
+  prospect: Sprout,
+  active_customer: BadgeCheck,
+  inactive: Moon,
+  lost: CircleX,
+};
+
+const factIcon = 'h-3.5 w-3.5 shrink-0 text-clay-muted-soft';
+
+/** "Today", "9d ago", "3mo ago" since a saved date; null when there is none. */
+function sinceLabel(date: string | null | undefined, today: string): string | null {
+  const from = Date.parse(`${(date ?? '').slice(0, 10)}T00:00:00Z`);
+  const to = Date.parse(`${today}T00:00:00Z`);
+  if (Number.isNaN(from) || Number.isNaN(to)) return null;
+  const days = Math.round((to - from) / 86_400_000);
+  if (days < 0) return null;
+  if (days === 0) return 'Today';
+  if (days < 60) return `${days}d ago`;
+  if (days < 365) return `${Math.round(days / 30)}mo ago`;
+  return `${Math.round(days / 365)}y ago`;
+}
 
 function contactMatches(contact: Contact, q: string): boolean {
   return (
@@ -37,6 +60,7 @@ export default function AccountsPage() {
 }
 
 function Accounts() {
+  const todayKey = useBusinessDateKey();
   const [view, setView] = useState<ViewMode>('all');
   const [search, setSearch] = useState('');
   // /companies?company=<id> opens that account (links from This week and Prospect Review).
@@ -134,6 +158,9 @@ function Accounts() {
 
   const renderRow = (company: Company, showStatus: boolean) => {
     const people = matchedPeople.get(company.id);
+    const peopleCount = (contactsByCompany.get(company.id) ?? []).filter((c) => !isCompanyRoute(c)).length;
+    const lastContact = sinceLabel(company.last_contact_date, todayKey);
+    const StatusIcon = STATUS_ICON[company.status];
     return (
       <div
         key={company.id}
@@ -144,27 +171,36 @@ function Accounts() {
         <div className="min-w-0 flex-1">
           <h4 className="text-sm font-medium text-clay-ink truncate">{company.name}</h4>
           {people ? (
-            <p className="text-xs text-clay-lavender mt-0.5 truncate">
-              {people.map((p) => p.name).join(', ')}
+            <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-clay-lavender">
+              <User className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span className="truncate">{people.map((p) => p.name).join(', ')}</span>
             </p>
-          ) : (
-            <p className="text-xs text-clay-muted mt-0.5 truncate">{company.tags.join(', ') || '—'}</p>
-          )}
-          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+          ) : company.tags.length > 0 ? (
+            <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-clay-muted">
+              <Tag className={factIcon} aria-hidden="true" />
+              <span className="truncate">{company.tags.join(', ')}</span>
+            </p>
+          ) : null}
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-clay-muted">
             {showStatus && (
-              <span className="inline-block text-[10px] font-medium text-clay-muted bg-clay-card px-1.5 py-0.5 rounded">
+              <span className="inline-flex items-center gap-1">
+                <StatusIcon className={factIcon} aria-hidden="true" />
                 {COMPANY_STATUS_LABELS[company.status]}
               </span>
             )}
+            {peopleCount > 0 && (
+              <span className="inline-flex items-center gap-1">
+                <Users className={factIcon} aria-hidden="true" />
+                {peopleCount} {peopleCount === 1 ? 'person' : 'people'}
+              </span>
+            )}
+            {lastContact && (
+              <span className="inline-flex items-center gap-1" title={`Last contact ${company.last_contact_date}`}>
+                <Clock className={factIcon} aria-hidden="true" />
+                {lastContact}
+              </span>
+            )}
             <LayaLeadTierBadge signal={signalByCompanyId.get(company.id) ?? null} />
-            {(() => {
-              const people = (contactsByCompany.get(company.id) ?? []).filter((c) => !isCompanyRoute(c)).length;
-              return people > 0 ? (
-                <span className="inline-block text-[10px] font-medium text-clay-muted bg-clay-card px-1.5 py-0.5 rounded">
-                  {people} {people === 1 ? 'person' : 'people'}
-                </span>
-              ) : null;
-            })()}
           </div>
         </div>
       </div>
