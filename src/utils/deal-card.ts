@@ -163,8 +163,8 @@ export const PRIORITY_CLASSES: Record<Deal['priority'], string> = {
 };
 
 export const PRIORITY_LABELS: Record<Deal['priority'], string> = {
-  high: '🔥 High',
-  medium: '◉ Medium',
-  low: '○ Low',
+  high: 'High',
+  medium: 'Medium',
+  low: 'Low',
 };
 
