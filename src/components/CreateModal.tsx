@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { Company, Contact, Deal, DealWorkflowAction, PRODUCT_OPTIONS, COMPANY_STATUS_LABELS, CONTACT_STATUS_LABELS, MEETING_TYPE_LABELS } from '@/types/crm';
-import { X, Save, Building2, Users, Kanban, Calendar } from 'lucide-react';
+import { X, Save, Building2, Users, Kanban, Calendar, Mail, MessageCircle, Phone } from 'lucide-react';
+import LinkFill from '@/components/LinkFill';
+import { existingAccount, leadNotes, leadRoute, type LeadRoute } from '@/utils/lead-apply';
+import type { PageLead } from '@/utils/page-extract';
 import ContactPicker from '@/components/ContactPicker';
 import { NUDGE_OPTIONS, SAMPLE_STATUS_OPTIONS, WORKFLOW_BY_ID, WORKFLOW_LANES } from '@/utils/deal-workflow';
 import { deriveDealIdentity } from '@/utils/dealLabel';
@@ -22,9 +25,11 @@ interface CreateModalProps {
   deals?: Deal[];
   /** Pre-filled fields merged over the blank form each time it opens, e.g. { company_id }. */
   initialValues?: Record<string, unknown>;
+  /** New account only: a link to read the details from as the form opens. */
+  initialLink?: string | null;
 }
 
-export default function CreateModal({ isOpen, onClose, onSave, type, companies = [], contacts = [], deals = [], initialValues }: CreateModalProps) {
+export default function CreateModal({ isOpen, onClose, onSave, type, companies = [], contacts = [], deals = [], initialValues, initialLink }: CreateModalProps) {
   const [form, setForm] = useState<Record<string, any>>(() => ({ ...getInitialState(type), ...initialValues }));
   const [error, setError] = useState<string | null>(null);
 
@@ -49,6 +54,21 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
     const { name, value } = e.target;
     setForm((prev: Record<string, any>) => ({ ...prev, [name]: value }));
   };
+
+  // Details read from a link fill only the fields still blank; anything typed stays.
+  const applyLead = (lead: PageLead) => {
+    setForm(prev => ({
+      ...prev,
+      name: prev.name?.trim() ? prev.name : lead.name ?? '',
+      website: prev.website?.trim() ? prev.website : lead.website ?? '',
+      address: prev.address?.trim() ? prev.address : lead.address ?? '',
+      notes: prev.notes?.trim() ? prev.notes : leadNotes(lead),
+      logo_url: lead.logoUrl,
+      contact_route: leadRoute(lead),
+    }));
+  };
+  const route: LeadRoute | null = type === 'company' ? form.contact_route ?? null : null;
+  const duplicate = type === 'company' ? existingAccount(companies, form.name ?? '', form.website ?? '') : null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,7 +142,13 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           {type === 'company' && (
             <>
+              <LinkFill key={String(isOpen)} initialLink={initialLink} onLead={applyLead} />
               <Field label="Company Name *" name="name" value={form.name} onChange={handleChange} required placeholder="e.g., April's Bakery" />
+              {duplicate && (
+                <p role="status" className="-mt-2 rounded-lg bg-clay-ochre/10 px-3 py-2 text-xs text-clay-ink">
+                  You already have an account called {duplicate.name}. Saving adds a second one.
+                </p>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <Select label="Status" name="status" value={form.status} onChange={handleChange} options={Object.entries(COMPANY_STATUS_LABELS).map(([v, l]) => ({ value: v, label: l }))} />
                 <Field label="Lead Source" name="lead_source" value={form.lead_source} onChange={handleChange} placeholder="e.g., Website, Referral" />
@@ -138,6 +164,16 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
               <Field label="Address" name="address" value={form.address} onChange={handleChange} placeholder="Full address" />
               <Field label="Website" name="website" value={form.website} onChange={handleChange} placeholder="https://..." />
               <TextArea label="Notes" name="notes" value={form.notes} onChange={handleChange} rows={3} />
+              {route && (
+                <div>
+                  <p className="mb-1.5 text-sm font-medium text-clay-body">Ways to reach them, saved with the account</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {route.email && <RouteChip icon={<Mail className="h-3.5 w-3.5" aria-hidden="true" />} text={route.email} />}
+                    {route.phone && <RouteChip icon={<Phone className="h-3.5 w-3.5" aria-hidden="true" />} text={route.phone} />}
+                    {route.line && <RouteChip icon={<MessageCircle className="h-3.5 w-3.5" aria-hidden="true" />} text={`LINE ${route.line}`} />}
+                  </div>
+                </div>
+              )}
             </>
           )}
 
@@ -231,6 +267,15 @@ function validateDealWorkflow(form: Record<string, any>): string | null {
   if (lane === 'reschedule' && !form.followup_date) return 'Set the rescheduled follow-up date.';
   if (lane === 'parked' && !form.followup_date) return 'Parked deals need a revisit date.';
   return null;
+}
+
+function RouteChip({ icon, text }: { icon: React.ReactNode; text: string }) {
+  return (
+    <span className="inline-flex max-w-full items-center gap-1.5 rounded-md bg-clay-surface px-2 py-1 text-xs text-clay-body">
+      <span className="shrink-0 text-clay-muted-soft">{icon}</span>
+      <span className="truncate">{text}</span>
+    </span>
+  );
 }
 
 function Field({ label, name, value, onChange, type = 'text', required, placeholder }: { label: string; name: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; type?: string; required?: boolean; placeholder?: string }) {

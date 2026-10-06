@@ -7,7 +7,8 @@ const query = vi.hoisted(() => ({ params: new URLSearchParams() }));
 
 vi.mock('@/components/CrmProvider', () => ({ useCrm: () => crm.value }));
 vi.mock('next/navigation', () => ({ useSearchParams: () => query.params }));
-vi.mock('@/components/CreateModal', () => ({ default: () => null }));
+const modal = vi.hoisted(() => ({ props: {} as Record<string, any> }));
+vi.mock('@/components/CreateModal', () => ({ default: (props: Record<string, any>) => { modal.props = props; return null; } }));
 vi.mock('@/components/CompanyLogo', () => ({ default: () => null }));
 vi.mock('@/components/EntityAvatar', () => ({ default: () => null }));
 vi.mock('@/components/LayaLeadTierBadge', () => ({ default: () => null }));
@@ -46,7 +47,8 @@ function setCrm() {
     deals: [],
     loading: false,
     refresh: vi.fn(),
-    createCompany: vi.fn(),
+    createCompany: vi.fn(async () => ({ id: 'new-1' })),
+    createContact: vi.fn(),
   };
 }
 
@@ -77,5 +79,37 @@ describe('Accounts page', () => {
     expect(screen.getByTestId('company-detail').textContent).toContain('Sunshine Market · 1 people');
     fireEvent.click(screen.getByText('Close account'));
     expect(screen.queryByTestId('company-detail')).toBeNull();
+  });
+
+  it('opens New account with a link shared from the phone', () => {
+    query.params = new URLSearchParams({ text: 'Look at this https://www.instagram.com/veganerie/' });
+    setCrm();
+    render(<AccountsPage />);
+
+    expect(modal.props.isOpen).toBe(true);
+    expect(modal.props.initialLink).toBe('https://www.instagram.com/veganerie/');
+  });
+
+  it('saves contact details read from a link as a company route, not on the company row', async () => {
+    setCrm();
+    render(<AccountsPage />);
+    expect(modal.props.isOpen).toBe(false);
+
+    await modal.props.onSave({ name: 'Maison Verte', website: 'https://maisonverte.co.th', contact_route: { email: 'hello@maisonverte.co.th', phone: null, line: '@maisonverte' } });
+
+    expect(crm.value.createCompany).toHaveBeenCalledWith({ name: 'Maison Verte', website: 'https://maisonverte.co.th' });
+    expect(crm.value.createContact).toHaveBeenCalledWith(expect.objectContaining({
+      company_id: 'new-1',
+      identity_quality: 'company_route',
+      email: 'hello@maisonverte.co.th',
+      line: '@maisonverte',
+    }));
+  });
+
+  it('creates no contact when the link gave no way to reach them', async () => {
+    setCrm();
+    render(<AccountsPage />);
+    await modal.props.onSave({ name: 'Plain Co', contact_route: null });
+    expect(crm.value.createContact).not.toHaveBeenCalled();
   });
 });

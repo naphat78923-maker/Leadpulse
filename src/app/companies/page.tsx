@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useState, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Company, COMPANY_STATUS_LABELS, Contact, Deal } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
 import CreateModal from '@/components/CreateModal';
@@ -12,6 +13,7 @@ import LayaLeadTierBadge from '@/components/LayaLeadTierBadge';
 import { useQuerySelection } from '@/hooks/useQuerySelection';
 import { bestLeadSignal, type LeadSignal } from '@/utils/lead-scoring';
 import { isCompanyRoute } from '@/utils/contact-identity';
+import { linkInText, routeContact, type LeadRoute } from '@/utils/lead-apply';
 import { useBusinessDateKey } from '@/utils/useBusinessDateKey';
 import { BadgeCheck, CircleX, Clock, Loader2, Moon, Plus, Search, Sprout, Tag, User, Users, type LucideIcon } from 'lucide-react';
 import clsx from 'clsx';
@@ -66,9 +68,14 @@ function Accounts() {
   // /companies?company=<id> opens that account (links from This week and Prospect Review).
   const [selectedCompany, setSelectedCompany] = useQuerySelection('company');
   const [selectedContact, setSelectedContact] = useState<string | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  // /companies?add=<link> opens New account with that link read in. A link shared to the
+  // installed app from a phone arrives the same way (manifest share_target: link / text).
+  const params = useSearchParams();
+  const sharedLink = linkInText(params.get('add')) ?? linkInText(params.get('link')) ?? linkInText(params.get('text'));
+  const [modalChoice, setIsModalOpen] = useState<boolean | null>(null);
+  const isModalOpen = modalChoice ?? Boolean(sharedLink);
 
-  const { companies: dbCompanies, contacts: dbContacts, deals: dbDeals, loading, refresh, createCompany } = useCrm();
+  const { companies: dbCompanies, contacts: dbContacts, deals: dbDeals, loading, refresh, createCompany, createContact } = useCrm();
   const companies: Company[] = dbCompanies;
   const contacts: Contact[] = dbContacts;
   const deals: Deal[] = dbDeals;
@@ -140,9 +147,12 @@ function Accounts() {
     return groups;
   }, [filtered]);
 
-  const handleCreate = async (data: Parameters<typeof createCompany>[0]) => {
+  const handleCreate = async (data: Parameters<typeof createCompany>[0] & { contact_route?: LeadRoute | null }) => {
     // Let errors bubble to the modal so failures are visible.
-    await createCompany(data);
+    const { contact_route: route, ...company } = data;
+    const created = await createCompany(company);
+    // An email, phone or LINE read from their site is kept as a way to reach the account.
+    if (route && created?.id) await createContact(routeContact(created.id, company.name, route));
   };
 
   const activeCompany = selectedCompany ? companies.find(c => c.id === selectedCompany) : null;
@@ -297,7 +307,7 @@ function Accounts() {
         />
       )}
 
-      <CreateModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={handleCreate} type="company" />
+      <CreateModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={handleCreate} type="company" initialLink={sharedLink} companies={companies} />
     </PageTransition>
   );
 }

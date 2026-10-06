@@ -23,5 +23,12 @@ export default function manifest(): MetadataRoute.Manifest {
         purpose: "maskable",
       },
     ],
+    // Android: "Share" a link from Instagram or the browser to LeadPulse and New account
+    // opens with it read in. iOS has no equivalent for installed web apps.
+    share_target: {
+      action: "/companies",
+      method: "GET",
+      params: { title: "title", text: "text", url: "link" },
+    },
   };
 }

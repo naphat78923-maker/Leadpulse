@@ -32,7 +32,7 @@ interface CrmContextType {
   refresh: () => Promise<void>;
   addMeeting: (meeting: Omit<Meeting, 'id' | 'created_at'>) => Promise<void>;
   createContact: (contact: Omit<Contact, 'id' | 'created_at' | 'updated_at'>) => Promise<void>;
-  createCompany: (company: Omit<Company, 'id' | 'created_at' | 'updated_at'>) => Promise<void>;
+  createCompany: (company: Omit<Company, 'id' | 'created_at' | 'updated_at'>) => Promise<Company>;
   createDeal: (deal: Omit<Deal, 'id' | 'created_at' | 'updated_at'>) => Promise<void>;
   deleteEntity: (entity: ActivityEntry['entity'], id: string, label: string) => Promise<void>;
   restoreEntity: (entity: ActivityEntry['entity'], id: string) => Promise<void>;
@@ -54,7 +54,7 @@ const CrmContext = createContext<CrmContextType>({
   refresh: async () => {},
   addMeeting: async () => {},
   createContact: async () => {},
-  createCompany: async () => {},
+  createCompany: async () => ({}) as Company,
   createDeal: async () => {},
   deleteEntity: async () => {},
   restoreEntity: async () => {},
@@ -333,6 +333,7 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
           undoPayload: { id: (created as any).id },
         });
         await refresh();
+        return created as Company;
       },
       createDeal: async (deal) => {
         const created = await crm.createDeal(deal);
