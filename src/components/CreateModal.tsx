@@ -172,7 +172,7 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
               <Select label="Company" name="company_id" value={form.company_id} onChange={handleChange} options={[{ value: '', label: '— None —' }, ...companies.map(c => ({ value: c.id, label: c.name }))]} />
               <Field label="Value (THB)" name="value" value={form.value} onChange={handleChange} placeholder="e.g., 50000" />
               <div>
-                <Select label="Action Lane" name="workflow_action" value={form.workflow_action} onChange={handleWorkflowChange} options={WORKFLOW_LANES.map(lane => ({ value: lane.id, label: `${lane.icon} ${lane.label}` }))} />
+                <Select label="Action Lane" name="workflow_action" value={form.workflow_action} onChange={handleWorkflowChange} options={WORKFLOW_LANES.map(lane => ({ value: lane.id, label: lane.label }))} />
                 <p className="text-xs text-clay-muted mt-1">{WORKFLOW_BY_ID[form.workflow_action as DealWorkflowAction]?.description}</p>
               </div>
               {form.workflow_action === 'sample' && (

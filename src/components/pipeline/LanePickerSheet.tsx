@@ -1,7 +1,8 @@
 'use client';
 
 import clsx from 'clsx';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Pause, TrendingDown, Trophy } from 'lucide-react';
+import LaneIcon from '@/components/LaneIcon';
 import type { Deal, DealWorkflowAction } from '@/types/crm';
 import { WORKFLOW_LANES } from '@/utils/deal-workflow';
 import { LANE_CRITERIA } from './board-view';
@@ -43,7 +44,7 @@ export default function LanePickerSheet({
                   : 'border-clay-hairline bg-white dark:bg-clay-card active:bg-clay-surface'
               )}
             >
-              <span className="text-lg shrink-0">{lane.icon}</span>
+              <LaneIcon lane={lane.id} className="h-4 w-4 shrink-0 text-clay-muted" />
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-medium text-clay-ink truncate">{lane.label}</span>
                 <span className="block zams-mono text-[9px] uppercase tracking-[0.14px] text-clay-muted-soft mt-0.5">{LANE_CRITERIA[lane.id]}</span>
@@ -53,15 +54,16 @@ export default function LanePickerSheet({
           ))}
           <p className="zams-mono text-[9px] uppercase tracking-[0.14px] text-clay-muted px-1 pt-2">Exits (not columns)</p>
           {([
-            ['won', '🎉 Mark won'],
-            ['lost', '📉 Mark lost'],
-            ['park', '⏸ Park'],
-          ] as const).map(([kind, label]) => (
+            ['won', 'Mark won', Trophy],
+            ['lost', 'Mark lost', TrendingDown],
+            ['park', 'Park', Pause],
+          ] as const).map(([kind, label, Icon]) => (
             <button
               key={kind}
               onClick={() => onExit(kind)}
               className="w-full flex items-center gap-3 px-3 py-3 rounded-lg border border-clay-hairline bg-white dark:bg-clay-card text-left active:bg-clay-surface"
             >
+              <Icon className="h-4 w-4 shrink-0 text-clay-muted" aria-hidden="true" />
               <span className="text-sm font-medium text-clay-ink">{label}</span>
             </button>
           ))}

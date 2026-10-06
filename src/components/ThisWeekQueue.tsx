@@ -4,13 +4,16 @@ import { useMemo, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import Link from 'next/link';
 import clsx from 'clsx';
-import type { Company, Deal, Meeting } from '@/types/crm';
+import { AlarmClock, CalendarDays, CalendarOff, CircleAlert, HeartHandshake, Mail, MessageCircle, MessagesSquare, Phone, Users, type LucideIcon } from 'lucide-react';
+import type { Company, Deal, DealWorkflowAction, Meeting } from '@/types/crm';
 import CompanyLogo from '@/components/CompanyLogo';
+import LaneIcon from '@/components/LaneIcon';
 import RecentChanges from '@/components/RecentChanges';
 import GoalCard from '@/components/GoalCard';
 import { useCrm } from '@/components/CrmProvider';
 import { useLayaGrades } from '@/hooks/useLayaReviewList';
 import type { HealthTier } from '@/utils/accountHealth';
+import { actionChannel, type ActionChannel } from '@/utils/action-channel';
 import { businessDaysBetween } from '@/utils/business-time';
 import { formatScheduleDate } from '@/utils/deal-schedule';
 import { WORKFLOW_BY_ID, getWorkflowAction } from '@/utils/deal-workflow';
@@ -49,6 +52,10 @@ const TIER: Record<HealthTier | 'reorder_only', { label: string; dot: string }> 
   reorder_only: { label: 'Reorder due', dot: 'bg-clay-lavender' },
 };
 
+const CHANNEL_ICON: Record<ActionChannel, LucideIcon> = { call: Phone, email: Mail, message: MessageCircle, meeting: Users };
+
+const TAB_ICON: Record<Tab, LucideIcon> = { overdue: AlarmClock, week: CalendarDays, undated: CalendarOff };
+
 const focusRing = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-clay-lavender';
 
 /** Staggered rise-in; capped so long lists never wait on animation. */
@@ -69,6 +76,8 @@ function dayLabel(dateKey: string, offset: number): string {
 /* ── Stat cards ─────────────────────────────────────────────────────────── */
 
 function StatCard({
+  icon: Icon,
+  iconClass,
   label,
   value,
   valueClass,
@@ -78,6 +87,8 @@ function StatCard({
   active,
   index,
 }: {
+  icon: LucideIcon;
+  iconClass?: string;
   label: string;
   value: number;
   valueClass?: string;
@@ -99,7 +110,10 @@ function StatCard({
         focusRing,
       )}
     >
-      <span className="block text-xs text-clay-muted">{label}</span>
+      <span className="flex items-center gap-1.5 text-xs text-clay-muted">
+        <Icon className={clsx('h-3.5 w-3.5 shrink-0', iconClass)} aria-hidden="true" />
+        <span className="truncate">{label}</span>
+      </span>
       <span className={clsx('mt-0.5 block text-2xl font-semibold leading-tight', valueClass ?? 'text-clay-ink')}>{value}</span>
       <span className="mt-2 block h-[18px]" aria-hidden="true">{chart}</span>
       <span className="mt-1.5 block truncate text-[11px] text-clay-muted">{caption}</span>
@@ -144,6 +158,15 @@ function Sparkline({ series }: { series: number[] }) {
 
 /* ── Follow-up rows ─────────────────────────────────────────────────────── */
 
+function LaneChip({ lane, label }: { lane: DealWorkflowAction; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-clay-surface px-1.5 py-0.5 text-[11px] text-clay-muted">
+      <LaneIcon lane={lane} className="h-3 w-3" />
+      {label}
+    </span>
+  );
+}
+
 function FollowupRow({
   item,
   deal,
@@ -163,9 +186,12 @@ function FollowupRow({
 }) {
   const title = item.dealTitle || item.companyName || 'Deal';
   const name = item.companyName || item.dealTitle || 'Deal';
-  const stage = deal ? WORKFLOW_BY_ID[getWorkflowAction(deal)]?.shortLabel : null;
+  const lane = deal ? getWorkflowAction(deal) : null;
+  const stage = lane ? WORKFLOW_BY_ID[lane]?.shortLabel : null;
   const canLog = Boolean(item.dealId) && item.action === 'honor_saved_followup' && item.holds.length === 0;
   const detail = tone === 'review' ? item.reason : item.nextAction;
+  const channel = tone === 'review' ? null : actionChannel(item.nextAction);
+  const ChannelIcon = channel ? CHANNEL_ICON[channel] : null;
   const days = daysOverdue(item.dueDate, today);
   const when =
     tone === 'overdue' ? `${days}d`
@@ -203,13 +229,19 @@ function FollowupRow({
           </span>
         )}
       </div>
-      <p className="hidden truncate text-xs text-clay-body sm:block" title={detail ?? undefined}>{detail ?? '—'}</p>
+      <p className="hidden min-w-0 items-center gap-1.5 text-xs text-clay-body sm:flex" title={detail ?? undefined}>
+        {ChannelIcon && <ChannelIcon data-channel={channel} className="h-3.5 w-3.5 shrink-0 text-clay-muted" aria-hidden="true" />}
+        <span className="truncate">{detail ?? '—'}</span>
+      </p>
       <div className="hidden items-center gap-2 sm:flex">
-        {stage && <span className="whitespace-nowrap rounded-md bg-clay-surface px-1.5 py-0.5 text-[11px] text-clay-muted">{stage}</span>}
+        {lane && stage && <LaneChip lane={lane} label={stage} />}
       </div>
       <div className="flex items-center justify-end gap-2">
         {when && (
-          <span className={clsx('whitespace-nowrap text-xs tabular-nums', tone === 'overdue' ? 'font-semibold text-clay-error' : 'text-clay-muted')}>
+          <span className={clsx('inline-flex items-center gap-1.5 whitespace-nowrap text-xs tabular-nums', tone === 'overdue' ? 'font-semibold text-clay-error' : 'text-clay-muted')}>
+            {(tone === 'overdue' || when === 'Today') && (
+              <span className={clsx('h-1.5 w-1.5 rounded-full', tone === 'overdue' ? 'bg-clay-error' : 'bg-clay-ochre')} aria-hidden="true" />
+            )}
             {when}
           </span>
         )}
@@ -249,7 +281,8 @@ function WaitingRow({
 }) {
   const { deal } = item;
   const name = company?.name || deal.client || deal.title || 'Deal';
-  const stage = WORKFLOW_BY_ID[getWorkflowAction(deal)]?.shortLabel;
+  const lane = getWorkflowAction(deal);
+  const stage = WORKFLOW_BY_ID[lane]?.shortLabel;
   return (
     <li
       style={rise(index)}
@@ -268,7 +301,7 @@ function WaitingRow({
       </div>
       <p className="hidden truncate text-xs text-clay-body sm:block" title={item.reasons[0].label}>{item.reasons[0].label}</p>
       <div className="hidden items-center sm:flex">
-        {stage && <span className="whitespace-nowrap rounded-md bg-clay-surface px-1.5 py-0.5 text-[11px] text-clay-muted">{stage}</span>}
+        {stage && <LaneChip lane={lane} label={stage} />}
       </div>
       {held ? (
         <span className="text-[11px] font-semibold text-clay-error">On hold</span>
@@ -466,6 +499,8 @@ export default function ThisWeekQueue({
           <div className="grid grid-cols-2 gap-2 lg:grid-cols-4" aria-label="This week at a glance">
             <StatCard
               index={0}
+              icon={CircleAlert}
+              iconClass={overdue.length > 0 ? 'text-clay-error' : undefined}
               label="Overdue"
               value={overdue.length}
               valueClass={overdue.length > 0 ? 'text-clay-error' : undefined}
@@ -483,6 +518,7 @@ export default function ThisWeekQueue({
             />
             <StatCard
               index={1}
+              icon={CalendarDays}
               label="Due this week"
               value={dueThisWeek.length}
               active={tab === 'week'}
@@ -492,6 +528,7 @@ export default function ThisWeekQueue({
             />
             <StatCard
               index={2}
+              icon={HeartHandshake}
               label="Check-ins"
               value={checkIns.length}
               onClick={() => document.getElementById('check-ins')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })}
@@ -504,6 +541,7 @@ export default function ThisWeekQueue({
             />
             <StatCard
               index={3}
+              icon={MessagesSquare}
               label="Touches · 7 days"
               value={touches.total}
               onClick={() => openTab('week')}
@@ -542,7 +580,9 @@ export default function ThisWeekQueue({
               )}
 
               <div role="tablist" aria-label="Follow-ups" className="no-scrollbar -mx-1 mb-2 flex gap-1.5 overflow-x-auto px-1">
-                {tabs.map(t => (
+                {tabs.map(t => {
+                  const TabIcon = TAB_ICON[t.id];
+                  return (
                   <button
                     key={t.id}
                     role="tab"
@@ -554,10 +594,12 @@ export default function ThisWeekQueue({
                       focusRing,
                     )}
                   >
+                    <TabIcon className="h-3.5 w-3.5" aria-hidden="true" />
                     {t.label}
                     <span className={clsx('text-xs', t.id === 'overdue' && t.count > 0 ? 'font-semibold text-clay-error' : 'text-clay-muted')}>{t.count}</span>
                   </button>
-                ))}
+                  );
+                })}
               </div>
 
               <div role="tabpanel" aria-label={tabs.find(t => t.id === tab)?.label}>
