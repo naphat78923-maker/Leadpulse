@@ -511,7 +511,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
                 >
                   {WORKFLOW_LANES.map(lane => (
                     <option key={lane.id} value={lane.id}>
-                      {lane.icon} {lane.label}
+                      {lane.label}
                     </option>
                   ))}
                 </select>

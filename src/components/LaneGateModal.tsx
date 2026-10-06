@@ -159,7 +159,7 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
               <div>
                 <p className="zams-eyebrow mb-0.5">Gate · {lane.shortLabel}</p>
                 <h2 className="text-sm font-semibold text-clay-ink leading-tight">
-                  {lane.icon} Move {deal.client} to {lane.label}
+                  Move {deal.client} to {lane.label}
                 </h2>
               </div>
             </div>

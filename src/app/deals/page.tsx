@@ -395,7 +395,7 @@ function DealsBoard() {
     setGate(null);
     setCelebrate({ dealId: deal.id, laneId: target });
     setTimeout(() => setCelebrate(null), 900);
-    addToast(`${lane.icon} Moved to ${lane.shortLabel}`);
+    addToast(`Moved to ${lane.shortLabel}`);
     await refresh();
   };
 
