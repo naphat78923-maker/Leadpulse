@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Company, Contact, Deal, DealWorkflowAction, PRODUCT_OPTIONS, COMPANY_STATUS_LABELS, CONTACT_STATUS_LABELS, MEETING_TYPE_LABELS } from '@/types/crm';
 import { X, Save, Building2, Users, Kanban, Calendar, Mail, MessageCircle, Phone } from 'lucide-react';
 import LinkFill from '@/components/LinkFill';
+import NameLookup from '@/components/NameLookup';
 import { existingAccount, leadNotes, leadRoute, type LeadRoute } from '@/utils/lead-apply';
 import type { PageLead } from '@/utils/page-extract';
 import ContactPicker from '@/components/ContactPicker';
@@ -56,13 +57,15 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
   };
 
   // Details read from a link fill only the fields still blank; anything typed stays.
-  const applyLead = (lead: PageLead) => {
+  const applyLead = (lead: PageLead, picked?: { kind: string | null }) => {
     setForm(prev => ({
       ...prev,
-      name: prev.name?.trim() ? prev.name : lead.name ?? '',
+      // A match picked by name is the business itself, so its listed name replaces what was typed.
+      name: !picked && prev.name?.trim() ? prev.name : lead.name ?? prev.name ?? '',
       website: prev.website?.trim() ? prev.website : lead.website ?? '',
       address: prev.address?.trim() ? prev.address : lead.address ?? '',
       notes: prev.notes?.trim() ? prev.notes : leadNotes(lead),
+      industry: prev.industry?.trim() ? prev.industry : picked?.kind ?? '',
       logo_url: lead.logoUrl,
       contact_route: leadRoute(lead),
     }));
@@ -144,6 +147,7 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
             <>
               <LinkFill key={String(isOpen)} initialLink={initialLink} onLead={applyLead} />
               <Field label="Company Name *" name="name" value={form.name} onChange={handleChange} required placeholder="e.g., April's Bakery" />
+              <NameLookup key={`lookup-${isOpen}`} name={form.name ?? ''} onPick={(lead, kind) => applyLead(lead, { kind })} />
               {duplicate && (
                 <p role="status" className="-mt-2 rounded-lg bg-clay-ochre/10 px-3 py-2 text-xs text-clay-ink">
                   You already have an account called {duplicate.name}. Saving adds a second one.
