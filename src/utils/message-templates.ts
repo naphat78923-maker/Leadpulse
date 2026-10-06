@@ -1,7 +1,8 @@
 // ─── Outreach message drafts ───
 // Pure. One short draft per buyer situation, worded after Pat's message library
-// (2026-10-05): one fact about them, one proportionate ask. Facts the CRM does not hold
-// (their menu item, a price, a dispatch date) are left as [blanks] for Pat to fill.
+// (2026-10-05) and the copy review of 2026-10-06: one fact about them, one proportionate
+// ask. Facts the CRM does not hold (their menu item, a price, a dispatch date) are left as
+// [blanks] for Pat to fill.
 // Drafts are starting points Pat edits and sends himself; nothing here sends anything.
 
 import { classifyCompanyRole, type ClassifiableCompany, type CompanyRole } from './companyRole';
@@ -118,6 +119,7 @@ export interface Draft {
 }
 
 const BRAND = 'VG Saveur';
+const HOME_LINK = 'https://vgsaveur.com';
 const WHOLESALE_LINK = 'https://vgsaveur.com/pages/wholesale';
 // Named with Pat's go-ahead (2026-10-05). Butter only.
 const PROOF: Record<DraftLanguage, string> = {
@@ -144,57 +146,63 @@ export function buildDraft(input: DraftInput): Draft {
   const app = input.application?.trim();
   const step = nudgeStep(input.sendCount);
   const trade = input.trade === true;
+  const intro = `${BRAND} x ${company || BRAND}`;
 
   if (input.language === 'thai') {
     // A space after คุณ only before a Latin-script name.
     const hello = first ? `สวัสดีครับคุณ${THAI_SCRIPT.test(first) ? '' : ' '}${first}` : 'สวัสดีครับ';
     const product = milk ? 'นมข้นหวานจากพืช' : 'เนย dairy-free';
-    const sample = milk ? 'ตัวอย่างฟรี' : 'ตัวอย่างฟรีขนาด 500 กรัม 2 ก้อน';
-    const forApp = app ? `สำหรับ ${app} ` : '';
+    // Follow-ups name the brand too; always followed by a space before Thai text.
+    const ours = `${product} ${BRAND}`;
+    const sample = 'ตัวอย่างฟรีขนาด 500 กรัม 2 ก้อน';
+    const later = 'หรือสะดวกให้ผมติดต่อกลับในช่วงที่เหมาะกว่านี้ครับ';
+    const withApp = app ? ` กับ ${app}` : '';
     switch (input.kind) {
       case 'nudge':
-        if (trade) {
-          return { subject: `${BRAND} x ${company || BRAND}`, body: [
-            `${hello} ขออนุญาตติดตามข้อความก่อนหน้าเรื่อง${product} ครับ สนใจให้ผมส่ง${sample}ให้ทีมพิจารณาไหมครับ`,
-            `${hello} ขออนุญาตติดตามอีกครั้งนะครับ ตัวอย่างน่าจะช่วยให้ประเมินได้เร็วที่สุดว่า${product} เหมาะกับกลุ่มสินค้าของคุณหรือไม่ สนใจให้ผมส่ง${sample}ไหมครับ`,
-            `${hello} ทีมยังสนใจพิจารณา${product} อยู่ไหมครับ หรือสะดวกให้ผมติดต่อกลับในช่วงที่เหมาะกว่านี้ครับ`,
-            `${hello} ผมขอพักเรื่อง${product} ไว้ก่อนนะครับ หากในอนาคตสนใจ สามารถทักมาได้ครับ`,
-          ][step - 1] };
-        }
-        return { subject: `${BRAND} x ${company || BRAND}`, body: [
-            `${hello} ขออนุญาตติดตามข้อความก่อนหน้าเรื่อง${product}${app ? ` สำหรับ ${app}` : ''} ครับ สนใจให้ผมส่ง${sample}ให้ทีมครัวลองไหมครับ`,
-            `${hello} ขออนุญาตติดตามอีกครั้งนะครับ ถ้าเริ่มลองกับ ${app || 'เมนูเดียว'} ก่อน ก็ไม่ต้องเปลี่ยนทั้งไลน์เมนูครับ สนใจให้ผมส่ง${sample}สำหรับทดลองไหมครับ`,
-            `${hello} ทีมยังสนใจลอง${product} ${forApp}อยู่ไหมครับ หรือสะดวกให้ผมติดต่อกลับในช่วงที่เหมาะกว่านี้ครับ`,
-            `${hello} ผมขอพักเรื่อง${product} ไว้ก่อนนะครับ หากในอนาคตสนใจ${app ? `นำไปใช้กับ ${app} ` : ' '}สามารถทักมาได้ครับ`,
-        ][step - 1] };
+        return { subject: intro, body: (trade ? [
+          milk
+            ? `${hello} ขออนุญาตติดตามเรื่อง${ours} ที่เคยแนะนำไว้ครับ สนใจให้ผมส่งข้อมูลสินค้าให้ทีมพิจารณาเพิ่มเติมไหมครับ`
+            : `${hello} ขออนุญาตติดตามข้อความก่อนหน้าเรื่อง${product} ครับ สนใจให้ผมส่ง${sample}ให้ทีมพิจารณาไหมครับ`,
+          `${hello} มีข้อมูลเรื่อง [ข้อมูลใหม่ที่เกี่ยวข้อง] เพิ่มเติมที่น่าจะช่วยให้ทีมพิจารณาว่า${ours} เหมาะกับกลุ่มลูกค้าของคุณไหมครับ สนใจให้ผมส่งให้ดูไหมครับ`,
+          `${hello} ทีมยังสนใจพิจารณา${ours} เป็นตัวเลือกในกลุ่มสินค้าของคุณอยู่ไหมครับ ${later}`,
+          `${hello} ผมขอพักเรื่อง${ours} ไว้ก่อนนะครับ หากในอนาคตอยากกลับมาพิจารณาสินค้าตัวนี้ ทักผมได้เลยครับ`,
+        ] : [
+          milk
+            ? `${hello} ขออนุญาตติดตามข้อความก่อนหน้าเรื่อง${ours}${app ? ` สำหรับ ${app}` : ''} ครับ สนใจให้ผมส่งข้อมูลสินค้า${app ? 'สำหรับเมนูนี้' : ''}เพิ่มเติมไหมครับ`
+            : `${hello} ขออนุญาตติดตามข้อความก่อนหน้าเรื่อง${product}${app ? ` สำหรับ ${app}` : ''} ครับ สนใจให้ผมส่ง${sample}ให้ทีมครัวลองไหมครับ`,
+          `${hello} มีข้อมูลเรื่อง [ข้อมูลใหม่ที่เกี่ยวข้อง] ที่น่าจะเกี่ยวข้องกับการใช้${ours}${app ? ` ใน ${app}` : ''} ครับ สนใจให้ผมส่งให้ทีมดูไหมครับ`,
+          `${hello} ทางทีมยังสนใจพิจารณา${ours}${app ? ` สำหรับ ${app}` : ''} อยู่ไหมครับ ${later}`,
+          `${hello} ผมขอพักเรื่อง${ours}${app ? ` สำหรับ ${app}` : ''} ไว้ก่อนนะครับ หากในอนาคตสนใจ${app ? 'นำไปใช้กับเมนูนี้' : ''} ทักผมได้เลยครับ`,
+        ])[step - 1] };
       case 'nudge_receipt':
         return { subject: `${BRAND} sample`, body: [
-          `${hello} ขออนุญาตสอบถามเรื่องตัวอย่าง${product} ที่ส่งไปครับ ถึงครัวเรียบร้อยไหมครับ`,
-          `${hello} เผื่อตัวอย่าง${product} ไปอยู่ที่แผนกอื่นหรือหน้าเคาน์เตอร์ ผมควรสอบถามกับท่านใดดีครับ`,
-          `${hello} ตัวอย่าง${product} ได้รับแล้วหรือยังครับ หรือให้ผมตรวจสอบกับบริษัทขนส่งทางฝั่งผมดีครับ`,
-          `${hello} ผมขอพักเรื่องตัวอย่างไว้ก่อนนะครับ หากยังไม่ได้รับ หรือทีมอยากทดลองภายหลัง สามารถทักมาได้ครับ`,
+          `${hello} ขออนุญาตติดตามเรื่องตัวอย่าง${ours} ที่ส่งไปครับ ทางทีมได้รับเรียบร้อยไหมครับ`,
+          `${hello} ผมส่งลิงก์ติดตามตัวอย่าง${ours} ไว้ตรงนี้นะครับ\n[ลิงก์ติดตามพัสดุ]\n\nทางทีมได้รับของแล้วหรือยังครับ`,
+          `${hello} ขออนุญาตเช็กเรื่องตัวอย่าง${ours} อีกครั้งครับ ตอนนี้ได้รับแล้วหรือยังครับ ถ้ายังไม่ถึง ผมจะได้ตรวจสอบเรื่องการจัดส่งให้ครับ`,
+          `${hello} เรื่องตัวอย่าง${ours} หากของยังไม่ถึงหรือมีปัญหาในการรับสินค้า แจ้งผมได้เลยนะครับ`,
         ][step - 1] };
       case 'nudge_plan':
         return { subject: `${BRAND} sample`, body: [
-          `${hello} ขออนุญาตติดตามเรื่องตัวอย่าง${product} ครับ ทีมอยากลองกับเมนูไหนก่อนครับ`,
-          `${hello} ขอเสนอแนวทางครับ ลองกับ ${app || 'เมนูเดิมเมนูเดียว'} เพียงรอบเดียวก็พอประเมินได้แล้ว แบบนี้สะดวกสำหรับทีมไหมครับ`,
-          `${hello} ทีมยังมีแผนทดลองตัวอย่าง${product} อยู่ไหมครับ หรือสะดวกให้ผมติดต่อกลับในช่วงที่เหมาะกว่านี้ครับ`,
-          `${hello} ผมขอฝากตัวอย่าง${product} ไว้ก่อนนะครับ หากทีมได้ทดลองภายหลัง ยินดีรับฟังผลเสมอครับ`,
+          `${hello} ขออนุญาตติดตามเรื่องตัวอย่าง${ours} ครับ ทีมสะดวกเริ่มทดลอง${app ? `กับ ${app} ` : ''}ช่วงไหนครับ`,
+          `${hello} ถ้าทีมอยากเริ่มจาก ${app || '[เมนู]'} ก่อน ผมช่วยตรวจสอบข้อมูลสินค้าที่เกี่ยวข้องให้ได้ครับ มีข้อมูลส่วนไหนที่ต้องการก่อนเริ่มทดลองไหมครับ`,
+          `${hello} ทางทีมยังมีแผนทดลอง${ours}${withApp} อยู่ไหมครับ ${later}`,
+          `${hello} ผมขอพักการติดตามเรื่องทดลอง${ours}${withApp} ไว้ก่อนนะครับ หากทีมพร้อมเริ่มทดลองเมื่อไร ทักผมได้เลยครับ`,
         ][step - 1] };
       case 'nudge_test':
         return { subject: `${BRAND} sample`, body: [
-          `${hello} ขออนุญาตติดตามผลทดลอง${product}${app ? ` กับ ${app}` : ''} ครับ เป็นอย่างไรบ้างครับ`,
-          `${hello} ตอบสั้น ๆ ได้เลยครับ ${product}${app ? ` กับ ${app}` : ''} ใช้ได้ดี ยังไม่ลงตัว หรือยังไม่ได้ทดลองครับ`,
-          `${hello} ทีมยังสะดวกแจ้งผลทดลอง${product} อยู่ไหมครับ หรือสะดวกให้ผมติดต่อกลับในช่วงที่เหมาะกว่านี้ครับ`,
-          `${hello} ผมขอพักเรื่องผลทดลอง${product} ไว้ก่อนนะครับ หากทีมมีความเห็นภายหลัง สามารถทักมาได้ครับ`,
+          `${hello} ขออนุญาตติดตามผลทดลอง${ours}${withApp} ครับ ผลเป็นอย่างไรบ้างครับ`,
+          `${hello} ขออนุญาตสอบถามผลทดลอง${ours}${withApp} เพิ่มเติมครับ โดยรวมเหมาะกับเมนูนี้ไหมครับ หากมีจุดที่ยังไม่ลงตัว บอกผมได้เลยครับ`,
+          `${hello} ขออนุญาตติดตามผลทดลอง${ours}${withApp} ครับ สะดวกแชร์ผลคร่าว ๆ ไหมครับ หรืออยากให้ผมติดต่อกลับในช่วงที่เหมาะกว่านี้ครับ`,
+          `${hello} ผมขอพักการติดตามผลทดลอง${ours}${withApp} ไว้ก่อนนะครับ หากทีมมีผลหรือข้อสังเกตเพิ่มเติมเมื่อไร ส่งให้ผมได้เลยครับ`,
         ][step - 1] };
       case 'confirm_receipt':
-        return { subject: `${BRAND} sample`, body: `${hello} ตัวอย่าง${product} ที่ส่งไปเมื่อ [วันที่ส่ง] ได้รับเรียบร้อยไหมครับ` };
+        return { subject: `${BRAND} sample`, body: `${hello} ตัวอย่าง${ours} ที่ส่งไปเมื่อ [วันที่ส่ง] ได้รับเรียบร้อยไหมครับ` };
       case 'test_plan':
-        return { subject: `${BRAND} sample`, body: `${hello} ทีมอยากลองตัวอย่าง${product} กับเมนูไหนก่อนครับ` };
+        return { subject: `${BRAND} sample`, body: `${hello} สำหรับตัวอย่าง${ours} ที่ได้รับ ทีมอยากเริ่มลองกับเมนูไหนก่อนครับ` };
       case 'test_result':
-        return { subject: `${BRAND} sample`, body: `${hello} ผลทดลอง${product} กับ ${app || '[เมนูที่ทดลอง]'} เป็นอย่างไรบ้างครับ` };
+        return { subject: `${BRAND} sample`, body: `${hello} ผลทดลอง${ours} กับ ${app || '[เมนูที่ทดลอง]'} เป็นอย่างไรบ้างครับ มีจุดไหนที่ทีมอยากให้ช่วยดูเพิ่มเติม แจ้งผมได้เลยครับ` };
       case 'paid_trial':
+        // Kept close to the reply Pat approved on 2026-09-21.
         return {
           subject: `${BRAND} paid trial`,
           body: `${hello} ก่อนหน้านี้ผมส่งตัวอย่างให้ทดลองไปแล้ว 1 รอบนะครับ\n\nถ้าต้องการทดลองเพิ่มเติม รอบนี้ผมแนะนำเป็นออเดอร์ทดลอง [ขนาด] ราคา [ราคา] ครับ\n\nสนใจให้ผมจัดเป็นออเดอร์ทดลองไหมครับ`,
@@ -202,105 +210,105 @@ export function buildDraft(input: DraftInput): Draft {
       case 'first_order_quote':
         return {
           subject: `${BRAND} first order`,
-          body: `${hello} ดีใจที่${product} ใช้ได้กับ ${app || '[เมนูที่ทดลอง]'} นะครับ สะดวกให้ผมเตรียมใบเสนอราคาสำหรับการผลิตรอบถัดไปไหมครับ`,
+          body: `${hello} ดีใจที่${ours} ใช้ได้กับ ${app || '[เมนูที่ทดลอง]'} นะครับ หากทีมจะนำไปใช้ในการผลิตรอบถัดไป สะดวกให้ผมเตรียมใบเสนอราคาสำหรับออเดอร์แรกไหมครับ`,
         };
       case 'check_in':
         return {
           subject: `${BRAND} order`,
-          body: `${hello} แพทจาก ${BRAND} ครับ ช่วงนี้ต้องการ${product} เพิ่มไหมครับ แจ้งจำนวนได้เลย ผมจะจัดส่งให้ครับ`,
+          body: `${hello} แพทจาก ${BRAND} ครับ ช่วงนี้${trade ? 'ทางบริษัท' : 'ทางร้าน'}มีแผนสั่ง${ours} เพิ่มไหมครับ หากมี ผมช่วยเช็กขนาดและรายละเอียดการสั่งซื้อให้ได้ครับ`,
         };
       default:
-        if (trade) {
-          return {
-            subject: `${BRAND} x ${company || BRAND}`,
-            body: `${hello} ผมแพทจาก ${BRAND} ครับ เห็นว่าทางบริษัทมีจำหน่าย ${app || '[สินค้าที่จำหน่าย]'} เลยคิดว่า${product} อาจเหมาะกับกลุ่มสินค้าของคุณครับ สนใจรับ${sample}เพื่อพิจารณาไหมครับ`
-              + `\n\n${milk ? '' : `${PROOF.thai}\n`}${WHOLESALE_LINK}`,
-          };
+        // Condensed milk: no free sample; ask how they would use it first.
+        if (milk) {
+          return { subject: intro, body: trade
+            ? `${hello}\nผมแพทจาก ${BRAND} (${HOME_LINK}) ครับ เห็นว่าทางบริษัทมีจำหน่าย ${app || '[สินค้าที่จำหน่าย]'} เลยอยากแนะนำ${product}ของเราให้พิจารณาครับ\n\nทีมอยากนำเสนอสินค้าตัวนี้ให้ลูกค้ากลุ่มไหนเป็นหลักครับ`
+            : `${hello}\nผมแพทจาก ${BRAND} (${HOME_LINK}) ครับ เห็นว่าทางร้านมี ${app || '[เมนู]'} เลยอยากแนะนำ${product}ของเราครับ\n\nหากทีมสนใจพิจารณา อยากลองนำไปใช้ในส่วนไหนของเมนูนี้ครับ` };
         }
-        return {
-          subject: `${BRAND} x ${company || BRAND}`,
-          body: `${hello} ผมแพทจาก ${BRAND} ครับ เห็นว่าทางร้านมี ${app || '[เมนู]'} เลยคิดว่า${product} อาจน่าลองกับเมนูนี้ครับ สนใจรับ${sample}สำหรับทดลองไหมครับ`
-            + `\n\n${milk ? '' : `${PROOF.thai}\n`}${WHOLESALE_LINK}`,
-        };
+        return { subject: intro, body: (trade
+          ? `${hello} ผมแพทจาก ${BRAND} ครับ เห็นว่าทางบริษัทมีจำหน่าย ${app || '[สินค้าที่จำหน่าย]'} เลยคิดว่า${product} อาจเหมาะกับกลุ่มสินค้าของคุณครับ สนใจรับ${sample}เพื่อพิจารณาไหมครับ`
+          : `${hello} ผมแพทจาก ${BRAND} ครับ เห็นว่าทางร้านมี ${app || '[เมนู]'} เลยคิดว่า${product} อาจน่าลองกับเมนูนี้ครับ สนใจรับ${sample}สำหรับทดลองไหมครับ`)
+          + `\n\n${PROOF.thai}\n${WHOLESALE_LINK}` };
     }
   }
 
   const hello = first ? `Hi ${first},` : company ? `Hi ${company} team,` : 'Hi there,';
   const product = milk ? 'plant-based condensed milk' : 'dairy-free butter';
-  const sample = milk ? `free sample of our ${product}` : `free 2 × 500g sample of our ${product}`;
+  // Follow-ups name the brand too.
+  const ours = `${BRAND} ${product}`;
+  const theSample = 'the free 2 × 500g sample';
+  const later = 'or would it be better for me to reconnect at a later time?';
   const forApp = app ? ` for ${app}` : '';
-  const theSample = milk ? 'a free sample' : 'the free 2 × 500g sample';
+  const inApp = app ? ` in ${app}` : '';
   switch (input.kind) {
     case 'nudge':
-      if (trade) {
-        return { subject: `${BRAND} x ${company || BRAND}`, body: [
-          `${hello} following up on my message about ${product}. Would you like me to send ${theSample} for your team to assess?`,
-          `${hello} one more thought. A sample is the quickest way to judge whether ${product} fits your range${app ? ` next to ${app}` : ''}. Shall I send ${theSample}?`,
-          `${hello} is the team still interested in assessing ${product}, or would it be better if I came back at a later time?`,
-          `${hello} I'll leave the ${product} discussion here for now. If it becomes relevant later, you're welcome to message me.`,
-        ][step - 1] };
-      }
-      return { subject: `${BRAND} x ${company || BRAND}`, body: [
-        `${hello} following up on my message about ${product}${forApp}. Would you like me to send ${theSample} for your kitchen to try?`,
-        `${hello} one more thought. Testing in just ${app || 'one recipe'} keeps it simple: nothing else on your menu has to change. Shall I send ${theSample} for that?`,
-        `${hello} is the team still interested in trying ${product}${forApp}, or would it be better if I came back at a later time?`,
-        `${hello} I'll leave the ${product} discussion here for now. If it becomes relevant${forApp} later, you're welcome to message me.`,
-      ][step - 1] };
+      return { subject: intro, body: (trade ? [
+        milk
+          ? `${hello} following up on the ${ours} I mentioned earlier. Would you like the product details for your team to review?`
+          : `${hello} following up on my message about ${product}. Would you like me to send ${theSample} for your team to assess?`,
+        `${hello} I have some information on [new relevant information] that may help your team assess whether ${ours} fits your customers. Would you like me to send it over?`,
+        `${hello} is the team still interested in assessing ${ours} for your range, ${later}`,
+        `${hello} I'll leave the ${ours} discussion here for now. If you'd like to assess it for your range later, you're welcome to message me.`,
+      ] : [
+        milk
+          ? `${hello} following up on my earlier message about ${ours}${forApp}. Would the product details${app ? ' for that recipe' : ''} be useful?`
+          : `${hello} following up on my message about ${product}${forApp}. Would you like me to send ${theSample} for your kitchen to try?`,
+        `${hello} I have some information on [new relevant information] that may be useful when assessing ${ours}${forApp}. Would you like me to send it over?`,
+        `${hello} would the team still be interested in assessing ${ours}${forApp}, ${later}`,
+        `${hello} I'll leave the ${ours} discussion here for now. If it becomes relevant${forApp} later, you're welcome to message me.`,
+      ])[step - 1] };
     case 'nudge_receipt':
       return { subject: `Your ${BRAND} sample`, body: [
-        `${hello} checking on the ${product} sample I sent. Has it reached your kitchen?`,
-        `${hello} in case the ${product} sample was left at reception or with another team: who should I ask about it?`,
-        `${hello} has the ${product} sample arrived, or should I check with the courier on my side?`,
-        `${hello} I'll leave the sample here for now. If it hasn't turned up, or the team would like to test later, you're welcome to message me.`,
+        `${hello} following up on the ${ours} sample I sent. Has your team received it?`,
+        `${hello} here's the tracking link for the ${ours} sample: [tracking link]. Has it reached your team yet?`,
+        `${hello} checking once more on the ${ours} sample. Has it arrived? If not, I can check the delivery status.`,
+        `${hello} if the ${ours} sample hasn't arrived or there's a delivery issue, please let me know.`,
       ][step - 1] };
     case 'nudge_plan':
       return { subject: `Your ${BRAND} sample`, body: [
-        `${hello} following up on the ${product} sample. Which recipe would the team like to try it in first?`,
-        `${hello} one idea for the sample: a single batch of ${app || 'one existing recipe'} is enough to judge it. Would that work for the team?`,
-        `${hello} is the team still planning to test the ${product} sample, or would it be better if I came back at a later time?`,
-        `${hello} I'll leave the ${product} sample with you for now. If the team tests it later, I'd be glad to hear how it goes.`,
+        `${hello} following up on the ${ours} sample${forApp}. When would the team be able to start the test?`,
+        `${hello} if the team would like to start with ${app || '[recipe]'}, I can check the relevant product details. Is there any information you need before starting the test?`,
+        `${hello} is the team still planning to test ${ours}${inApp}, ${later}`,
+        `${hello} I'll pause the follow-up on testing ${ours}${inApp} for now. If the team is ready to try it later, you're welcome to message me.`,
       ][step - 1] };
     case 'nudge_test':
       return { subject: `Your ${BRAND} sample`, body: [
-        `${hello} following up on the ${product} test${app ? ` in ${app}` : ''}. How did it go?`,
-        `${hello} a one-line answer is fine: did the ${product} work${app ? ` in ${app}` : ''}, not quite, or not tested yet?`,
-        `${hello} is feedback on the ${product} test still coming, or would it be better if I came back at a later time?`,
-        `${hello} I'll leave the ${product} test here for now. If the team has feedback later, you're welcome to message me.`,
+        `${hello} following up on the ${ours} test${inApp}. How did it go?`,
+        `${hello} was the ${ours} a good fit for ${app || '[recipe tested]'} overall? If anything wasn't quite right, I'd be glad to understand it.`,
+        `${hello} would you be able to share a brief update on the ${ours} test${inApp}, ${later}`,
+        `${hello} I'll pause the follow-up on the ${ours} test${inApp} for now. If the team has any feedback later, I'd be glad to hear it.`,
       ][step - 1] };
     case 'confirm_receipt':
-      return { subject: `Your ${BRAND} sample`, body: `${hello} I sent the ${product} sample on [date sent]. Has it arrived safely?` };
+      return { subject: `Your ${BRAND} sample`, body: `${hello} has the ${ours} sample sent on [date sent] arrived safely?` };
     case 'test_plan':
-      return { subject: `Your ${BRAND} sample`, body: `${hello} which recipe would the team like to try the ${product} sample in first?` };
+      return { subject: `Your ${BRAND} sample`, body: `${hello} which recipe would the team like to try first with the ${ours} sample you received?` };
     case 'test_result':
-      return { subject: `Your ${BRAND} sample`, body: `${hello} how did the ${product} perform in ${app || '[recipe tested]'} during the test?` };
+      return { subject: `Your ${BRAND} sample`, body: `${hello} how did the ${ours} perform in ${app || '[recipe tested]'}? If there's anything from the test you'd like me to look into, please let me know.` };
     case 'paid_trial':
       return {
         subject: `${BRAND} paid trial`,
-        body: `${hello} we've already provided the initial sample. For further testing, I'd suggest a paid trial: [pack size] at [price]. Would you like me to prepare one?`,
+        body: `${hello} for further testing after the initial ${ours} sample, I'd suggest a paid trial: [pack size] at [price and terms]. Would you like me to prepare that trial order?`,
       };
     case 'first_order_quote':
       return {
         subject: `${BRAND} first order`,
-        body: `${hello} glad the ${product} worked for ${app || '[recipe tested]'}. Would you like me to prepare a first-order quote for your next production batch?`,
+        body: `${hello} glad the ${ours} worked for ${app || '[recipe tested]'}. Would you like me to prepare a first-order quote for your next production batch?`,
       };
     case 'check_in':
       return {
         subject: `${BRAND} order`,
-        body: `${hello} Pat from ${BRAND} here. Do you need more ${product} for the coming weeks? Tell me the quantity and I'll arrange delivery.`,
+        body: `${hello} Pat from ${BRAND} here. Are you planning another ${ours} order? If so, I can check the pack options and ordering details for you.`,
       };
     default:
-      if (trade) {
-        return {
-          subject: `${BRAND} x ${company || BRAND}`,
-          body: `${hello} Pat from ${BRAND} here. I saw you carry ${app || '[a product they carry]'}. Would a ${sample} be useful to assess for your range?`
-            + `\n\n${milk ? '' : `${PROOF.english}\n`}${WHOLESALE_LINK}`,
-        };
+      // Condensed milk: no free sample; ask how they would use it first.
+      if (milk) {
+        return { subject: intro, body: trade
+          ? `${hello} I'm Pat from ${BRAND} (${HOME_LINK}). I saw that you carry ${app || '[a product they carry]'} and wanted to introduce our ${product} for your team to consider. Which customer group would you have in mind for it?`
+          : `${hello} I'm Pat from ${BRAND} (${HOME_LINK}). I saw ${app || '[menu item]'} on your menu and thought our ${product} may be worth assessing. How would your team want to use it in that recipe?` };
       }
-      return {
-        subject: `${BRAND} x ${company || BRAND}`,
-        body: `${hello} Pat from ${BRAND} here. I saw ${app || '[menu item]'} on your menu. Would a ${sample} be useful to test with it?`
-          + `\n\n${milk ? '' : `${PROOF.english}\n`}${WHOLESALE_LINK}`,
-      };
+      return { subject: intro, body: (trade
+        ? `${hello} Pat from ${BRAND} here. I saw you carry ${app || '[a product they carry]'}. Would a free 2 × 500g sample of our ${product} be useful to assess for your range?`
+        : `${hello} Pat from ${BRAND} here. I saw ${app || '[menu item]'} on your menu. Would a free 2 × 500g sample of our ${product} be useful to test with it?`)
+        + `\n\n${PROOF.english}\n${WHOLESALE_LINK}` };
   }
 }
 

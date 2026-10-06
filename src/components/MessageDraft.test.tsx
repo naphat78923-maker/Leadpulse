@@ -50,13 +50,13 @@ describe('MessageDraft', () => {
     render(<MessageDraft deal={deal} company={company} contacts={[person]} sendCount={3} onLog={onLog} />);
 
     expect(situation().value).toBe('nudge');
-    expect(draftText()).toMatch(/is the team still interested/);
+    expect(draftText()).toMatch(/would the team still be interested/);
     fireEvent.click(screen.getByRole('button', { name: 'Sent it, log' }));
     expect(onLog).toHaveBeenLastCalledWith('dm', 'Nudge 3 of 4 sent');
 
     // Pat can pick another nudge than the count suggests.
     fireEvent.click(screen.getByRole('radio', { name: 'Nudge 4 of 4' }));
-    expect(draftText()).toMatch(/I'll leave the dairy-free butter discussion here for now/);
+    expect(draftText()).toMatch(/I'll leave the VG Saveur dairy-free butter discussion here for now/);
   });
 
   it('nudges about the test, not a new sample, when a deal stalls after testing', () => {
@@ -65,7 +65,7 @@ describe('MessageDraft', () => {
 
     expect(situation().value).toBe('nudge_test');
     expect(screen.getByRole('radio', { name: 'Nudge 2 of 4' }).getAttribute('aria-checked')).toBe('true');
-    expect(draftText()).toMatch(/a one-line answer is fine/);
+    expect(draftText()).toMatch(/a good fit for \[recipe tested\] overall/);
     expect(draftText()).not.toMatch(/500g/);
   });
 
