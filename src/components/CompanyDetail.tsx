@@ -9,6 +9,7 @@ import { useCrm } from '@/components/CrmProvider';
 import * as crm from '@/lib/crm';
 import { resizeImageToSquare, validateLogoFile } from '@/lib/image';
 import CompanyLogo from '@/components/CompanyLogo';
+import WebsiteFill from '@/components/WebsiteFill';
 import StakeholderMiniMap from '@/components/StakeholderMiniMap';
 import LayaBuyerSignalsSection from '@/components/LayaBuyerSignalsSection';
 import ContactDetail from '@/components/ContactDetail';
@@ -294,6 +295,7 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
           </div>
         </div>
         {logoError && <div className="mb-4 text-xs text-clay-error">{logoError}</div>}
+        {!editing && <WebsiteFill company={company} companyContacts={companyContacts} onSaved={onSaved} />}
 
         {saving && (
           <div className="mb-4 flex items-center gap-2 text-sm text-clay-success animate-pulse">
