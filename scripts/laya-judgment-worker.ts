@@ -1,12 +1,14 @@
 #!/usr/bin/env node
-// Laya judgment worker — fills public.laya_judgments from deals' verbatim buyer replies.
+// Laya judgment worker — fills public.laya_judgments from deals' verbatim buyer replies
+// and from prospects' name, industry and tags (the fit set).
 //
 // Runs on the Mac next to the local Laya server. One pass:
-//   1. read open deals with a buyer_reply (public anon client — reads only)
-//   2. skip by code: closed/parked, no verbatim reply, Thai reply, already judged for
-//      this exact input and model package
-//   3. POST /score to the local server, one deal at a time
+//   1. read open deals with a buyer_reply, and prospect companies (public anon client — reads only)
+//   2. skip by code: closed/parked, no verbatim reply, Thai reply; not a prospect, no industry
+//      or tags; already judged for this exact input and model package
+//   3. POST /score to the local server, one subject at a time
 //   4. save the validated answers, or an explicit not_scored refusal (service-role key)
+// The fit judgments order the Hermes enrichment queue: likely buyers are researched first.
 // Logs counts only — never reply text or keys. Design: docs/laya-judgments-store.md.
 //
 // Usage:
@@ -27,10 +29,16 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { supabase as anon } from '../src/lib/supabase.ts';
 import {
   DEAL_QUESTION_SET,
+  FIT_QUESTION_SET,
+  buildFitScoreRequest,
   buildScoreRequest,
+  fitSkipReason,
   judgmentRowFromResponse,
   skipReason,
+  type FitScoreRequest,
   type ModelIdentity,
+  type ScoreRequest,
+  type WorkerCompany,
   type WorkerDeal,
 } from '../src/utils/laya-worker.ts';
 
@@ -98,16 +106,32 @@ async function readDeals(fixture: string | null): Promise<WorkerDeal[]> {
   return (data ?? []) as WorkerDeal[];
 }
 
-async function alreadyJudged(client: SupabaseClient, dealIds: string[], packageSha: string): Promise<Set<string>> {
-  if (dealIds.length === 0) return new Set();
+async function readProspects(): Promise<WorkerCompany[]> {
+  const { data, error } = await anon
+    .from('companies')
+    .select('id, name, industry, tags, status')
+    .is('deleted_at', null)
+    .eq('status', 'prospect');
+  if (error) throw new Error(`Could not read companies: ${error.message}`);
+  return (data ?? []) as WorkerCompany[];
+}
+
+async function alreadyJudged(
+  client: SupabaseClient,
+  subject: 'deal_id' | 'company_id',
+  questionSet: string,
+  ids: string[],
+  packageSha: string,
+): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
   const { data, error } = await client
     .from('laya_judgments')
-    .select('deal_id, input_sha256')
-    .eq('question_set', DEAL_QUESTION_SET)
+    .select(`${subject}, input_sha256`)
+    .eq('question_set', questionSet)
     .eq('model_package_sha256', packageSha)
-    .in('deal_id', dealIds);
+    .in(subject, ids);
   if (error) throw new Error(`Could not read laya_judgments: ${error.message}`);
-  return new Set((data ?? []).map(row => `${row.deal_id}:${row.input_sha256}`));
+  return new Set((data ?? []).map(row => `${(row as Record<string, string>)[subject]}:${row.input_sha256}`));
 }
 
 async function pass(opts: { endpoint: string; dryRun: boolean; fixture: string | null; writer: SupabaseClient | null }) {
@@ -123,27 +147,49 @@ async function pass(opts: { endpoint: string; dryRun: boolean; fixture: string |
     const request = buildScoreRequest(deal);
     if (request) requests.push(request); else bump('skipped_not_verbatim');
   }
-  const judged = opts.fixture ? new Set<string>() : await alreadyJudged(anon, requests.map(r => r.dealId), model.package_sha256);
+  const judged = opts.fixture
+    ? new Set<string>()
+    : await alreadyJudged(anon, 'deal_id', DEAL_QUESTION_SET, requests.map(r => r.dealId), model.package_sha256);
 
-  for (const request of requests) {
-    if (judged.has(`${request.dealId}:${request.inputSha256}`)) { bump('skipped_already_judged'); continue; }
+  // Fit judgments for prospects: never in fixture mode, which only carries test replies.
+  const prospects = opts.fixture ? [] : await readProspects();
+  const fitRequests: FitScoreRequest[] = [];
+  for (const company of prospects) {
+    const reason = fitSkipReason(company);
+    if (reason) { bump(`fit_skipped_${reason}`); continue; }
+    const request = buildFitScoreRequest(company);
+    if (request) fitRequests.push(request);
+  }
+  const fitJudged = await alreadyJudged(anon, 'company_id', FIT_QUESTION_SET,
+    fitRequests.map(r => r.companyId), model.package_sha256);
+
+  const dealWork = requests.filter(r => !judged.has(`${r.dealId}:${r.inputSha256}`));
+  const fitWork = fitRequests.filter(r => !fitJudged.has(`${r.companyId}:${r.inputSha256}`));
+  if (requests.length > dealWork.length) counts.skipped_already_judged = requests.length - dealWork.length;
+  if (fitRequests.length > fitWork.length) counts.fit_skipped_already_judged = fitRequests.length - fitWork.length;
+  const work: Array<{ request: ScoreRequest | FitScoreRequest; prefix: string }> = [
+    ...dealWork.map(request => ({ request, prefix: '' })),
+    ...fitWork.map(request => ({ request, prefix: 'fit_' })),
+  ];
+
+  for (const { request, prefix } of work) {
     let response;
     try {
       response = await score(opts.endpoint, request.body);
     } catch {
-      bump('failed_transport');
+      bump(`${prefix}failed_transport`);
       continue;
     }
     const row = judgmentRowFromResponse(request, response, model);
-    if (!row) { bump(`failed_http_${response.status}`); continue; }
-    bump(row.status === 'scored' ? 'scored' : `not_scored_${row.not_scored_code}`);
+    if (!row) { bump(`${prefix}failed_http_${response.status}`); continue; }
+    bump(row.status === 'scored' ? `${prefix}scored` : `${prefix}not_scored_${row.not_scored_code}`);
     if (opts.dryRun || !opts.writer) continue;
     const { error } = await opts.writer.from('laya_judgments').insert(row);
-    if (!error) bump('saved');
-    else if (error.code === '23505') bump('skipped_duplicate'); // a concurrent pass saved it first
-    else bump('failed_save');
+    if (!error) bump(`${prefix}saved`);
+    else if (error.code === '23505') bump(`${prefix}skipped_duplicate`); // a concurrent pass saved it first
+    else bump(`${prefix}failed_save`);
   }
-  return { deals: deals.length, model: model.package_sha256.slice(0, 8), ...counts };
+  return { deals: deals.length, prospects: prospects.length, model: model.package_sha256.slice(0, 8), ...counts };
 }
 
 async function main(): Promise<void> {

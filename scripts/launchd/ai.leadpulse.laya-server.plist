@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The local Laya server (127.0.0.1:8765), kept running at login. Install: see scripts/launchd/README.md -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>ai.leadpulse.laya-server</string>
+  <key>ProgramArguments</key>
+  <array><string>/bin/sh</string><string>/Users/pat/Projects/LeadPulse/scripts/start-laya-score-server.sh</string></array>
+  <key>WorkingDirectory</key><string>/Users/pat/Projects/LeadPulse</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>30</integer>
+  <key>StandardOutPath</key><string>/Users/pat/Library/Logs/leadpulse/laya-server.log</string>
+  <key>StandardErrorPath</key><string>/Users/pat/Library/Logs/leadpulse/laya-server.log</string>
+</dict>
+</plist>

@@ -1,8 +1,11 @@
 // @vitest-environment node
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { LAYA_ALL_FROZEN_QUESTIONS } from './laya-buyer-response';
-import { buildScoreRequest, judgmentRowFromResponse, skipReason, type WorkerDeal } from './laya-worker';
+import { LAYA_ALL_FROZEN_QUESTIONS, LAYA_FIT_FROZEN_QUESTIONS, buildLayaProspectFitInput } from './laya-buyer-response';
+import {
+  buildFitScoreRequest, buildScoreRequest, fitSkipReason, judgmentRowFromResponse, skipReason,
+  type WorkerCompany, type WorkerDeal,
+} from './laya-worker';
 
 const deal: WorkerDeal = {
   id: '11111111-1111-1111-1111-111111111111',
@@ -101,5 +104,57 @@ describe('judgmentRowFromResponse', () => {
     const partial = workerPayload(request.sent);
     delete (partial.answers as Record<string, unknown>).concern_price;
     expect(judgmentRowFromResponse(request, { status: 200, payload: partial }, model)).toBeNull();
+  });
+});
+
+const prospect: WorkerCompany = {
+  id: '22222222-2222-2222-2222-222222222222',
+  name: 'Fixture Patisserie',
+  industry: 'Bakery',
+  tags: ['patisserie', 'cafe'],
+  status: 'prospect',
+};
+
+function fitPayload(sent: object, noul = 0.7) {
+  const answers = Object.fromEntries(Object.keys(LAYA_FIT_FROZEN_QUESTIONS).map(id => [id, { type: 'noul', noul, confidence: Math.max(noul, 1 - noul) }]));
+  return { answers, usage: { input_tokens: 64, output_tokens: 0 }, trace: { scored_input: sent, model, scored_at: '2026-10-14T12:00:00+00:00' } };
+}
+
+describe('fit judgments for prospects', () => {
+  it('judges prospects only, and never a name with no industry or tags', () => {
+    expect(fitSkipReason(prospect)).toBeNull();
+    expect(fitSkipReason({ ...prospect, status: 'active_customer' })).toBe('not_a_prospect');
+    expect(fitSkipReason({ ...prospect, industry: null, tags: [] })).toBe('needs_evidence');
+    expect(buildFitScoreRequest({ ...prospect, industry: null, tags: [] })).toBeNull();
+  });
+
+  it('sends exactly what the app sends: the same builder and the frozen fit questions', () => {
+    const request = buildFitScoreRequest(prospect)!;
+    const built = buildLayaProspectFitInput(prospect)!;
+    expect(request.sent).toEqual({ state: built.state, questions: LAYA_FIT_FROZEN_QUESTIONS });
+    expect(request.body).toBe(JSON.stringify({ state: built.state, questions: built.questions }));
+    expect(request.inputSha256).toBe(createHash('sha256').update(request.body, 'utf8').digest('hex'));
+  });
+
+  it('saves a fit row against the company, never a deal', () => {
+    const request = buildFitScoreRequest(prospect)!;
+    const row = judgmentRowFromResponse(request, { status: 200, payload: fitPayload(request.sent) }, model)!;
+    expect(row).toMatchObject({ company_id: prospect.id, question_set: 'fit', status: 'scored' });
+    expect(row).not.toHaveProperty('deal_id');
+    expect(Object.keys(row.answers!)).toEqual(Object.keys(LAYA_FIT_FROZEN_QUESTIONS));
+  });
+
+  it('keeps deal rows free of a company id', () => {
+    const request = buildScoreRequest(deal)!;
+    const row = judgmentRowFromResponse(request, { status: 200, payload: workerPayload(request.sent) }, model)!;
+    expect(row).not.toHaveProperty('company_id');
+  });
+
+  it('saves nothing when a fit answer is missing or the echo differs', () => {
+    const request = buildFitScoreRequest(prospect)!;
+    const partial = fitPayload(request.sent);
+    delete (partial.answers as Record<string, unknown>).fit_bakery_patisserie_brands;
+    expect(judgmentRowFromResponse(request, { status: 200, payload: partial }, model)).toBeNull();
+    expect(judgmentRowFromResponse(request, { status: 200, payload: fitPayload({ ...request.sent, state: 'x' }) }, model)).toBeNull();
   });
 });
