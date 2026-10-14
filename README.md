@@ -312,7 +312,7 @@ docs/                     # Visual system spec, historical-sales proposal
 - [x] Laya grading foundation (local model, pasted buyer replies)
 - [ ] Run tests automatically on every PR (CI)
 - [ ] One-tap contact actions and message templates
-- [x] Telegram morning digest (`/api/cron/digest`, weekdays 08:00 Bangkok; needs `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `CRON_SECRET`)
+- [x] Telegram morning digest (`/api/cron/digest`, weekdays 08:00 Bangkok) and afternoon nudge of what is still open (`/api/cron/nudge`, weekdays 16:00); both need `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `CRON_SECRET`
 - [ ] Web Push notifications
 - [ ] Security hardening: add a login, env-based Supabase keys, tighten RLS "allow all" policies
 
