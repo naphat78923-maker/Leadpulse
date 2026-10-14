@@ -45,6 +45,19 @@ describe('ContactDetail contact quality', () => {
 
   afterEach(cleanup);
 
+  it('displays and preserves an uncontacted route when editing metadata', async () => {
+    const neutralContact = { ...contact, status: 'uncontacted' } as Contact;
+    crmMocks.updateContact.mockResolvedValue({ ...neutralContact, identity_quality: 'role_only' });
+    render(<ContactDetail contact={neutralContact} onClose={vi.fn()} onSaved={vi.fn()} companies={[]} />);
+    expect(screen.getByText('Uncontacted')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit contact' }));
+    expect(screen.getByRole('option', { name: 'Uncontacted' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Contact quality'), { target: { value: 'role_only' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save contact' }));
+    await waitFor(() => expect(crmMocks.updateContact).toHaveBeenCalledTimes(1));
+    expect(crmMocks.updateContact).toHaveBeenCalledWith('contact-1', expect.objectContaining({ status: 'uncontacted' }));
+  });
+
   it('saves an explicit role-only classification', async () => {
     render(<ContactDetail contact={contact} onClose={vi.fn()} onSaved={vi.fn()} companies={[]} />);
 

@@ -630,7 +630,7 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
                       await createContact({
                         ...newContact,
                         company_id: company.id,
-                        status: 'active',
+                        status: 'uncontacted',
                         notes: '',
                       });
                       setNewContact({ name: '', email: '', phone: '', phone_second: '', line: '', job_title: '' });

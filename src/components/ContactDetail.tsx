@@ -16,7 +16,7 @@ import { motion } from 'framer-motion';
 import { overlayVariants, panelVariants, tweenBase, tweenSlow } from '@/lib/motion';
 import EntityAvatar from '@/components/EntityAvatar';
 
-const statusOptions: ContactStatus[] = ['active', 'replied', 'not_interested', 'no_response', 'parked'];
+const statusOptions: ContactStatus[] = ['uncontacted', 'active', 'replied', 'not_interested', 'no_response', 'parked'];
 
 interface ContactDetailProps {
   contact: Contact;

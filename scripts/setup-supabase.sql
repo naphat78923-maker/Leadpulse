@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS contacts (
   line TEXT,
   job_title TEXT,
   company_id UUID REFERENCES companies(id) ON DELETE SET NULL,
-  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'replied', 'not_interested', 'no_response', 'parked')),
+  status TEXT NOT NULL DEFAULT 'uncontacted' CHECK (status IN ('uncontacted', 'active', 'replied', 'not_interested', 'no_response', 'parked')),
   identity_quality TEXT NOT NULL DEFAULT 'unknown' CHECK (identity_quality IN ('named', 'role_only', 'company_route', 'unknown')),
   last_contacted_date DATE,
   notes TEXT,

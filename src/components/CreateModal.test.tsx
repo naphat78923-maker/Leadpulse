@@ -105,6 +105,7 @@ describe('CreateModal explicit outbound fields', () => {
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
       name: 'Head Chef',
       identity_quality: 'role_only',
+      status: 'uncontacted',
     }));
   });
 
