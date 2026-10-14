@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The Laya judgment worker: a pass every 15 minutes, saving fit judgments for new or edited
+     prospects and buyer-reply judgments for deals. Install: see scripts/launchd/README.md -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>ai.leadpulse.laya-worker</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/pat/.local/bin/node</string><string>--no-warnings</string>
+    <string>/Users/pat/Projects/LeadPulse/scripts/laya-judgment-worker.ts</string>
+    <string>--watch</string><string>900</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/pat/Projects/LeadPulse</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>60</integer>
+  <key>StandardOutPath</key><string>/Users/pat/Library/Logs/leadpulse/laya-worker.log</string>
+  <key>StandardErrorPath</key><string>/Users/pat/Library/Logs/leadpulse/laya-worker.log</string>
+</dict>
+</plist>
