@@ -313,6 +313,7 @@ docs/                     # Visual system spec, historical-sales proposal
 - [ ] Run tests automatically on every PR (CI)
 - [ ] One-tap contact actions and message templates
 - [x] Telegram morning digest (`/api/cron/digest`, weekdays 08:00 Bangkok) and afternoon nudge of what is still open (`/api/cron/nudge`, weekdays 16:00); both need `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `CRON_SECRET`
+- [x] Enrichment proposals on Telegram: Hermes proposes values it verified (`enrichment_proposals`, websites first); the 08:00 and 16:00 runs send them with ✅ Save / ❌ Not theirs, and `/api/telegram/webhook` saves only on Save (needs `TELEGRAM_WEBHOOK_SECRET` and a registered webhook)
 - [ ] Web Push notifications
 - [ ] Security hardening: add a login, env-based Supabase keys, tighten RLS "allow all" policies
 
