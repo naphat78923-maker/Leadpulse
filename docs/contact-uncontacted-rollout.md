@@ -2,7 +2,7 @@
 
 ## Status (2026-10-14)
 
-Supabase access to LeadPulse (`mkyhikarlxuwvprjabbi`) was restored. Before applying, the live schema matched the guard's expectation: default `'active'`, a single `contacts_status_check` on status with the five original values, 143 contacts (116 active, 14 no_response, 7 replied, 5 not_interested, 1 parked). Pat re-approved in chat and the migration was applied as `contact_uncontacted_status` (version `20261014110356`). The app change ships in its own PR after the post-apply readback. Step 5 (enrichment cron `--allow-new-uncontacted`) remains OFF pending separate approval.
+Supabase access to LeadPulse (`mkyhikarlxuwvprjabbi`) was restored. Before applying, the live schema matched the guard's expectation: default `'active'`, a single `contacts_status_check` on status with the five original values, 143 contacts (116 active, 14 no_response, 7 replied, 5 not_interested, 1 parked). Pat re-approved in chat and the migration was applied as `contact_uncontacted_status` (version `20261014110356`). Post-apply readback matched (default `'uncontacted'`, six-value constraint validated, status fingerprint of all 143 contacts unchanged) and the app change shipped in PR #52. Step 5 is ACTIVE: Pat approved it on 2026-10-14 and the Hermes enrichment job now applies with `--allow-new-uncontacted` (job instructions and skill updated; backups `cron/jobs.json.bak-uncontacted-20261014`). Existing contact statuses stay forbidden to change.
 
 ## Earlier execution blocker (resolved)
 
