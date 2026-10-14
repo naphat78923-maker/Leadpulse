@@ -210,6 +210,7 @@ async function main(): Promise<void> {
 
   do {
     const started = new Date().toISOString();
+    let failed = false;
     try {
       const summary = await pass({ endpoint, dryRun, fixture, writer });
       console.log(JSON.stringify({ at: started, dry_run: dryRun, ...summary }));
@@ -217,8 +218,11 @@ async function main(): Promise<void> {
       // Messages are our own (no reply text); keep the worker alive in watch mode.
       console.error(JSON.stringify({ at: started, error: error instanceof Error ? error.message : 'pass failed' }));
       if (!watch) process.exitCode = 1;
+      failed = true;
     }
-    if (watch > 0) await new Promise(resolve => setTimeout(resolve, watch * 1000));
+    // After a failed pass (at login the Laya server takes a minute or two to load the model),
+    // try again in a minute rather than a whole interval.
+    if (watch > 0) await new Promise(resolve => setTimeout(resolve, (failed ? Math.min(watch, 60) : watch) * 1000));
   } while (watch > 0);
 }
 
