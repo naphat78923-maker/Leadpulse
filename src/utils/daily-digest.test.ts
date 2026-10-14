@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildDailyDigest } from './daily-digest';
+import { buildAfternoonNudge, buildDailyDigest } from './daily-digest';
 import type { AttentionCandidate } from './followup-policy';
 import type { ThisWeekQueue } from './this-week-queue';
 
@@ -81,5 +81,40 @@ describe('buildDailyDigest', () => {
       today: TODAY,
     });
     expect(text).toContain('<b>Salt &amp; &lt;Butter&gt;</b> · Ask "5 &lt; 10kg?"');
+  });
+});
+
+describe('buildAfternoonNudge', () => {
+  it('is empty when nothing due today is open and no buyer is waiting', () => {
+    const nudge = buildAfternoonNudge({
+      queue: queue({ overdue: [item({ dueDate: '2026-09-29' })], checkIns: [{ companyId: 'c1', companyName: 'Plenti', dueDate: TODAY, tier: 'at_risk', reorder: null }] }),
+      waiting: [],
+      today: TODAY,
+    });
+    // Overdue and check-ins were in the morning digest; the nudge does not repeat them.
+    expect(nudge.isEmpty).toBe(true);
+  });
+
+  it('lists follow-ups due today still open and buyers waiting', () => {
+    const nudge = buildAfternoonNudge({
+      queue: queue({
+        dueThisWeek: [item({ companyName: 'Today Co' }), item({ companyName: 'Friday Co', dueDate: '2026-10-09' })],
+      }),
+      waiting: [{ name: 'The Sukhothai', label: 'Buyer replied today, nothing sent since' }],
+      today: TODAY,
+      appUrl: 'https://example.test',
+    });
+    const lines = nudge.text.split('\n');
+    expect(lines[1]).toBe('1 due today still open · 1 waiting on you');
+    expect(nudge.counts).toEqual({ waiting: 1, dueToday: 1 });
+    expect(nudge.text).toContain('• <b>Today Co</b> · Call chef');
+    expect(nudge.text).not.toContain('Friday Co');
+    expect(nudge.text).toContain('• <b>The Sukhothai</b> · Buyer replied today, nothing sent since');
+    expect(lines.at(-1)).toBe('<a href="https://example.test">Open This week</a>');
+  });
+
+  it('leaves held contacts out', () => {
+    const held = item({ companyName: 'Held Co', holds: [{} as AttentionCandidate['holds'][number]] });
+    expect(buildAfternoonNudge({ queue: queue({ dueThisWeek: [held] }), waiting: [], today: TODAY }).isEmpty).toBe(true);
   });
 });

@@ -1,15 +1,15 @@
 // Loads what the This week page loads and builds the same queue, on the server,
-// for the morning digest. Read-only.
+// for the morning digest and the afternoon nudge. Read-only.
 
 import type { Company, Contact, Deal, Meeting } from '@/types/crm';
 import * as crm from '@/lib/crm';
 import { fetchReorderSignalRows, rankSignals } from '@/lib/historical';
-import { buildDailyDigest, type DailyDigest } from '@/utils/daily-digest';
+import { buildAfternoonNudge, buildDailyDigest, type AfternoonNudge, type DailyDigest, type DigestWaiting } from '@/utils/daily-digest';
 import { buildFollowupActions, deriveRetentionDueSignals, existingRetentionReferenceDate } from '@/utils/followup-policy';
-import { buildThisWeekQueue } from '@/utils/this-week-queue';
+import { buildThisWeekQueue, type ThisWeekQueue } from '@/utils/this-week-queue';
 import { buildWaitingOnYou, waitingLabel } from '@/utils/waiting-on-you';
 
-export async function loadDailyDigest(today: string, appUrl?: string | null): Promise<DailyDigest> {
+async function loadThisWeek(today: string): Promise<{ queue: ThisWeekQueue; waiting: DigestWaiting[] }> {
   const [companies, contacts, dealRows, meetingRows, accountEvents, signalRows] = await Promise.all([
     crm.getCompanies(),
     crm.getContacts(),
@@ -50,5 +50,13 @@ export async function loadDailyDigest(today: string, appUrl?: string | null): Pr
       label: `Buyer replied ${waitingLabel(item.daysWaiting)}, nothing sent since`,
     }));
 
-  return buildDailyDigest({ queue, waiting, today, appUrl });
+  return { queue, waiting };
+}
+
+export async function loadDailyDigest(today: string, appUrl?: string | null): Promise<DailyDigest> {
+  return buildDailyDigest({ ...(await loadThisWeek(today)), today, appUrl });
+}
+
+export async function loadAfternoonNudge(today: string, appUrl?: string | null): Promise<AfternoonNudge> {
+  return buildAfternoonNudge({ ...(await loadThisWeek(today)), today, appUrl });
 }

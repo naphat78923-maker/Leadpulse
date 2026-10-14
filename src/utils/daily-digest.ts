@@ -1,5 +1,6 @@
-// The morning digest: what This week would show, as one short message.
-// Pure text building; loading lives in lib/digest-data.ts and sending in lib/telegram.ts.
+// The morning digest: what This week would show, as one short message. And the
+// afternoon nudge: what is still open from today, so a due follow-up or an unanswered
+// buyer does not slip to tomorrow. Pure text building; loading lives in lib/digest-data.ts and sending in lib/telegram.ts.
 
 import type { AttentionCandidate } from './followup-policy';
 import type { ThisWeekQueue } from './this-week-queue';
@@ -93,6 +94,50 @@ export function buildDailyDigest(input: {
     ...(counts.checkIns > 0
       ? ['', `<b>Customer check-ins</b>`, `${counts.checkIns} due${checkInDetail ? ` (${checkInDetail})` : ''}`]
       : []),
+    ...(input.appUrl ? ['', `<a href="${escapeHtml(input.appUrl)}">Open This week</a>`] : []),
+  ];
+
+  return { text: lines.join('\n'), isEmpty, counts };
+}
+
+export interface AfternoonNudge {
+  /** Telegram HTML (b, a) with every value escaped. */
+  text: string;
+  /** Nothing due today is still open and no buyer is waiting: no message is sent. */
+  isEmpty: boolean;
+  counts: { waiting: number; dueToday: number };
+}
+
+/**
+ * The 16:00 nudge. Follow-ups carry a date, not a time, so "due now" means due today and
+ * still not handled: logging the touch moves the follow-up date and takes it off this list.
+ * Overdue items and check-ins stay in the morning digest only.
+ */
+export function buildAfternoonNudge(input: {
+  queue: ThisWeekQueue;
+  waiting: readonly DigestWaiting[];
+  today: string;
+  appUrl?: string | null;
+}): AfternoonNudge {
+  const { queue, waiting, today } = input;
+  const dueToday = queue.dueThisWeek.filter(item => item.holds.length === 0 && item.dueDate === today);
+  const counts = { waiting: waiting.length, dueToday: dueToday.length };
+  const isEmpty = counts.waiting === 0 && counts.dueToday === 0;
+
+  const summary = [
+    counts.dueToday > 0 && `${counts.dueToday} due today still open`,
+    counts.waiting > 0 && `${counts.waiting} waiting on you`,
+  ].filter(Boolean).join(' · ');
+
+  const lines = [
+    `<b>Before you close the day</b>`,
+    summary || 'Nothing left open today.',
+    ...list('Due today', dueToday.slice(0, LIST_LIMIT).map(item => followupRow(item)), dueToday.length),
+    ...list(
+      'Waiting on you',
+      waiting.slice(0, LIST_LIMIT).map(item => `<b>${escapeHtml(item.name)}</b> · ${escapeHtml(item.label)}`),
+      waiting.length,
+    ),
     ...(input.appUrl ? ['', `<a href="${escapeHtml(input.appUrl)}">Open This week</a>`] : []),
   ];
 
