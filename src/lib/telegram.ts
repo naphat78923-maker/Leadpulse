@@ -57,3 +57,21 @@ export async function editTelegramMessage(messageId: number, html: string): Prom
 export async function answerTelegramCallback(callbackId: string, text: string): Promise<void> {
   await callTelegram('answerCallbackQuery', { callback_query_id: callbackId, text: text.slice(0, 190) });
 }
+
+export interface WebhookInfo {
+  url: string;
+  pending_update_count?: number;
+  last_error_message?: string;
+}
+
+export function getTelegramBot(): Promise<{ id: number; username?: string }> {
+  return callTelegram('getMe', {});
+}
+
+export function getTelegramWebhook(): Promise<WebhookInfo> {
+  return callTelegram('getWebhookInfo', {});
+}
+
+export async function setTelegramWebhook(url: string, secretToken: string): Promise<void> {
+  await callTelegram('setWebhook', { url, secret_token: secretToken, allowed_updates: ['callback_query'] });
+}
