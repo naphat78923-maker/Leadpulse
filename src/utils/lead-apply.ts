@@ -88,7 +88,7 @@ export function routeContact(companyId: string, companyName: string, route: Lead
     line: route.line,
     job_title: null,
     company_id: companyId,
-    status: 'active',
+    status: 'uncontacted',
     last_contacted_date: null,
     notes: 'From their website',
   };

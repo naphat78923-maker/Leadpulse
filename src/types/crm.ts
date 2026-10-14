@@ -35,7 +35,7 @@ export interface Company {
 }
 
 // ─── Contacts ───
-export type ContactStatus = 'active' | 'replied' | 'not_interested' | 'no_response' | 'parked';
+export type ContactStatus = 'uncontacted' | 'active' | 'replied' | 'not_interested' | 'no_response' | 'parked';
 export type ContactIdentityQuality = 'named' | 'role_only' | 'company_route' | 'unknown';
 export type OutreachLanguage = 'thai' | 'english' | 'autodetect';
 export type OutreachLanguageBasis = 'last_inbound' | 'pat_override' | 'autodetect';
@@ -230,6 +230,7 @@ export const COMPANY_STATUS_LABELS: Record<CompanyStatus, string> = {
 };
 
 export const CONTACT_STATUS_LABELS: Record<ContactStatus, string> = {
+  uncontacted: 'Uncontacted',
   active: 'Active',
   replied: 'Replied',
   not_interested: 'Not Interested',

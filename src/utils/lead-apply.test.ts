@@ -38,6 +38,8 @@ describe('new account from a lead', () => {
       identity_quality: 'company_route',
       company_id: 'c1',
       email: 'hello@maisonverte.co.th',
+      status: 'uncontacted',
+      last_contacted_date: null,
     });
   });
 });
