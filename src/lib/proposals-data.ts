@@ -71,29 +71,22 @@ async function settle(db: SupabaseClient, id: string, status: ProposalStatus, no
   return !error && (data?.length ?? 0) === 1;
 }
 
-/** Applies one decision. Transient failures leave the proposal pending so the tap can be retried. */
-export async function decideProposal(
-  db: SupabaseClient,
-  id: string,
-  action: 'save' | 'reject',
-): Promise<{ status: ProposalStatus; note: string | null; proposal: EnrichmentProposal | null; retry?: boolean }> {
-  const { data: row, error } = await db.from('enrichment_proposals').select('*').eq('id', id).maybeSingle();
-  if (error) return { status: 'pending', note: 'could not read the proposal', proposal: null, retry: true };
-  if (!row) return { status: 'failed', note: 'proposal not found', proposal: null };
-  const proposal = row as EnrichmentProposal;
-  if (proposal.status !== 'pending') return { status: proposal.status, note: proposal.decision_note, proposal };
+type Decision = { status: ProposalStatus; note: string | null; proposal: EnrichmentProposal | null; retry?: boolean };
 
-  if (action === 'reject') {
-    const ok = await settle(db, id, 'rejected', null);
-    return ok ? { status: 'rejected', note: null, proposal } : { status: 'pending', note: 'could not record', proposal, retry: true };
-  }
+function evidenceRow(proposal: EnrichmentProposal, entity: { type: 'company' | 'contact'; id: string }, field: string, value: string) {
+  return {
+    entity_type: entity.type, entity_id: entity.id, company_id: proposal.company_id,
+    field, value, source_url: proposal.source_url, source_tier: proposal.source_tier,
+    quote: proposal.quote, quote_check: 'passed', outcome: 'applied', method: 'telegram approval',
+    fetched_at: proposal.proposed_at,
+    run_ref: proposal.run_ref ? `${proposal.run_ref}; approved ${proposal.id}` : `approved ${proposal.id}`,
+  };
+}
 
-  const target = PROPOSAL_FIELDS[proposal.field];
-  if (!target || proposal.entity_type !== 'company' || proposal.entity_id !== proposal.company_id) {
-    await settle(db, id, 'failed', 'field is not on the allowlist');
-    return { status: 'failed', note: 'field is not on the allowlist', proposal };
-  }
-
+/** website: fill companies.website only while it still holds what the proposal saw. */
+async function saveCompanyField(db: SupabaseClient, proposal: EnrichmentProposal): Promise<Decision> {
+  const target = PROPOSAL_FIELDS.website;
+  const id = proposal.id;
   const { data: live, error: readError } = await db.from(target.table).select(`id, ${target.column}`).eq('id', proposal.entity_id).maybeSingle();
   if (readError) return { status: 'pending', note: 'could not read the account', proposal, retry: true };
   const liveValue = (live as Record<string, string | null> | null)?.[target.column] ?? null;
@@ -119,16 +112,83 @@ export async function decideProposal(
     await settle(db, id, 'failed', 'saved value did not read back');
     return { status: 'failed', note: 'saved value did not read back', proposal };
   }
-
-  await db.from('enrichment_evidence').insert({
-    entity_type: 'company', entity_id: proposal.entity_id, company_id: proposal.company_id,
-    field: proposal.field, value: proposal.value, source_url: proposal.source_url,
-    source_tier: proposal.source_tier, quote: proposal.quote, quote_check: 'passed',
-    outcome: 'applied', method: 'telegram approval', fetched_at: proposal.proposed_at,
-    run_ref: proposal.run_ref ? `${proposal.run_ref}; approved ${proposal.id}` : `approved ${proposal.id}`,
-  });
+  await db.from('enrichment_evidence').insert(evidenceRow(proposal, { type: 'company', id: proposal.entity_id }, proposal.field, proposal.value));
   await settle(db, id, 'applied', null);
   return { status: 'applied', note: null, proposal };
+}
+
+const sameName = (a: string | null | undefined, b: string) => (a ?? '').trim().toLowerCase() === b.trim().toLowerCase();
+
+/** decision_maker: create ONE new named, uncontacted contact. Never edits an existing contact
+ *  and never sets companies.decision_maker_contact_id (that stays Pat's call). */
+async function saveNewContact(db: SupabaseClient, proposal: EnrichmentProposal): Promise<Decision> {
+  const id = proposal.id;
+  const role = proposal.details?.job_title?.trim();
+  if (!role) {
+    await settle(db, id, 'failed', 'no role on the proposal');
+    return { status: 'failed', note: 'no role on the proposal', proposal };
+  }
+  const { data: company, error: companyError } = await db.from('companies').select('id').eq('id', proposal.company_id).maybeSingle();
+  if (companyError) return { status: 'pending', note: 'could not read the account', proposal, retry: true };
+  if (!company) {
+    await settle(db, id, 'stale', 'the account no longer exists');
+    return { status: 'stale', note: 'the account no longer exists', proposal };
+  }
+  const { data: existing, error: contactsError } = await db.from('contacts').select('id, name').eq('company_id', proposal.company_id).is('deleted_at', null);
+  if (contactsError) return { status: 'pending', note: 'could not read contacts', proposal, retry: true };
+  const already = (existing as Array<{ id: string; name: string | null }> | null)?.find(c => sameName(c.name, proposal.value));
+  if (already) {
+    await settle(db, id, 'stale', 'already a contact in LeadPulse');
+    return { status: 'stale', note: 'already a contact in LeadPulse', proposal };
+  }
+
+  const date = proposal.proposed_at.slice(0, 10);
+  const contact = {
+    company_id: proposal.company_id,
+    name: proposal.value.trim(),
+    job_title: role,
+    identity_quality: 'named',
+    status: 'uncontacted',
+    notes: `Owner / decision maker per ${proposal.source_url} (found ${date}); approved on Telegram.`,
+  };
+  const { data: created, error: insertError } = await db.from('contacts').insert(contact).select('id');
+  if (insertError) return { status: 'pending', note: 'could not save', proposal, retry: true };
+  const newId = (created as Array<{ id: string }> | null)?.[0]?.id;
+  const { data: back } = newId
+    ? await db.from('contacts').select('id, name, job_title, status, company_id').eq('id', newId).maybeSingle()
+    : { data: null };
+  const row = back as { name?: string; job_title?: string; status?: string; company_id?: string } | null;
+  if (!newId || !row || row.name !== contact.name || row.job_title !== role || row.status !== 'uncontacted' || row.company_id !== proposal.company_id) {
+    await settle(db, id, 'failed', `contact ${newId ?? '(no id)'} did not read back as saved; review it`);
+    return { status: 'failed', note: 'saved contact did not read back; review it in LeadPulse', proposal };
+  }
+  await db.from('enrichment_evidence').insert([
+    evidenceRow(proposal, { type: 'contact', id: newId }, 'name', contact.name),
+    evidenceRow(proposal, { type: 'contact', id: newId }, 'job_title', role),
+  ]);
+  await settle(db, id, 'applied', `contact ${newId}`);
+  return { status: 'applied', note: `contact ${newId}`, proposal };
+}
+
+/** Applies one decision. Transient failures leave the proposal pending so the tap can be retried. */
+export async function decideProposal(db: SupabaseClient, id: string, action: 'save' | 'reject'): Promise<Decision> {
+  const { data: row, error } = await db.from('enrichment_proposals').select('*').eq('id', id).maybeSingle();
+  if (error) return { status: 'pending', note: 'could not read the proposal', proposal: null, retry: true };
+  if (!row) return { status: 'failed', note: 'proposal not found', proposal: null };
+  const proposal = row as EnrichmentProposal;
+  if (proposal.status !== 'pending') return { status: proposal.status, note: proposal.decision_note, proposal };
+
+  if (action === 'reject') {
+    const ok = await settle(db, id, 'rejected', null);
+    return ok ? { status: 'rejected', note: null, proposal } : { status: 'pending', note: 'could not record', proposal, retry: true };
+  }
+
+  const target = (PROPOSAL_FIELDS as Record<string, { kind: string } | undefined>)[proposal.field];
+  if (!target || proposal.entity_type !== 'company' || proposal.entity_id !== proposal.company_id) {
+    await settle(db, id, 'failed', 'field is not on the allowlist');
+    return { status: 'failed', note: 'field is not on the allowlist', proposal };
+  }
+  return target.kind === 'new_contact' ? saveNewContact(db, proposal) : saveCompanyField(db, proposal);
 }
 
 interface CallbackUpdate {

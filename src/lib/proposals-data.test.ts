@@ -11,15 +11,21 @@ type Row = Record<string, unknown>;
 type Filter = (row: Row) => boolean;
 
 /** Just enough of supabase-js's query builder for proposals-data, over in-memory tables. */
-function fakeDb(tables: Record<string, Row[]>, opts: { failUpdatesOn?: string } = {}) {
+function fakeDb(tables: Record<string, Row[]>, opts: { failUpdatesOn?: string; failInsertsOn?: string } = {}) {
   const from = (table: string) => {
     const filters: Filter[] = [];
     let op: 'select' | 'update' | 'insert' = 'select';
     let payload: Row = {};
+    let inserts: Row[] = [];
     let limit = Infinity;
     const run = () => {
       const rows = tables[table] ?? (tables[table] = []);
-      if (op === 'insert') { rows.push({ ...payload }); return { data: [payload], error: null }; }
+      if (op === 'insert') {
+        if (opts.failInsertsOn === table) return { data: null, error: { message: 'boom' } };
+        const added = inserts.map((r, i) => ({ id: `new-${table}-${rows.length + i + 1}`, deleted_at: null, ...r }));
+        rows.push(...added);
+        return { data: added.map(r => ({ ...r })), error: null };
+      }
       const hit = rows.filter(r => filters.every(f => f(r))).slice(0, limit);
       if (op === 'update') {
         if (opts.failUpdatesOn === table) return { data: null, error: { message: 'boom' } };
@@ -30,7 +36,7 @@ function fakeDb(tables: Record<string, Row[]>, opts: { failUpdatesOn?: string } 
     const builder = {
       select: () => builder,
       update: (p: Row) => { op = 'update'; payload = p; return builder; },
-      insert: (p: Row) => { op = 'insert'; payload = p; return Promise.resolve(run()); },
+      insert: (p: Row | Row[]) => { op = 'insert'; inserts = Array.isArray(p) ? p : [p]; return builder; },
       eq: (c: string, v: unknown) => { filters.push(r => r[c] === v); return builder; },
       is: (c: string, v: unknown) => { filters.push(r => (r[c] ?? null) === v); return builder; },
       or: (expr: string) => {
@@ -112,6 +118,50 @@ describe('decideProposal', () => {
     const result = await decideProposal(fakeDb(tables), PID, 'save');
     expect(result.status).toBe('failed');
     expect(tables.companies[0]).not.toHaveProperty('name', 'https://www.gateauxhouse.co.th/');
+  });
+});
+
+describe('decideProposal: owner / decision maker', () => {
+  const OWNER = '4a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d';
+  beforeEach(() => {
+    tables.contacts = [{ id: 'k1', company_id: CO, name: 'Gateaux House - public route', deleted_at: null }];
+    tables.enrichment_proposals.push(pending({
+      id: OWNER, field: 'decision_maker', value: 'Nok Fixture', source_tier: 'press',
+      source_url: 'https://news.example/interview', quote: 'founder Nok Fixture opened the first shop in 1998',
+      details: { job_title: 'Founder', dbd_keyword: 'กาโตว์ เฮ้าส์' },
+    }));
+  });
+
+  it('adds one new named, uncontacted contact and records where the name came from', async () => {
+    const result = await decideProposal(fakeDb(tables), OWNER, 'save');
+    expect(result.status).toBe('applied');
+    const added = tables.contacts.find(c => c.name === 'Nok Fixture')!;
+    expect(added).toMatchObject({ company_id: CO, job_title: 'Founder', identity_quality: 'named', status: 'uncontacted' });
+    expect(tables.contacts).toHaveLength(2);
+    expect(tables.companies[0]).not.toHaveProperty('decision_maker_contact_id');
+    expect(tables.enrichment_evidence.map(e => [e.entity_type, e.entity_id, e.field, e.source_tier])).toEqual([
+      ['contact', added.id, 'name', 'press'], ['contact', added.id, 'job_title', 'press'],
+    ]);
+    expect(tables.enrichment_proposals.find(p => p.id === OWNER)).toMatchObject({ status: 'applied', decision_note: `contact ${added.id}` });
+  });
+
+  it('never adds a person who is already a contact', async () => {
+    tables.contacts.push({ id: 'k2', company_id: CO, name: 'nok fixture ', deleted_at: null });
+    const result = await decideProposal(fakeDb(tables), OWNER, 'save');
+    expect(result).toMatchObject({ status: 'stale', note: 'already a contact in LeadPulse' });
+    expect(tables.contacts).toHaveLength(2);
+  });
+
+  it('keeps the proposal pending when the contact cannot be saved', async () => {
+    const result = await decideProposal(fakeDb(tables, { failInsertsOn: 'contacts' }), OWNER, 'save');
+    expect(result).toMatchObject({ status: 'pending', retry: true });
+    expect(tables.contacts).toHaveLength(1);
+  });
+
+  it('refuses a person with no role', async () => {
+    tables.enrichment_proposals.find(p => p.id === OWNER)!.details = {};
+    expect((await decideProposal(fakeDb(tables), OWNER, 'save')).status).toBe('failed');
+    expect(tables.contacts).toHaveLength(1);
   });
 });
 
