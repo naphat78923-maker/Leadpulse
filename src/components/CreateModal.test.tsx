@@ -130,4 +130,74 @@ describe('CreateModal explicit outbound fields', () => {
     const alternatePhone = document.querySelector('input[name="phone_second"]') as HTMLInputElement;
     expect(alternatePhone.parentElement?.querySelector('label')?.textContent).toBe('Alternate phone');
   });
+  it('saves a company acquisition source with its campaign', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<CreateModal isOpen type="company" onClose={vi.fn()} onSave={onSave} />);
+
+    fireEvent.change(document.querySelector('input[name="name"]') as HTMLInputElement, { target: { value: 'Ad Bakery' } });
+    expect(document.querySelector('input[name="acquisition_campaign"]')).toBeNull();
+    fireEvent.change(document.querySelector('select[name="acquisition_source"]') as HTMLSelectElement, { target: { value: 'meta_ad' } });
+    fireEvent.change(document.querySelector('input[name="acquisition_campaign"]') as HTMLInputElement, { target: { value: ' Croissant Oct ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Ad Bakery',
+      acquisition_source: 'meta_ad',
+      acquisition_campaign: 'Croissant Oct',
+    }));
+  });
+
+  it('saves a company with no source as null, not an empty string', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<CreateModal isOpen type="company" onClose={vi.fn()} onSave={onSave} />);
+
+    fireEvent.change(document.querySelector('input[name="name"]') as HTMLInputElement, { target: { value: 'Quiet Bakery' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ acquisition_source: null, acquisition_campaign: null }));
+  });
+
+  it('shows the company source on a new deal and sends a change as a company patch', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const company = {
+      id: 'company-ad', name: 'Ad Bakery', status: 'prospect' as const, lead_source: '', account_owner: 'Pat',
+      last_contact_date: null, tags: [], industry: null, size: null, address: null, website: null, notes: null,
+      created_at: '2026-10-01T00:00:00Z', updated_at: '2026-10-01T00:00:00Z',
+      acquisition_source: 'outbound' as const, acquisition_campaign: null,
+    };
+    render(<CreateModal isOpen type="deal" onClose={vi.fn()} onSave={onSave} companies={[company]} />);
+
+    expect(document.querySelector('select[name="deal_source"]')).toBeNull();
+    fireEvent.change(document.querySelector('select[name="company_id"]') as HTMLSelectElement, { target: { value: 'company-ad' } });
+    const source = document.querySelector('select[name="deal_source"]') as HTMLSelectElement;
+    expect(source.value).toBe('outbound');
+    fireEvent.change(source, { target: { value: 'meta_ad' } });
+    fireEvent.change(document.querySelector('input[name="deal_campaign"]') as HTMLInputElement, { target: { value: 'Oct promo' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    const saved = onSave.mock.calls[0][0];
+    expect(saved.company_acquisition).toEqual({ acquisition_source: 'meta_ad', acquisition_campaign: 'Oct promo' });
+    expect(saved).not.toHaveProperty('deal_source');
+    expect(saved).not.toHaveProperty('deal_campaign');
+  });
+
+  it('sends no company patch when the new deal keeps the company source', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const company = {
+      id: 'company-ad', name: 'Ad Bakery', status: 'prospect' as const, lead_source: '', account_owner: 'Pat',
+      last_contact_date: null, tags: [], industry: null, size: null, address: null, website: null, notes: null,
+      created_at: '2026-10-01T00:00:00Z', updated_at: '2026-10-01T00:00:00Z',
+      acquisition_source: 'meta_ad' as const, acquisition_campaign: 'Oct promo',
+    };
+    render(<CreateModal isOpen type="deal" onClose={vi.fn()} onSave={onSave} companies={[company]} initialValues={{ company_id: 'company-ad' }} />);
+
+    expect((document.querySelector('input[name="deal_campaign"]') as HTMLInputElement).value).toBe('Oct promo');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0][0]).not.toHaveProperty('company_acquisition');
+  });
 });

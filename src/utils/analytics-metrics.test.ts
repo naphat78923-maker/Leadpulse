@@ -52,6 +52,20 @@ describe('analytics metrics', () => {
     ]);
   });
 
+  it('groups by the recorded acquisition source before the free-text lead source', () => {
+    const metaBuyer: Company = { ...referral, id: 'company-meta', lead_source: 'Website', acquisition_source: 'meta_ad', acquisition_campaign: 'Oct promo' };
+    const deals = [
+      deal({ stage: 'closed_won', company_id: metaBuyer.id }),
+      deal({ stage: 'closed_lost', company_id: metaBuyer.id }),
+      deal({ stage: 'closed_lost', company_id: referral.id }),
+    ];
+
+    expect(calculateSourcePerformance(deals, [referral, metaBuyer])).toEqual([
+      { source: 'Meta ad', total: 2, won: 1, rate: 50 },
+      { source: 'Referral', total: 1, won: 0, rate: 0 },
+    ]);
+  });
+
   it('forecasts active pipeline only and keeps closed revenue out of the forecast', () => {
     const deals = [
       deal({ stage: 'proposal', value: 20_000 }),

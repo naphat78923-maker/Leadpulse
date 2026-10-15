@@ -9,6 +9,10 @@ export interface Company {
   name: string;
   status: CompanyStatus;
   lead_source: string;
+  /** how the account was acquired (utils/acquisition-source.ts); null = not recorded */
+  acquisition_source?: 'outbound' | 'meta_ad' | 'referral' | 'inbound_other' | null;
+  /** optional campaign or ad name for the acquisition source */
+  acquisition_campaign?: string | null;
   account_owner: string;
   last_contact_date: string | null;
   tags: string[];

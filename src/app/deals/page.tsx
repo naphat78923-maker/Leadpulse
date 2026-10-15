@@ -9,6 +9,7 @@ import { useQuerySelection } from '@/hooks/useQuerySelection';
 import CreateModal from '@/components/CreateModal';
 import ProspectsTab from '@/components/ProspectsTab';
 import PipelineToolbar from '@/components/pipeline/PipelineToolbar';
+import { SourceFunnelLine, SourceSelect } from '@/components/pipeline/SourceFunnel';
 import ReviewQueue from '@/components/pipeline/ReviewQueue';
 import DealsTable from '@/components/pipeline/DealsTable';
 import LanePickerSheet from '@/components/pipeline/LanePickerSheet';
@@ -50,6 +51,7 @@ import { buildStalled, daysInLane, laneTimelines, pipelineOutcomes, stallThresho
 import { calculateLeadScore, scoreToTier, type LeadTier } from '@/utils/lead-scoring';
 import { BoardAttentionFilter, BoardSort, capLane, LANE_CARD_CAP, reviewReasons, REVIEW_LABEL, buildReviewReport, buildReviewFix, filterAndSortBoardDeals, findDealsMatchingSearch, getDoNowCounts, localDateKey } from '@/utils/deal-board';
 import { buildCloseUpdate } from '@/utils/deal-close';
+import { SOURCE_FILTER_OPTIONS, buildSourceFunnel, filterDealsBySource, sourceByCompany, splitDealFormSource, type SourceFilter } from '@/utils/acquisition-source';
 import { buildLaneGateDecision } from '@/utils/lane-gate';
 import { buildDealCardPresentation } from '@/utils/deal-card';
 import { PageTransition, StaggerList, StaggerItem } from '@/components/motion';
@@ -102,13 +104,20 @@ function DealsBoard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [productFilter, setProductFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<Deal['priority'] | 'all'>('all');
+  // `/deals?source=meta_ad` lands on one acquisition source.
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>(() => {
+    const requested = searchParams.get('source');
+    return SOURCE_FILTER_OPTIONS.some(option => option.value === requested) ? requested as SourceFilter : 'all';
+  });
 
   const { deals: dbDeals, contacts: dbContacts, companies: dbCompanies, meetings: dbMeetings, activities, loading, refresh, createDeal, logActivity, addMeeting } = useCrm();
   const { addToast } = useToast();
   const reduceMotion = usePrefersReducedMotion();
-  const deals: Deal[] = dbDeals;
   const contacts = dbContacts;
   const companies = dbCompanies;
+  // The source filter narrows every view at once — board, To contact, exits and table.
+  const companySources = useMemo(() => sourceByCompany(companies), [companies]);
+  const deals: Deal[] = useMemo(() => filterDealsBySource(dbDeals, sourceFilter, companySources), [dbDeals, sourceFilter, companySources]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -189,10 +198,15 @@ function DealsBoard() {
   const [statusNow] = useState(() => Date.now());
 
   // Time in lane, read from the activity log; stalled = past the lane's threshold.
-  const timelines = useMemo(() => laneTimelines(deals, activities || []), [deals, activities]);
+  const timelines = useMemo(() => laneTimelines(dbDeals, activities || []), [dbDeals, activities]);
+  // How far the selected source's deals got through the journey.
+  const sourceFunnel = useMemo(
+    () => (sourceFilter === 'all' ? null : buildSourceFunnel(deals, timelines)),
+    [sourceFilter, deals, timelines]
+  );
   const stalled = useMemo(
-    () => buildStalled({ deals: actionBoardDeals, timelines, thresholds: stallThresholds(deals, timelines), now: statusNow }),
-    [actionBoardDeals, deals, timelines, statusNow]
+    () => buildStalled({ deals: actionBoardDeals, timelines, thresholds: stallThresholds(dbDeals, timelines), now: statusNow }),
+    [actionBoardDeals, dbDeals, timelines, statusNow]
   );
   const stalledIds = useMemo(() => new Set(stalled.map(item => item.deal.id)), [stalled]);
   const outcomes = useMemo(() => pipelineOutcomes(deals, timelines), [deals, timelines]);
@@ -257,7 +271,8 @@ function DealsBoard() {
   // had: probability-weighted open forecast, and win rate per lead source
   // (resolved outcomes only).
   const weightedForecast = useMemo(() => calculateWeightedForecast(deals), [deals]);
-  const sourceRows = useMemo(() => calculateSourcePerformance(deals, companies), [deals, companies]);
+  // Compares sources, so it reads every deal whatever the source filter.
+  const sourceRows = useMemo(() => calculateSourcePerformance(dbDeals, companies), [dbDeals, companies]);
 
   const parkedDeals = useMemo(
     () => deals.filter(deal => getWorkflowAction(deal) === 'parked' && deal.stage !== 'closed_won' && deal.stage !== 'closed_lost'),
@@ -277,9 +292,10 @@ function DealsBoard() {
     };
   }, [actionBoardDeals, parkedDeals, wonDeals, doNowCounts.today]);
 
-  const activeDeal = selectedDeal ? deals.find(deal => deal.id === selectedDeal) : null;
+  // A deal opened by link stays openable when the source filter hides it.
+  const activeDeal = selectedDeal ? dbDeals.find(deal => deal.id === selectedDeal) : null;
 
-  const filtersActive = attentionFilter !== 'all' || searchQuery.trim() !== '' || productFilter !== 'all' || priorityFilter !== 'all';
+  const filtersActive = attentionFilter !== 'all' || searchQuery.trim() !== '' || productFilter !== 'all' || priorityFilter !== 'all' || sourceFilter !== 'all';
 
   // A deal filtered out must not read as missing: search across every deal, keeping the query.
   const searchEscapeMatches = useMemo(
@@ -293,6 +309,7 @@ function DealsBoard() {
     setAttentionFilter('all');
     setProductFilter('all');
     setPriorityFilter('all');
+    setSourceFilter('all');
     setView('table');
   };
 
@@ -302,6 +319,7 @@ function DealsBoard() {
     setSearchQuery('');
     setProductFilter('all');
     setPriorityFilter('all');
+    setSourceFilter('all');
   };
 
   const focusAttention = (filter: BoardAttentionFilter) => {
@@ -311,7 +329,12 @@ function DealsBoard() {
 
   const handleCreate = async (data: any) => {
     // Let errors bubble to the modal so failures are visible.
-    await createDeal(data);
+    const { deal, companyPatch } = splitDealFormSource(data);
+    if (companyPatch) {
+      const { id, ...patch } = companyPatch;
+      await crm.updateCompany(id, patch);
+    }
+    await createDeal(deal);
   };
 
   // A lane header's mascot: a landing wins, then a drag in progress, then the lane's own mood.
@@ -591,7 +614,9 @@ function DealsBoard() {
 
 
 
-      <nav className="mb-3 flex gap-1 overflow-x-auto no-scrollbar border-b border-clay-hairline" aria-label="Deal views">
+      {/* Phone: the source menu gets its own line so the view tabs keep the full width. */}
+      <div className="mb-3 flex flex-wrap items-center gap-2 sm:flex-nowrap sm:border-b sm:border-clay-hairline">
+      <nav className="flex w-full min-w-0 gap-1 overflow-x-auto no-scrollbar border-b border-clay-hairline sm:w-auto sm:flex-1 sm:border-b-0" aria-label="Deal views">
         {([
           ['prospects', 'Prospects', null],
           ['tocontact', 'To contact', toContactDeals.length],
@@ -611,6 +636,12 @@ function DealsBoard() {
           </button>
         ))}
       </nav>
+      {view !== 'prospects' && <SourceSelect value={sourceFilter} onChange={setSourceFilter} />}
+      </div>
+
+      {view !== 'prospects' && sourceFunnel && (
+        <SourceFunnelLine filter={sourceFilter} funnel={sourceFunnel} onClear={() => setSourceFilter('all')} />
+      )}
 
       {view === 'prospects' && (
         <ProspectsTab
@@ -672,8 +703,17 @@ function DealsBoard() {
             <div className="mb-4 rounded-xl border border-clay-hairline bg-white dark:bg-clay-card px-6 py-8 flex flex-col sm:flex-row items-center justify-center gap-5 text-center sm:text-left">
               <Blob state="sleep" size={72} aria-label="No deals on the board yet" />
               <div>
-                <p className="text-sm font-medium text-clay-ink mb-1">No deals on the board yet</p>
-                <p className="text-xs text-clay-muted">Create a deal and it will land in the outreach lane, ready for its first action.</p>
+                {sourceFilter === 'all' ? (
+                  <>
+                    <p className="text-sm font-medium text-clay-ink mb-1">No deals on the board yet</p>
+                    <p className="text-xs text-clay-muted">Create a deal and it will land in the outreach lane, ready for its first action.</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-medium text-clay-ink mb-1">{sourceFilter === 'unset' ? 'Every deal in conversation has a source' : `No ${SOURCE_FILTER_OPTIONS.find(option => option.value === sourceFilter)?.label} deals in conversation`}</p>
+                    <p className="text-xs text-clay-muted">Set the source on an account and its deals show here.</p>
+                  </>
+                )}
               </div>
               <button
                 onClick={() => setIsModalOpen(true)}
