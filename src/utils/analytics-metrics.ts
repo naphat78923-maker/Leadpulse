@@ -1,5 +1,6 @@
 import { Company, Deal, DealStage } from '@/types/crm';
 import { LOST_REASON_OPTIONS } from './deal-workflow';
+import { ACQUISITION_SOURCE_LABELS, isAcquisitionSource } from './acquisition-source';
 
 export const ACTIVE_DEAL_STAGES: DealStage[] = ['research', 'contacted', 'proposal', 'negotiation'];
 
@@ -28,7 +29,11 @@ export function calculateWeightedForecast(deals: Deal[]): number {
 
 /** Win rate is won outcomes divided by all resolved outcomes from that source. */
 export function calculateSourcePerformance(deals: Deal[], companies: Company[]): SourcePerformanceRow[] {
-  const sourceByCompanyId = new Map(companies.map(company => [company.id, company.lead_source || 'Unknown']));
+  // The recorded acquisition source when set; the old free-text lead source otherwise.
+  const sourceByCompanyId = new Map(companies.map(company => [
+    company.id,
+    (isAcquisitionSource(company.acquisition_source) ? ACQUISITION_SOURCE_LABELS[company.acquisition_source] : null) || company.lead_source || 'Unknown',
+  ]));
   const bySource = new Map<string, { total: number; won: number }>();
 
   deals

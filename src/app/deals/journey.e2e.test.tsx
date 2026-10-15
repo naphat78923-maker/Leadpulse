@@ -314,6 +314,27 @@ describe('end-to-end journey on synthetic fixtures', () => {
     expect(meetingRows()).toHaveLength(2);
   });
 
+  it('sets the account source from the deal, saved on the company', async () => {
+    render(
+      <CrmProvider>
+        <Harness />
+      </CrmProvider>
+    );
+    const source = await screen.findByLabelText('Account source') as HTMLSelectElement;
+    expect(source.value).toBe('');
+
+    fireEvent.change(source, { target: { value: 'meta_ad' } });
+    await waitFor(() => expect(store.state.companies[0].acquisition_source).toBe('meta_ad'));
+    expect(store.state.companies[0].acquisition_campaign).toBeNull();
+
+    const campaign = screen.getByLabelText('Campaign or ad') as HTMLInputElement;
+    fireEvent.change(campaign, { target: { value: 'Croissant Oct' } });
+    fireEvent.blur(campaign);
+    await waitFor(() => expect(store.state.companies[0].acquisition_campaign).toBe('Croissant Oct'));
+    // The deal row carries no copy of the source.
+    expect(persist(store.state)).not.toHaveProperty('acquisition_source');
+  });
+
   it('records a sale signal only when an explicit order value was given', async () => {
     // The deal carries a pipeline estimate. It must NOT become an order value by default.
     store.state.deals = [freshDeal({ value: 50000 })];

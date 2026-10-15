@@ -11,6 +11,7 @@ import { NUDGE_OPTIONS, SAMPLE_STATUS_OPTIONS, WORKFLOW_BY_ID, WORKFLOW_LANES } 
 import { deriveDealIdentity } from '@/utils/dealLabel';
 import { CONTACT_IDENTITY_OPTIONS, contactNameFieldCopy } from '@/utils/contact-identity';
 import ModalShell from '@/components/motion/ModalShell';
+import { ACQUISITION_SOURCE_OPTIONS, DEAL_FORM_SOURCE_KEY, normalizeAcquisition } from '@/utils/acquisition-source';
 
 type ModalType = 'company' | 'contact' | 'deal' | 'meeting';
 const DRAFTING_WORKFLOWS = new Set<DealWorkflowAction>(['outreach', 'reply', 'reschedule']);
@@ -42,7 +43,7 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
 
   function getInitialState(t: ModalType) {
     switch (t) {
-      case 'company': return { name: '', status: 'prospect', lead_source: '', account_owner: 'Pat', tags: '', industry: '', size: 'B', address: '', website: '', notes: '' };
+      case 'company': return { name: '', status: 'prospect', lead_source: '', acquisition_source: '', acquisition_campaign: '', account_owner: 'Pat', tags: '', industry: '', size: 'B', address: '', website: '', notes: '' };
       case 'contact': return { name: '', identity_quality: 'unknown', outreach_language: 'autodetect', email: '', phone: '', phone_second: '', line: '', job_title: '', company_id: '', status: 'uncontacted', notes: '' };
       // title + client are auto-derived from Product + Company on submit (no manual entry)
       case 'deal': return { stage: 'research', product: 'Butter', company_id: '', contact_ids: [] as string[], value: '', priority: 'medium', next_action: '', draft_primary_ask: '', followup_date: '', workflow_action: 'outreach', nudge_stage: '', sample_status: '', notes: '' };
@@ -68,6 +69,14 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
     }));
   };
   const route: LeadRoute | null = type === 'company' ? form.contact_route ?? null : null;
+  // New deal: the selected company's source, unless Pat changed it in this form.
+  const dealCompany = type === 'deal' ? companies.find(c => c.id === form.company_id) : undefined;
+  const dealSourceValue: string = form.deal_source ?? dealCompany?.acquisition_source ?? '';
+  const dealCampaignValue: string = form.deal_campaign ?? dealCompany?.acquisition_campaign ?? '';
+  const handleDealCompanyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const { value } = e.target;
+    setForm(prev => ({ ...prev, company_id: value, deal_source: undefined, deal_campaign: undefined }));
+  };
   const duplicate = type === 'company' ? existingAccount(companies, form.name ?? '', form.website ?? '') : null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -82,6 +91,7 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
     setError(null);
     const cleaned: Record<string, any> = { ...form };
     if (cleaned.tags) cleaned.tags = cleaned.tags.split(',').map((t: string) => t.trim()).filter(Boolean);
+    if (type === 'company') Object.assign(cleaned, normalizeAcquisition(cleaned));
     if (type === 'deal') {
       cleaned.value = cleaned.value === '' || cleaned.value == null ? null : parseFloat(cleaned.value) || null;
       delete cleaned.notes;
@@ -91,6 +101,15 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
       const derived = deriveDealIdentity(cleaned.product, co?.name || '', ct?.name || '');
       cleaned.title = derived.title;
       cleaned.client = derived.client;
+      // The source belongs to the company: send it as a company change, only when Pat changed it.
+      delete cleaned.deal_source;
+      delete cleaned.deal_campaign;
+      if (co) {
+        const next = normalizeAcquisition({ acquisition_source: dealSourceValue, acquisition_campaign: dealCampaignValue });
+        if (next.acquisition_source !== (co.acquisition_source ?? null) || next.acquisition_campaign !== (co.acquisition_campaign ?? null)) {
+          cleaned[DEAL_FORM_SOURCE_KEY] = next;
+        }
+      }
     }
     try {
       await onSave(cleaned);
@@ -151,8 +170,11 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
               )}
               <div className="grid grid-cols-2 gap-3">
                 <Select label="Status" name="status" value={form.status} onChange={handleChange} options={Object.entries(COMPANY_STATUS_LABELS).map(([v, l]) => ({ value: v, label: l }))} />
-                <Field label="Lead Source" name="lead_source" value={form.lead_source} onChange={handleChange} placeholder="e.g., Website, Referral" />
+                <Select label="Source" name="acquisition_source" value={form.acquisition_source} onChange={handleChange} options={[{ value: '', label: '— Not set —' }, ...ACQUISITION_SOURCE_OPTIONS]} />
               </div>
+              {form.acquisition_source && (
+                <Field label="Campaign or ad (optional)" name="acquisition_campaign" value={form.acquisition_campaign} onChange={handleChange} placeholder="e.g., Croissant butter · Oct" />
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Account Owner" name="account_owner" value={form.account_owner} onChange={handleChange} />
                 <Select label="Size" name="size" value={form.size} onChange={handleChange} options={[{ value: 'A', label: 'A — Large' }, { value: 'B', label: 'B — Medium' }, { value: 'C', label: 'C — Small' }]} />
@@ -205,7 +227,16 @@ export default function CreateModal({ isOpen, onClose, onSave, type, companies =
                 <Select label="Product" name="product" value={form.product} onChange={handleChange} options={PRODUCT_OPTIONS.map(p => ({ value: p, label: p }))} />
                 <Select label="Priority" name="priority" value={form.priority} onChange={handleChange} options={[{ value: 'high', label: 'High' }, { value: 'medium', label: 'Medium' }, { value: 'low', label: 'Low' }]} />
               </div>
-              <Select label="Company" name="company_id" value={form.company_id} onChange={handleChange} options={[{ value: '', label: '— None —' }, ...companies.map(c => ({ value: c.id, label: c.name }))]} />
+              <Select label="Company" name="company_id" value={form.company_id} onChange={handleDealCompanyChange} options={[{ value: '', label: '— None —' }, ...companies.map(c => ({ value: c.id, label: c.name }))]} />
+              {dealCompany && (
+                <div className="grid grid-cols-2 gap-3">
+                  <Select label="Source" name="deal_source" value={dealSourceValue} onChange={handleChange} options={[{ value: '', label: '— Not set —' }, ...ACQUISITION_SOURCE_OPTIONS]} />
+                  {dealSourceValue ? (
+                    <Field label="Campaign or ad" name="deal_campaign" value={dealCampaignValue} onChange={handleChange} placeholder="Optional" />
+                  ) : <div />}
+                  <p className="col-span-2 -mt-2 text-xs text-clay-muted">Saved on {dealCompany.name}; every deal with them shares it.</p>
+                </div>
+              )}
               <Field label="Value (THB)" name="value" value={form.value} onChange={handleChange} placeholder="e.g., 50000" />
               <div>
                 <Select label="Action Lane" name="workflow_action" value={form.workflow_action} onChange={handleWorkflowChange} options={WORKFLOW_LANES.map(lane => ({ value: lane.id, label: lane.label }))} />

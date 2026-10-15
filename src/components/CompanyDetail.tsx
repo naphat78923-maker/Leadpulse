@@ -22,6 +22,7 @@ import { isCompanyRoute } from '@/utils/contact-identity';
 import { businessDateKey, businessDaysBetween, isCalendarDateKey } from '@/utils/business-time';
 import { formatScheduleDate } from '@/utils/deal-schedule';
 import { deriveRetentionDueSignals, existingRetentionReferenceDate } from '@/utils/followup-policy';
+import { ACQUISITION_SOURCE_OPTIONS, acquisitionLabel, normalizeAcquisition } from '@/utils/acquisition-source';
 
 const statusOptions: CompanyStatus[] = ['prospect', 'active_customer', 'inactive', 'lost'];
 
@@ -156,7 +157,8 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
   const [editData, setEditData] = useState({
     name: company.name,
     status: company.status,
-    lead_source: company.lead_source || '',
+    acquisition_source: company.acquisition_source ?? '',
+    acquisition_campaign: company.acquisition_campaign ?? '',
     account_owner: company.account_owner || '',
     industry: company.industry || '',
     tags: (company.tags || []).join(', '),
@@ -173,12 +175,14 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
       const payload = {
         ...editData,
         tags: editData.tags ? editData.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
+        ...normalizeAcquisition(editData),
       };
       const updated = await crm.updateCompany(company.id, payload);
       setEditData({
         name: updated.name,
         status: updated.status,
-        lead_source: updated.lead_source || '',
+        acquisition_source: updated.acquisition_source ?? '',
+        acquisition_campaign: updated.acquisition_campaign ?? '',
         account_owner: updated.account_owner || '',
         industry: updated.industry || '',
         tags: (updated.tags || []).join(', '),
@@ -346,14 +350,29 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
           <div className="text-clay-body">
             <span className="text-clay-muted">Source: </span>
             {editing ? (
-              <input
-                type="text"
-                value={editData.lead_source}
-                onChange={e => setEditData(prev => ({ ...prev, lead_source: e.target.value }))}
-                className="inline-block w-1/2 px-2 py-1 border border-clay-hairline rounded text-base bg-white dark:bg-clay-card"
-              />
+              <span className="inline-flex w-full flex-wrap gap-2 align-middle sm:w-auto">
+                <select
+                  aria-label="Source"
+                  value={editData.acquisition_source}
+                  onChange={e => setEditData(prev => ({ ...prev, acquisition_source: e.target.value }))}
+                  className="px-2 py-1 border border-clay-hairline rounded text-base bg-white dark:bg-clay-card"
+                >
+                  <option value="">— Not set —</option>
+                  {ACQUISITION_SOURCE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+                {editData.acquisition_source && (
+                  <input
+                    type="text"
+                    aria-label="Campaign or ad"
+                    placeholder="Campaign or ad"
+                    value={editData.acquisition_campaign}
+                    onChange={e => setEditData(prev => ({ ...prev, acquisition_campaign: e.target.value }))}
+                    className="min-w-0 flex-1 px-2 py-1 border border-clay-hairline rounded text-base bg-white dark:bg-clay-card"
+                  />
+                )}
+              </span>
             ) : (
-              company.lead_source || '—'
+              acquisitionLabel(company) ?? (company.lead_source ? <span className="text-clay-muted">Not set · noted “{company.lead_source}”</span> : '—')
             )}
           </div>
 

@@ -20,6 +20,7 @@ import { buildThisWeekQueue } from '@/utils/this-week-queue';
 import { distinctOrderCount, planRetentionTouch } from '@/utils/retention-touch';
 import { useBusinessDateKey } from '@/utils/useBusinessDateKey';
 import { formatBangkokWeekdayDate } from '@/utils/format';
+import { splitDealFormSource } from '@/utils/acquisition-source';
 
 export default function TodayPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -80,7 +81,14 @@ export default function TodayPage() {
   }), [actions, retentionSignals, signals, todayKey]);
 
   const handleCreate = async (data: Parameters<typeof createDeal>[0]) => {
-    await createDeal(data);
+    // A source set while adding the deal belongs to its company; save it first so the
+    // refresh after the deal is created already shows it.
+    const { deal, companyPatch } = splitDealFormSource(data);
+    if (companyPatch) {
+      const { id, ...patch } = companyPatch;
+      await crm.updateCompany(id, patch);
+    }
+    await createDeal(deal);
   };
 
   const openDealLog = (dealId: string) => {

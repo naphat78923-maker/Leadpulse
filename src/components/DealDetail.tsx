@@ -37,6 +37,7 @@ import { outreachLanguageLabel, outreachLanguageBadgeColor, outreachLanguageBasi
 import LogInteractionModal from '@/components/LogInteractionModal';
 import CompanyLogo from '@/components/CompanyLogo';
 import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
+import AccountSourceField from '@/components/AccountSourceField';
 import StakeholderMiniMap from '@/components/StakeholderMiniMap';
 import LayaScoreCard from '@/components/LayaScoreCard';
 import DealFactsPanel from '@/components/DealFactsPanel';
@@ -644,6 +645,15 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
             {!isClosed && <DealFactsPanel deal={deal} />}
             <PanelSection title="Account and buyer map" open={editing}>
               <div className="space-y-3">
+                {dealCompany && (
+                  <AccountSourceField
+                    key={dealCompany.id}
+                    company={dealCompany}
+                    onSave={patch => crm.updateCompany(dealCompany.id, patch)
+                      .then(() => { addToast('Saved to the account'); onSaved(); })
+                      .catch(() => addToast('Could not save to the account', 'error'))}
+                  />
+                )}
                 <LayaScoreCard deal={deal} company={dealCompany} />
                 {dealCompany && (
                   <StakeholderMiniMap
