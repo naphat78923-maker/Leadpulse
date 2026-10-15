@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  dbdSearchUrl,
   decisionText,
   displayUrl,
   parseProposalCallback,
@@ -54,6 +55,35 @@ describe('proposalMessage', () => {
 
   it('says what it would replace', () => {
     expect(proposalMessage(proposal({ current_value: 'http://old.example' }), 'X')).toContain('Replaces: http://old.example');
+  });
+});
+
+describe('owner / decision-maker proposals', () => {
+  const owner = proposal({
+    field: 'decision_maker', value: 'Janista Lewchalermvongse (Bam)', source_url: 'https://www.audreygroup.com/About.html',
+    quote: 'Janista Lewchalermvongse (Bam), the founder of Audrey Café & Restaurant chain',
+    details: { job_title: 'Founder', dbd_keyword: 'ออเดรย์ กรุ๊ป' }, reason: null,
+  });
+
+  it('names the person and role, quotes the source and links DBD for a manual check', () => {
+    const text = proposalMessage(owner, 'Audrey Group');
+    const lines = text.split('\n');
+    expect(lines[0]).toBe('<b>Owner / decision maker for Audrey Group?</b>');
+    expect(lines[1]).toBe('<b>Janista Lewchalermvongse (Bam)</b> — Founder');
+    expect(text).toContain(`<a href="${dbdSearchUrl('ออเดรย์ กรุ๊ป')}">DBD search</a>`);
+    expect(text).toContain('Save adds them as a new contact (uncontacted)');
+  });
+
+  it('searches DBD by company name when no legal name is known', () => {
+    expect(proposalMessage({ ...owner, details: { job_title: 'Founder' } }, 'Audrey Group')).toContain(dbdSearchUrl('Audrey Group'));
+  });
+
+  it('encodes the DBD keyword', () => {
+    expect(dbdSearchUrl(' กาโตว์ เฮ้าส์ ')).toBe('https://datawarehouse.dbd.go.th/juristic/searchInfo?keyword=%E0%B8%81%E0%B8%B2%E0%B9%82%E0%B8%95%E0%B8%A7%E0%B9%8C%20%E0%B9%80%E0%B8%AE%E0%B9%89%E0%B8%B2%E0%B8%AA%E0%B9%8C');
+  });
+
+  it('labels a press source plainly', () => {
+    expect(proposalMessage({ ...owner, source_tier: 'press' }, 'Audrey Group')).toContain('(a press interview or article)');
   });
 });
 
