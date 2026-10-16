@@ -135,10 +135,17 @@ export function proposalMessage(proposal: EnrichmentProposal, companyName: strin
   return lines.join('\n');
 }
 
-export function proposalButtons(proposalId: string) {
+const BUTTON_LABELS: Partial<Record<ProposalField, [string, string]>> = {
+  new_company: ['✅ Add', '❌ Skip'],
+  decision_maker: ['✅ Save', '❌ Not right'],
+};
+
+/** Two buttons; the labels fit what Save does for this kind of proposal. */
+export function proposalButtons(proposalId: string, field: ProposalField = 'website') {
+  const [save, reject] = BUTTON_LABELS[field] ?? ['✅ Save', '❌ Not theirs'];
   return [[
-    { text: '✅ Save', callback_data: `p:${proposalId}:s` },
-    { text: '❌ Not theirs', callback_data: `p:${proposalId}:r` },
+    { text: save, callback_data: `p:${proposalId}:s` },
+    { text: reject, callback_data: `p:${proposalId}:r` },
   ]];
 }
 
