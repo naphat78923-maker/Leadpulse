@@ -116,6 +116,13 @@ describe('buttons', () => {
     expect(parseProposalCallback(reject.callback_data)).toEqual({ id: ID, action: 'reject' });
   });
 
+  it('labels the buttons for what Save does', () => {
+    expect(proposalButtons(ID, 'new_company')[0].map(b => b.text)).toEqual(['✅ Add', '❌ Skip']);
+    expect(proposalButtons(ID, 'decision_maker')[0].map(b => b.text)).toEqual(['✅ Save', '❌ Not right']);
+    expect(proposalButtons(ID, 'address')[0].map(b => b.text)).toEqual(['✅ Save', '❌ Not theirs']);
+    expect(parseProposalCallback(proposalButtons(ID, 'new_company')[0][0].callback_data)).toEqual({ id: ID, action: 'save' });
+  });
+
   it('ignores anything else', () => {
     for (const data of [undefined, 42, '', 'p:not-a-uuid:s', `p:${ID}:x`, `p:${ID}:s extra`, `q:${ID}:s`]) {
       expect(parseProposalCallback(data)).toBeNull();
