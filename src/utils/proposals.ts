@@ -3,23 +3,34 @@
 // with a button. Loading, sending and saving live in lib/proposals-data.ts; the buttons
 // arrive at app/api/telegram/webhook.
 
-export type ProposalField = 'website' | 'decision_maker';
+export type ProposalField = 'website' | 'decision_maker' | 'what_they_make' | 'address' | 'new_company';
 export type ProposalStatus = 'pending' | 'applied' | 'rejected' | 'stale' | 'failed';
 export type ProposalAction = 'save' | 'reject';
 
 export interface EnrichmentProposal {
   id: string;
   entity_type: 'company' | 'contact';
-  entity_id: string;
-  company_id: string;
+  /** null only for new_company: the business is not in LeadPulse yet */
+  entity_id: string | null;
+  company_id: string | null;
   field: ProposalField;
   value: string;
   current_value: string | null;
   source_url: string;
   source_tier: 'own_site' | 'official_social' | 'official_listing' | 'press';
   quote: string;
-  /** decision_maker: the role as published, and what to search DBD for */
-  details?: { job_title?: string; dbd_keyword?: string } | null;
+  /** decision_maker: the role as published, and what to search DBD for.
+   *  new_company: what the guide says the business is, and Laya's fit. */
+  details?: {
+    job_title?: string;
+    dbd_keyword?: string;
+    industry?: string;
+    tags?: string[];
+    area?: string;
+    what_they_make?: string;
+    archetype?: string;
+    fit_noul?: number;
+  } | null;
   quote_check: 'passed';
   reason: string | null;
   status: ProposalStatus;
@@ -32,12 +43,23 @@ export interface EnrichmentProposal {
 }
 
 /** What a tap may write. Widened one field at a time, each reviewed:
- *  - website fills companies.website, only while it holds what the proposal saw
- *  - decision_maker creates one new named contact; it never edits an existing one */
+ *  - a company field (website, what they make, address) is filled only while it still holds
+ *    what the proposal saw, so nothing Pat typed is ever overwritten
+ *  - decision_maker creates one new named contact; it never edits an existing one
+ *  - new_company creates one prospect company; no deal, no contact */
 export const PROPOSAL_FIELDS = {
   website: { kind: 'company_field', table: 'companies', column: 'website', label: 'Website' },
+  what_they_make: { kind: 'company_field', table: 'companies', column: 'what_they_make', label: 'What they make' },
+  address: { kind: 'company_field', table: 'companies', column: 'address', label: 'Address' },
   decision_maker: { kind: 'new_contact', label: 'Owner / decision maker' },
-} as const satisfies Record<ProposalField, { kind: 'company_field' | 'new_contact'; label: string; table?: string; column?: string }>;
+  new_company: { kind: 'new_company', label: 'New lead' },
+} as const satisfies Record<ProposalField, {
+  kind: 'company_field' | 'new_contact' | 'new_company'; label: string; table?: 'companies'; column?: string;
+}>;
+
+export type CompanyFieldProposal = 'website' | 'what_they_make' | 'address';
+export const isCompanyField = (field: ProposalField): field is CompanyFieldProposal =>
+  PROPOSAL_FIELDS[field].kind === 'company_field';
 
 const DBD_SEARCH = 'https://datawarehouse.dbd.go.th/juristic/searchInfo?keyword=';
 
@@ -58,7 +80,7 @@ const TIER_LABEL: Record<EnrichmentProposal['source_tier'], string> = {
   own_site: 'their own site',
   official_social: 'their official social account',
   official_listing: 'an official listing',
-  press: 'a press interview or article',
+  press: 'a press interview, article or guide',
 };
 
 /** "gateauxhouse.co.th" from "https://www.gateauxhouse.co.th/". */
@@ -79,20 +101,36 @@ export function proposalMessage(proposal: EnrichmentProposal, companyName: strin
   const quote = proposal.quote.replace(/\s+/g, ' ').trim();
   const shortQuote = quote.length > QUOTE_LIMIT ? `${quote.slice(0, QUOTE_LIMIT - 1)}…` : quote;
   const isPerson = proposal.field === 'decision_maker';
-  const role = proposal.details?.job_title?.trim();
-  const dbd = isPerson ? dbdSearchUrl(proposal.details?.dbd_keyword || companyName) : null;
+  const isNewLead = proposal.field === 'new_company';
+  const d = proposal.details ?? {};
+  const role = d.job_title?.trim();
+  const dbd = isPerson ? dbdSearchUrl(d.dbd_keyword || companyName) : null;
+  const heading = isNewLead
+    ? `<b>New lead: ${escapeHtml(proposal.value)}?</b>`
+    : `<b>${escapeHtml(label)} for ${escapeHtml(companyName)}?</b>`;
+  const valueLine = isPerson
+    ? `<b>${escapeHtml(proposal.value)}</b>${role ? ` — ${escapeHtml(role)}` : ''}`
+    : isNewLead
+      ? [d.industry, d.area].filter(Boolean).map(v => escapeHtml(String(v))).join(' · ')
+      : proposal.field === 'website'
+        ? `<a href="${escapeHtml(proposal.value)}">${escapeHtml(displayUrl(proposal.value))}</a>`
+        : `<b>${escapeHtml(proposal.value)}</b>`;
+  const fit = isNewLead && typeof d.fit_noul === 'number'
+    ? [`Laya: ${escapeHtml(d.archetype || 'fit')} ${Math.round(d.fit_noul * 100)}%`]
+    : [];
   const lines = [
-    `<b>${escapeHtml(label)} for ${escapeHtml(companyName)}?</b>`,
-    isPerson
-      ? `<b>${escapeHtml(proposal.value)}</b>${role ? ` — ${escapeHtml(role)}` : ''}`
-      : `<a href="${escapeHtml(proposal.value)}">${escapeHtml(displayUrl(proposal.value))}</a>`,
+    heading,
+    ...(valueLine ? [valueLine] : []),
+    ...(isNewLead && d.what_they_make ? [`Makes: ${escapeHtml(d.what_they_make)}`] : []),
     '',
     `<i>“${escapeHtml(shortQuote)}”</i>`,
     `Source: <a href="${escapeHtml(proposal.source_url)}">${escapeHtml(displayUrl(proposal.source_url))}</a> (${TIER_LABEL[proposal.source_tier]})`,
     ...(proposal.reason ? [escapeHtml(proposal.reason)] : []),
     ...(proposal.current_value ? [`Replaces: ${escapeHtml(proposal.current_value)}`] : []),
     ...(dbd ? [`Check the registered directors: <a href="${escapeHtml(dbd)}">DBD search</a>`] : []),
+    ...fit,
     ...(isPerson ? ['Save adds them as a new contact (uncontacted); nothing else changes.'] : []),
+    ...(isNewLead ? ['Save adds it to Accounts as a prospect; no deal or contact is created.'] : []),
   ];
   return lines.join('\n');
 }

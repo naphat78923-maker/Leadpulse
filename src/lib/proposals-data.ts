@@ -8,6 +8,7 @@ import { answerTelegramCallback, editTelegramMessage, sendTelegramMessage, type 
 import {
   PROPOSAL_FIELDS,
   PROPOSALS_PER_SEND,
+  isCompanyField,
   decisionText,
   parseProposalCallback,
   proposalButtons,
@@ -25,8 +26,10 @@ export interface TelegramOps {
 
 const telegram: TelegramOps = { send: sendTelegramMessage, edit: editTelegramMessage, answer: answerTelegramCallback };
 
-async function companyName(db: SupabaseClient, companyId: string): Promise<string> {
-  const { data } = await db.from('companies').select('name').eq('id', companyId).maybeSingle();
+/** The account a proposal is about; a new lead is named by the proposal itself. */
+async function companyName(db: SupabaseClient, proposal: EnrichmentProposal): Promise<string> {
+  if (!proposal.company_id) return proposal.value;
+  const { data } = await db.from('companies').select('name').eq('id', proposal.company_id).maybeSingle();
   return (data?.name as string | undefined) || 'this account';
 }
 
@@ -49,7 +52,7 @@ export async function sendPendingProposals(db: SupabaseClient = supabase, tg: Te
   let failed = 0;
   for (const proposal of await pendingUnsent(db)) {
     try {
-      const name = await companyName(db, proposal.company_id);
+      const name = await companyName(db, proposal);
       const messageId = await tg.send(proposalMessage(proposal, name), proposalButtons(proposal.id));
       const { error } = await db.from('enrichment_proposals')
         .update({ telegram_message_id: messageId, sent_at: new Date().toISOString() })
@@ -73,9 +76,14 @@ async function settle(db: SupabaseClient, id: string, status: ProposalStatus, no
 
 type Decision = { status: ProposalStatus; note: string | null; proposal: EnrichmentProposal | null; retry?: boolean };
 
-function evidenceRow(proposal: EnrichmentProposal, entity: { type: 'company' | 'contact'; id: string }, field: string, value: string) {
+function evidenceRow(
+  proposal: EnrichmentProposal,
+  entity: { type: 'company' | 'contact'; id: string; companyId: string },
+  field: string,
+  value: string,
+) {
   return {
-    entity_type: entity.type, entity_id: entity.id, company_id: proposal.company_id,
+    entity_type: entity.type, entity_id: entity.id, company_id: entity.companyId,
     field, value, source_url: proposal.source_url, source_tier: proposal.source_tier,
     quote: proposal.quote, quote_check: 'passed', outcome: 'applied', method: 'telegram approval',
     fetched_at: proposal.proposed_at,
@@ -83,9 +91,11 @@ function evidenceRow(proposal: EnrichmentProposal, entity: { type: 'company' | '
   };
 }
 
-/** website: fill companies.website only while it still holds what the proposal saw. */
-async function saveCompanyField(db: SupabaseClient, proposal: EnrichmentProposal): Promise<Decision> {
-  const target = PROPOSAL_FIELDS.website;
+/** website / what_they_make / address: fill the company field only while it still holds what
+ *  the proposal saw, so nothing Pat typed is ever overwritten. */
+async function saveCompanyField(db: SupabaseClient, proposal: EnrichmentProposal & { entity_id: string }): Promise<Decision> {
+  if (!isCompanyField(proposal.field)) throw new Error('not a company field');
+  const target = PROPOSAL_FIELDS[proposal.field];
   const id = proposal.id;
   const { data: live, error: readError } = await db.from(target.table).select(`id, ${target.column}`).eq('id', proposal.entity_id).maybeSingle();
   if (readError) return { status: 'pending', note: 'could not read the account', proposal, retry: true };
@@ -112,7 +122,9 @@ async function saveCompanyField(db: SupabaseClient, proposal: EnrichmentProposal
     await settle(db, id, 'failed', 'saved value did not read back');
     return { status: 'failed', note: 'saved value did not read back', proposal };
   }
-  await db.from('enrichment_evidence').insert(evidenceRow(proposal, { type: 'company', id: proposal.entity_id }, proposal.field, proposal.value));
+  await db.from('enrichment_evidence').insert(
+    evidenceRow(proposal, { type: 'company', id: proposal.entity_id, companyId: proposal.entity_id }, proposal.field, proposal.value),
+  );
   await settle(db, id, 'applied', null);
   return { status: 'applied', note: null, proposal };
 }
@@ -121,7 +133,7 @@ const sameName = (a: string | null | undefined, b: string) => (a ?? '').trim().t
 
 /** decision_maker: create ONE new named, uncontacted contact. Never edits an existing contact
  *  and never sets companies.decision_maker_contact_id (that stays Pat's call). */
-async function saveNewContact(db: SupabaseClient, proposal: EnrichmentProposal): Promise<Decision> {
+async function saveNewContact(db: SupabaseClient, proposal: EnrichmentProposal & { company_id: string }): Promise<Decision> {
   const id = proposal.id;
   const role = proposal.details?.job_title?.trim();
   if (!role) {
@@ -162,12 +174,70 @@ async function saveNewContact(db: SupabaseClient, proposal: EnrichmentProposal):
     await settle(db, id, 'failed', `contact ${newId ?? '(no id)'} did not read back as saved; review it`);
     return { status: 'failed', note: 'saved contact did not read back; review it in LeadPulse', proposal };
   }
+  const where = { type: 'contact' as const, id: newId, companyId: proposal.company_id };
   await db.from('enrichment_evidence').insert([
-    evidenceRow(proposal, { type: 'contact', id: newId }, 'name', contact.name),
-    evidenceRow(proposal, { type: 'contact', id: newId }, 'job_title', role),
+    evidenceRow(proposal, where, 'name', contact.name),
+    evidenceRow(proposal, where, 'job_title', role),
   ]);
   await settle(db, id, 'applied', `contact ${newId}`);
   return { status: 'applied', note: `contact ${newId}`, proposal };
+}
+
+/** "Gateaux House Co., Ltd." and "gateaux house" are the same business. */
+export function sameBusiness(a: string | null | undefined, b: string): boolean {
+  const key = (v: string) => v.toLowerCase()
+    .replace(/\b(co|ltd|limited|company|plc|inc|the)\b\.?/g, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, '');
+  const x = key(a ?? '');
+  return x.length > 0 && x === key(b);
+}
+
+/** new_company: create ONE prospect company from a business a guide named and Laya judged a fit.
+ *  No deal, no contact; "what they make" stays empty because a guide is not their own words. */
+async function saveNewCompany(db: SupabaseClient, proposal: EnrichmentProposal): Promise<Decision> {
+  const id = proposal.id;
+  const d = proposal.details ?? {};
+  const industry = d.industry?.trim();
+  if (!industry) {
+    await settle(db, id, 'failed', 'no industry on the proposal');
+    return { status: 'failed', note: 'no industry on the proposal', proposal };
+  }
+  const { data: companies, error: readError } = await db.from('companies').select('id, name').is('deleted_at', null);
+  if (readError) return { status: 'pending', note: 'could not read accounts', proposal, retry: true };
+  const already = (companies as Array<{ id: string; name: string | null }> | null)?.find(c => sameBusiness(c.name, proposal.value));
+  if (already) {
+    await settle(db, id, 'stale', 'already in LeadPulse');
+    return { status: 'stale', note: 'already in LeadPulse', proposal };
+  }
+
+  const date = proposal.proposed_at.slice(0, 10);
+  const fit = typeof d.fit_noul === 'number' ? ` Laya: ${d.archetype ?? 'fit'} ${Math.round(d.fit_noul * 100)}%.` : '';
+  const company = {
+    name: proposal.value.trim(),
+    status: 'prospect',
+    industry,
+    tags: (d.tags ?? []).map(t => t.trim()).filter(Boolean).slice(0, 8),
+    lead_source: 'Hermes discovery',
+    account_owner: 'Pat',
+    notes: `Found ${date} in ${proposal.source_url}: “${proposal.quote.trim()}”${d.area ? ` Area: ${d.area}.` : ''}`
+      + `${d.what_they_make ? ` Guide says: ${d.what_they_make}.` : ''}${fit} Approved on Telegram.`,
+  };
+  const { data: created, error: insertError } = await db.from('companies').insert(company).select('id');
+  if (insertError) return { status: 'pending', note: 'could not save', proposal, retry: true };
+  const newId = (created as Array<{ id: string }> | null)?.[0]?.id;
+  const { data: back } = newId
+    ? await db.from('companies').select('id, name, status, industry').eq('id', newId).maybeSingle()
+    : { data: null };
+  const row = back as { name?: string; status?: string; industry?: string } | null;
+  if (!newId || !row || row.name !== company.name || row.status !== 'prospect' || row.industry !== industry) {
+    await settle(db, id, 'failed', `company ${newId ?? '(no id)'} did not read back as saved; review it`);
+    return { status: 'failed', note: 'saved account did not read back; review it in LeadPulse', proposal };
+  }
+  await db.from('enrichment_evidence').insert(
+    evidenceRow(proposal, { type: 'company', id: newId, companyId: newId }, 'name', company.name),
+  );
+  await settle(db, id, 'applied', `company ${newId}`);
+  return { status: 'applied', note: `company ${newId}`, proposal };
 }
 
 /** Applies one decision. Transient failures leave the proposal pending so the tap can be retried. */
@@ -184,11 +254,16 @@ export async function decideProposal(db: SupabaseClient, id: string, action: 'sa
   }
 
   const target = (PROPOSAL_FIELDS as Record<string, { kind: string } | undefined>)[proposal.field];
-  if (!target || proposal.entity_type !== 'company' || proposal.entity_id !== proposal.company_id) {
+  const subjectOk = target?.kind === 'new_company'
+    ? proposal.company_id === null && proposal.entity_id === null
+    : proposal.entity_type === 'company' && !!proposal.company_id && proposal.entity_id === proposal.company_id;
+  if (!target || !subjectOk) {
     await settle(db, id, 'failed', 'field is not on the allowlist');
     return { status: 'failed', note: 'field is not on the allowlist', proposal };
   }
-  return target.kind === 'new_contact' ? saveNewContact(db, proposal) : saveCompanyField(db, proposal);
+  if (target.kind === 'new_company') return saveNewCompany(db, proposal);
+  const withCompany = proposal as EnrichmentProposal & { company_id: string; entity_id: string };
+  return target.kind === 'new_contact' ? saveNewContact(db, withCompany) : saveCompanyField(db, withCompany);
 }
 
 interface CallbackUpdate {
@@ -226,7 +301,7 @@ export async function handleTelegramUpdate(
   }
   await tg.answer(query.id, toast);
   if (result.proposal && query.message?.message_id && footer) {
-    const name = await companyName(db, result.proposal.company_id);
+    const name = await companyName(db, result.proposal);
     await tg.edit(query.message.message_id, `${proposalMessage(result.proposal, name)}\n\n${footer}`).catch(() => undefined);
   }
   return `${parsed.action}: ${result.status}`;

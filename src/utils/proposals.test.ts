@@ -83,7 +83,28 @@ describe('owner / decision-maker proposals', () => {
   });
 
   it('labels a press source plainly', () => {
-    expect(proposalMessage({ ...owner, source_tier: 'press' }, 'Audrey Group')).toContain('(a press interview or article)');
+    expect(proposalMessage({ ...owner, source_tier: 'press' }, 'Audrey Group')).toContain('(a press interview, article or guide)');
+  });
+});
+
+describe('profile and new-lead proposals', () => {
+  it('shows a text field as text, not a link', () => {
+    const text = proposalMessage(proposal({ field: 'what_they_make', value: 'mille-feuille & opera cake' }), 'Gateaux House');
+    expect(text.split('\n').slice(0, 2)).toEqual(['<b>What they make for Gateaux House?</b>', '<b>mille-feuille &amp; opera cake</b>']);
+  });
+
+  it('introduces a new lead with its type, area, Laya fit and what Save does', () => {
+    const lead = proposal({
+      field: 'new_company', value: 'Kind Kones Bakery', entity_id: null, company_id: null, source_tier: 'press',
+      details: { industry: 'Bakery', area: 'Ari', what_they_make: 'vegan croissants', archetype: 'bakery', fit_noul: 0.814 },
+    });
+    const text = proposalMessage(lead, 'Kind Kones Bakery');
+    const lines = text.split('\n');
+    expect(lines[0]).toBe('<b>New lead: Kind Kones Bakery?</b>');
+    expect(lines[1]).toBe('Bakery · Ari');
+    expect(text).toContain('Makes: vegan croissants');
+    expect(text).toContain('Laya: bakery 81%');
+    expect(text).toContain('Save adds it to Accounts as a prospect');
   });
 });
 

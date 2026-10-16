@@ -5,7 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 vi.mock('@/lib/telegram', () => ({ sendTelegramMessage: vi.fn(), editTelegramMessage: vi.fn(), answerTelegramCallback: vi.fn() }));
 
-const { decideProposal, handleTelegramUpdate, sendPendingProposals } = await import('./proposals-data');
+const { decideProposal, handleTelegramUpdate, sameBusiness, sendPendingProposals } = await import('./proposals-data');
 
 type Row = Record<string, unknown>;
 type Filter = (row: Row) => boolean;
@@ -162,6 +162,71 @@ describe('decideProposal: owner / decision maker', () => {
     tables.enrichment_proposals.find(p => p.id === OWNER)!.details = {};
     expect((await decideProposal(fakeDb(tables), OWNER, 'save')).status).toBe('failed');
     expect(tables.contacts).toHaveLength(1);
+  });
+});
+
+describe('decideProposal: profile fields', () => {
+  const MAKE = '5b6c7d8e-9f00-4a1b-8c2d-3e4f5a6b7c8d';
+  beforeEach(() => {
+    tables.companies[0].what_they_make = null;
+    tables.enrichment_proposals.push(pending({
+      id: MAKE, field: 'what_they_make', value: 'mille-feuille, opera cake and croissants',
+      quote: 'Our counter: mille-feuille, opera cake and croissants, baked daily.',
+    }));
+  });
+
+  it('fills an empty "what they make" and records its source', async () => {
+    expect((await decideProposal(fakeDb(tables), MAKE, 'save')).status).toBe('applied');
+    expect(tables.companies[0].what_they_make).toBe('mille-feuille, opera cake and croissants');
+    expect(tables.enrichment_evidence[0]).toMatchObject({ field: 'what_they_make', entity_id: CO, company_id: CO });
+    expect(tables.companies[0].website).toBeNull();
+  });
+
+  it('never overwrites what Pat typed', async () => {
+    tables.companies[0].what_they_make = 'butter croissants (Pat)';
+    expect((await decideProposal(fakeDb(tables), MAKE, 'save')).status).toBe('stale');
+    expect(tables.companies[0].what_they_make).toBe('butter croissants (Pat)');
+  });
+});
+
+describe('decideProposal: new lead', () => {
+  const LEAD = '6c7d8e9f-0a1b-4c2d-9e3f-4a5b6c7d8e9f';
+  beforeEach(() => {
+    tables.enrichment_proposals.push(pending({
+      id: LEAD, field: 'new_company', value: 'Kind Kones Bakery', entity_id: null, company_id: null,
+      source_url: 'https://guide.example/vegan-bakeries-bangkok', source_tier: 'press',
+      quote: 'Kind Kones Bakery in Ari bakes vegan croissants every morning.',
+      details: { industry: 'Bakery', tags: ['vegan', 'croissant'], area: 'Ari', archetype: 'bakery_patisserie_brands', fit_noul: 0.81 },
+    }));
+  });
+
+  it('adds one prospect company, no deal or contact, and records where the name came from', async () => {
+    const result = await decideProposal(fakeDb(tables), LEAD, 'save');
+    expect(result.status).toBe('applied');
+    const added = tables.companies.find(c => c.name === 'Kind Kones Bakery')!;
+    expect(added).toMatchObject({ status: 'prospect', industry: 'Bakery', tags: ['vegan', 'croissant'], lead_source: 'Hermes discovery' });
+    expect(added).not.toHaveProperty('what_they_make');
+    expect(String(added.notes)).toContain('https://guide.example/vegan-bakeries-bangkok');
+    expect(tables.contacts ?? []).toHaveLength(0);
+    expect(tables.enrichment_evidence).toEqual([expect.objectContaining({ entity_id: added.id, company_id: added.id, field: 'name', source_tier: 'press' })]);
+    expect(result.note).toBe(`company ${added.id}`);
+  });
+
+  it('never adds a business that is already in LeadPulse', async () => {
+    tables.companies.push({ id: 'c2', name: 'Kind Kones Bakery Co., Ltd.', deleted_at: null });
+    expect((await decideProposal(fakeDb(tables), LEAD, 'save')).status).toBe('stale');
+    expect(tables.companies).toHaveLength(2);
+  });
+
+  it('matches businesses by name, not by legal suffix or punctuation', () => {
+    expect(sameBusiness('Gateaux House Co., Ltd.', 'gateaux house')).toBe(true);
+    expect(sameBusiness('Gateaux House', 'Gateaux Home')).toBe(false);
+    expect(sameBusiness('', 'x')).toBe(false);
+  });
+
+  it('refuses a new lead whose subject is set', async () => {
+    tables.enrichment_proposals.find(p => p.id === LEAD)!.company_id = CO;
+    expect((await decideProposal(fakeDb(tables), LEAD, 'save')).status).toBe('failed');
   });
 });
 
