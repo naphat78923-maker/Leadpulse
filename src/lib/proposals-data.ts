@@ -53,7 +53,7 @@ export async function sendPendingProposals(db: SupabaseClient = supabase, tg: Te
   for (const proposal of await pendingUnsent(db)) {
     try {
       const name = await companyName(db, proposal);
-      const messageId = await tg.send(proposalMessage(proposal, name), proposalButtons(proposal.id));
+      const messageId = await tg.send(proposalMessage(proposal, name), proposalButtons(proposal.id, proposal.field));
       const { error } = await db.from('enrichment_proposals')
         .update({ telegram_message_id: messageId, sent_at: new Date().toISOString() })
         .eq('id', proposal.id).eq('status', 'pending');
