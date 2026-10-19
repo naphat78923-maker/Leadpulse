@@ -230,6 +230,45 @@ describe('decideProposal: new lead', () => {
   });
 });
 
+describe('skip reasons and look-alikes', () => {
+  const LEAD = '7d8e9f0a-1b2c-4d3e-8f4a-5b6c7d8e9f0a';
+  beforeEach(() => {
+    tables.companies.push({ id: 'c9', name: 'Earthling Cafe', status: 'active_customer', deleted_at: null });
+    tables.company_aliases = [];
+    tables.enrichment_proposals.push(pending({
+      id: LEAD, field: 'new_company', value: 'Earth House', entity_id: null, company_id: null, source_tier: 'press',
+      details: { industry: 'Vegan Restaurant', website: 'https://www.earthlingbangkok.com/', maybe_same: { id: 'c9', name: 'Earthling Cafe', status: 'active_customer', why: 'look-alike' } },
+    }));
+  });
+  const lead = () => tables.enrichment_proposals.find(p => p.id === LEAD)!;
+
+  it('records why a new lead was skipped', async () => {
+    expect((await decideProposal(fakeDb(tables), LEAD, 'reject', 'closed')).status).toBe('rejected');
+    expect(lead()).toMatchObject({ status: 'rejected', reject_reason: 'closed' });
+  });
+
+  it('keeps a plain "not theirs" on other proposals', async () => {
+    await decideProposal(fakeDb(tables), PID, 'reject', 'closed');
+    expect(tables.enrichment_proposals[0].reject_reason).toBeUndefined();
+  });
+
+  it('"Same as" links the name and website to the existing account and adds nothing', async () => {
+    const result = await decideProposal(fakeDb(tables), LEAD, 'same');
+    expect(result).toMatchObject({ status: 'rejected', note: 'same as Earthling Cafe', reason: 'customer' });
+    expect(tables.company_aliases.map(a => [a.company_id, a.kind, a.value])).toEqual([['c9', 'name', 'Earth House'], ['c9', 'domain', 'earthlingbangkok.com']]);
+    expect(tables.companies.filter(c => c.name === 'Earth House')).toHaveLength(0);
+    expect(lead()).toMatchObject({ reject_reason: 'customer' });
+  });
+
+  it('takes the reason from the Telegram button', async () => {
+    const tg = { send: vi.fn(async () => 1), edit: vi.fn(async () => undefined), answer: vi.fn(async () => undefined) };
+    const update = { callback_query: { id: 'cb', data: `p:${LEAD}:rn`, message: { message_id: 9, chat: { id: 8800 } } } };
+    expect(await handleTelegramUpdate(update, '8800', fakeDb(tables), tg)).toBe('reject: rejected');
+    expect(lead().reject_reason).toBe('not_fit');
+    expect(tg.answer).toHaveBeenCalledWith('cb', 'Skipped: not a fit');
+  });
+});
+
 describe('handleTelegramUpdate', () => {
   const tg = () => ({ send: vi.fn(async () => 777), edit: vi.fn(async () => undefined), answer: vi.fn(async () => undefined) });
   const press = (data: string, chat = 8800) => ({ callback_query: { id: 'cb1', data, message: { message_id: 55, chat: { id: chat } } } });

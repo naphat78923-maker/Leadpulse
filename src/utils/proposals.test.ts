@@ -131,10 +131,37 @@ describe('buttons', () => {
   });
 
   it('labels the buttons for what Save does', () => {
-    expect(proposalButtons(ID, 'new_company')[0].map(b => b.text)).toEqual(['✅ Add', '❌ Skip']);
+    expect(proposalButtons(ID, 'new_company').map(r => r.map(b => b.text))).toEqual([['✅ Add'], ['Closed', 'Customer', 'Not a fit']]);
     expect(proposalButtons(ID, 'decision_maker')[0].map(b => b.text)).toEqual(['✅ Save', '❌ Not right']);
     expect(proposalButtons(ID, 'address')[0].map(b => b.text)).toEqual(['✅ Save', '❌ Not theirs']);
     expect(parseProposalCallback(proposalButtons(ID, 'new_company')[0][0].callback_data)).toEqual({ id: ID, action: 'save' });
+  });
+
+  it('skips a new lead with a reason, and offers a look-alike account', () => {
+    const same = { id: 'c0ffee00-0000-4000-8000-000000000009', name: 'Earthling Cafe and Bakery Bangkok', status: 'active_customer', why: 'name looks alike' };
+    const rows = proposalButtons(ID, 'new_company', { industry: 'Vegan Restaurant', maybe_same: same });
+    expect(rows.map(r => r.map(b => b.text))).toEqual([['✅ Add', `🔗 Same as ${same.name.slice(0, 21)}…`], ['Closed', 'Customer', 'Not a fit']]);
+    for (const button of rows.flat()) expect(Buffer.byteLength(button.callback_data)).toBeLessThanOrEqual(64);
+    expect(rows.flat().map(b => parseProposalCallback(b.callback_data))).toEqual([
+      { id: ID, action: 'save' }, { id: ID, action: 'same' },
+      { id: ID, action: 'reject', reason: 'closed' }, { id: ID, action: 'reject', reason: 'customer' }, { id: ID, action: 'reject', reason: 'not_fit' },
+    ]);
+    expect(proposalButtons(ID, 'new_company', { industry: 'x' })[0]).toHaveLength(1);
+  });
+
+  it('says how a lead was skipped or linked', () => {
+    expect(decisionText('rejected', null, 'closed').footer).toContain('Skipped: closed');
+    expect(decisionText('rejected', 'same as Earthling Cafe', 'customer').footer).toContain('Linked:</b> same as Earthling Cafe');
+    expect(decisionText('rejected').footer).toContain('Not saved');
+  });
+
+  it('warns about a look-alike and how it was checked as open', () => {
+    const text = proposalMessage(proposal({
+      field: 'new_company', value: 'Earth House', entity_id: null, company_id: null, source_tier: 'press',
+      details: { industry: 'Vegan Restaurant', maybe_same: { id: 'c9', name: 'Earthling Cafe', status: 'active_customer', why: '"earth" in both names' }, open_check: 'their site loads (earthlingbangkok.com)' },
+    }), 'Earth House');
+    expect(text).toContain('⚠️ Might be <b>Earthling Cafe</b> (active customer): &quot;earth&quot; in both names'.replace('&quot;', '"').replace('&quot;', '"'));
+    expect(text).toContain('Open: their site loads (earthlingbangkok.com)');
   });
 
   it('ignores anything else', () => {
