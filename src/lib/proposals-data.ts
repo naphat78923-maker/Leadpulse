@@ -266,6 +266,28 @@ export async function decideProposal(db: SupabaseClient, id: string, action: 'sa
   return target.kind === 'new_contact' ? saveNewContact(db, withCompany) : saveCompanyField(db, withCompany);
 }
 
+/**
+ * A decision made in LeadPulse rather than on Telegram. Same rules; afterwards the Telegram
+ * message (if one was sent) is edited to say what happened, so the two never disagree.
+ */
+export async function decideFromApp(
+  id: string,
+  action: 'save' | 'reject',
+  db: SupabaseClient = supabase,
+  tg: TelegramOps = telegram,
+): Promise<{ status: ProposalStatus; note: string | null; retry: boolean }> {
+  const result = await decideProposal(db, id, action);
+  const messageId = result.proposal?.telegram_message_id;
+  if (!result.retry && result.proposal && messageId) {
+    const { footer } = decisionText(result.status, result.note);
+    if (footer) {
+      const name = await companyName(db, result.proposal);
+      await tg.edit(messageId, `${proposalMessage(result.proposal, name)}\n\n${footer} (in LeadPulse)`).catch(() => undefined);
+    }
+  }
+  return { status: result.status, note: result.note, retry: Boolean(result.retry) };
+}
+
 interface CallbackUpdate {
   callback_query?: {
     id: string;

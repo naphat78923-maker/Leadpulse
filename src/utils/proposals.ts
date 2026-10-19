@@ -76,6 +76,19 @@ const escapeHtml = (value: string) => value.replace(/&/g, '&amp;').replace(/</g,
 
 const QUOTE_LIMIT = 220;
 
+/** A stored quote as a person reads it. The stored text stays exact (the source check compares
+ *  it with the saved page); only the display drops markdown: bullets, headings, bold, and
+ *  "[text](url)" link syntax. */
+export function displayQuote(quote: string): string {
+  return quote
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/(^|\n)\s*(?:[-+*•]|#{1,6}|>)\s+/g, '$1')
+    .replace(/[*_`]{2,}|`/g, '')
+    .replace(/\\([\\_*[\]()#|-])/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 const TIER_LABEL: Record<EnrichmentProposal['source_tier'], string> = {
   own_site: 'their own site',
   official_social: 'their official social account',
@@ -98,7 +111,7 @@ export function displayUrl(url: string): string {
 /** The Telegram message for one proposal (HTML, every value escaped). */
 export function proposalMessage(proposal: EnrichmentProposal, companyName: string): string {
   const label = PROPOSAL_FIELDS[proposal.field].label;
-  const quote = proposal.quote.replace(/\s+/g, ' ').trim();
+  const quote = displayQuote(proposal.quote);
   const shortQuote = quote.length > QUOTE_LIMIT ? `${quote.slice(0, QUOTE_LIMIT - 1)}…` : quote;
   const isPerson = proposal.field === 'decision_maker';
   const isNewLead = proposal.field === 'new_company';

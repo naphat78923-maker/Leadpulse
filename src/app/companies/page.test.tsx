@@ -1,11 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { Company, Contact } from '@/types/crm';
 
 const crm = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 const query = vi.hoisted(() => ({ params: new URLSearchParams() }));
 
 vi.mock('@/components/CrmProvider', () => ({ useCrm: () => crm.value }));
+const profile = vi.hoisted(() => ({ fits: new Map<string, unknown>(), waiting: [] as Array<{ company_id: string | null }> }));
+vi.mock('@/lib/crm', () => ({
+  getCompanyFits: async () => profile.fits,
+  getPendingProposals: async () => profile.waiting,
+}));
 vi.mock('next/navigation', () => ({ useSearchParams: () => query.params }));
 const modal = vi.hoisted(() => ({ props: {} as Record<string, any> }));
 vi.mock('@/components/CreateModal', () => ({ default: (props: Record<string, any>) => { modal.props = props; return null; } }));
@@ -29,6 +34,8 @@ import AccountsPage from './page';
 afterEach(() => {
   cleanup();
   query.params = new URLSearchParams();
+  profile.fits = new Map();
+  profile.waiting = [];
 });
 
 const company = (id: string, name: string): Company =>
@@ -53,6 +60,22 @@ function setCrm() {
 }
 
 describe('Accounts page', () => {
+  it("shows Laya's fit grade and how many proposals wait for review", async () => {
+    const { fitFromAnswers } = await import('@/utils/account-profile');
+    profile.fits = new Map([
+      ['c1', fitFromAnswers({ fit_bakery_patisserie_brands: { noul: 0.65 }, fit_modern_trade_specialty_retail: { noul: 0.21 }, fit_plant_based_restaurant_cafe: { noul: 0.17 } }, 'x')],
+      ['c2', fitFromAnswers({ fit_bakery_patisserie_brands: { noul: 0.16 }, fit_modern_trade_specialty_retail: { noul: 0.13 }, fit_plant_based_restaurant_cafe: { noul: 0.14 } }, 'x')],
+    ]);
+    profile.waiting = [{ company_id: 'c1' }, { company_id: null }];
+    setCrm();
+    render(<AccountsPage />);
+
+    await waitFor(() => expect(screen.getByText('Bakery 65%')).toBeTruthy());
+    expect(screen.getByText('No fit')).toBeTruthy();
+    expect(screen.getByText('1 to review')).toBeTruthy();
+  });
+
+
   it('finds an account by one of its people and names the match', () => {
     setCrm();
     render(<AccountsPage />);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { Company, COMPANY_STATUS_LABELS, CompanyStatus, Contact } from '@/types/crm';
 import { Building2, X, Edit2, Loader2, Check, UserPlus, Trash2, Gift, ShoppingCart, ChevronRight, Plus } from 'lucide-react';
 import clsx from 'clsx';
@@ -12,6 +12,9 @@ import CompanyLogo from '@/components/CompanyLogo';
 import WebsiteFill from '@/components/WebsiteFill';
 import StakeholderMiniMap from '@/components/StakeholderMiniMap';
 import LayaBuyerSignalsSection from '@/components/LayaBuyerSignalsSection';
+import { FitCard, SourceChip, WaitingForYou } from '@/components/AccountProfile';
+import { sourcesFor, type CompanyFit, type EvidenceRow } from '@/utils/account-profile';
+import type { EnrichmentProposal } from '@/utils/proposals';
 import ContactDetail from '@/components/ContactDetail';
 import InteractionThread from '@/components/InteractionThread';
 import LogInteractionModal from '@/components/LogInteractionModal';
@@ -64,6 +67,31 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
       .slice()
       .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   }, [meetings, company.id, companyContacts]);
+  // Laya's fit grade, where saved values came from, and proposals waiting for Pat.
+  const [fit, setFit] = useState<CompanyFit | null>(null);
+  const [evidence, setEvidence] = useState<EvidenceRow[]>([]);
+  const [waiting, setWaiting] = useState<EnrichmentProposal[]>([]);
+  const [profileVersion, setProfileVersion] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.allSettled([
+      crm.getCompanyFit(company.id), crm.getCompanyEvidence(company.id), crm.getPendingProposals(company.id),
+    ]).then(([fitResult, evidenceResult, waitingResult]) => {
+      if (cancelled) return;
+      // Each part is optional: a failed load leaves that part out rather than blocking the panel.
+      setFit(fitResult.status === 'fulfilled' ? fitResult.value : null);
+      setEvidence(evidenceResult.status === 'fulfilled' ? evidenceResult.value : []);
+      setWaiting(waitingResult.status === 'fulfilled' ? waitingResult.value : []);
+    });
+    return () => { cancelled = true; };
+  }, [company.id, profileVersion]);
+  const sourceOf = useMemo(() => sourcesFor(evidence), [evidence]);
+  const contactSource = (contact: Contact) =>
+    sourceOf('contact', contact.id, 'name', contact.name)
+    ?? sourceOf('contact', contact.id, 'line', contact.line)
+    ?? sourceOf('contact', contact.id, 'email', contact.email)
+    ?? sourceOf('contact', contact.id, 'phone', contact.phone);
+
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -300,6 +328,10 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
         </div>
         {logoError && <div className="mb-4 text-xs text-clay-error">{logoError}</div>}
         {!editing && <WebsiteFill company={company} companyContacts={companyContacts} onSaved={onSaved} />}
+        {fit && <FitCard fit={fit} />}
+        {!editing && (
+          <WaitingForYou proposals={waiting} onDecided={() => { setProfileVersion((v) => v + 1); onSaved(); refresh(); }} />
+        )}
 
         {saving && (
           <div className="mb-4 flex items-center gap-2 text-sm text-clay-success animate-pulse">
@@ -414,8 +446,13 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
                 onChange={e => setEditData(prev => ({ ...prev, website: e.target.value }))}
                 className="inline-block w-2/3 px-2 py-1 border border-clay-hairline rounded text-base bg-white dark:bg-clay-card"
               />
+            ) : company.website ? (
+              <span className="inline-flex flex-wrap items-center">
+                <span className="break-all">{company.website}</span>
+                {(() => { const source = sourceOf('company', company.id, 'website', company.website); return source && <SourceChip source={source} />; })()}
+              </span>
             ) : (
-              company.website || '—'
+              '—'
             )}
           </div>
 
@@ -430,8 +467,13 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
                 onChange={e => setEditData(prev => ({ ...prev, what_they_make: e.target.value }))}
                 className="inline-block w-2/3 px-2 py-1 border border-clay-hairline rounded text-base bg-white dark:bg-clay-card"
               />
+            ) : company.what_they_make ? (
+              <span className="inline-flex flex-wrap items-center">
+                <span>{company.what_they_make}</span>
+                {(() => { const source = sourceOf('company', company.id, 'what_they_make', company.what_they_make); return source && <SourceChip source={source} />; })()}
+              </span>
             ) : (
-              company.what_they_make || '—'
+              '—'
             )}
           </div>
 
@@ -446,7 +488,12 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
               />
             ) : (
               <div className="bg-clay-surface rounded-lg p-3 text-clay-body text-xs leading-relaxed mt-1">
-                {company.address || 'No address yet'}
+                {company.address ? (
+                  <span className="flex flex-wrap items-center">
+                    <span>{company.address}</span>
+                    {(() => { const source = sourceOf('company', company.id, 'address', company.address); return source && <SourceChip source={source} />; })()}
+                  </span>
+                ) : waiting.some((p) => p.field === 'address') ? 'Waiting for you above' : 'No address yet'}
               </div>
             )}
           </div>
@@ -675,13 +722,15 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
 
             {people.length > 0 ? (
               <div className="space-y-2">
-                {people.map((contact: Contact) => (
+                {people.map((contact: Contact) => {
+                  const source = contactSource(contact);
+                  return (
+                  <div key={contact.id} className="bg-clay-surface rounded-lg">
                   <button
-                    key={contact.id}
                     type="button"
                     onClick={() => setOpenContactId(contact.id)}
                     aria-label={`Open contact: ${contact.name}`}
-                    className="flex w-full items-center gap-2 bg-clay-surface rounded-lg p-3 text-left text-sm text-clay-body hover:bg-clay-card transition-colors"
+                    className="flex w-full items-center gap-2 rounded-lg p-3 text-left text-sm text-clay-body hover:bg-clay-card transition-colors"
                   >
                     <span className="min-w-0 flex-1">
                       <span className="block font-medium text-clay-ink">{contact.name}</span>
@@ -695,7 +744,10 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
                     </span>
                     <ChevronRight className="w-4 h-4 shrink-0 text-clay-muted-soft" />
                   </button>
-                ))}
+                  {source && <div className="flex flex-wrap items-center px-3 pb-2 -mt-1.5"><SourceChip source={source} /></div>}
+                  </div>
+                  );
+                })}
               </div>
             ) : (
               <p className="text-xs text-clay-muted-soft">No named person yet. Add one above.</p>
@@ -705,7 +757,9 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
               <div className="mt-3">
                 <p className="mb-1.5 text-xs font-medium text-clay-muted">Contact channels</p>
                 <ul className="divide-y divide-clay-hairline rounded-lg border border-clay-hairline">
-                  {routes.map((route) => (
+                  {routes.map((route) => {
+                    const source = contactSource(route);
+                    return (
                     <li key={route.id}>
                       <button
                         type="button"
@@ -719,8 +773,10 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
                         {route.line && <span>{/line|whatsapp|ig\b|instagram|facebook/i.test(route.line) ? route.line : `LINE ${route.line}`}</span>}
                         {!route.phone && !route.email && !route.line && <span className="text-clay-muted">{route.name}</span>}
                       </button>
+                      {source && <div className="flex flex-wrap items-center px-3 pb-2 -mt-1"><SourceChip source={source} /></div>}
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               </div>
             )}

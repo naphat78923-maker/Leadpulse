@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   dbdSearchUrl,
+  displayQuote,
   decisionText,
   displayUrl,
   parseProposalCallback,
@@ -105,6 +106,19 @@ describe('profile and new-lead proposals', () => {
     expect(text).toContain('Makes: vegan croissants');
     expect(text).toContain('Laya: bakery 81%');
     expect(text).toContain('Save adds it to Accounts as a prospect');
+  });
+});
+
+describe('displayQuote', () => {
+  it('reads like the page, without markdown', () => {
+    expect(displayQuote('- โรงงาน ที่อยู่ : 51/2 ซอย วัดไทร')).toBe('โรงงาน ที่อยู่ : 51/2 ซอย วัดไทร');
+    expect(displayQuote('###### Restaurateur & Co-Founder\n\n### Tao Ingudananda')).toBe('Restaurateur & Co-Founder Tao Ingudananda');
+    expect(displayQuote('Email: [hello@x.example](mailto:hello@x.example) and **bold**')).toBe('Email: hello@x.example and bold');
+    expect(displayQuote('Price 5 - 10 kg')).toBe('Price 5 - 10 kg');
+  });
+
+  it('is what Telegram shows', () => {
+    expect(proposalMessage(proposal({ field: 'address', value: 'x', quote: '- Floor 2, Room 2A' }), 'Belén')).toContain('“Floor 2, Room 2A”');
   });
 });
 
