@@ -182,19 +182,32 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
   };
 
   const [newContact, setNewContact] = useState<any>({ name: '', email: '', phone: '', phone_second: '', line: '', job_title: '' });
-  const [editData, setEditData] = useState({
-    name: company.name,
-    status: company.status,
-    acquisition_source: company.acquisition_source ?? '',
-    acquisition_campaign: company.acquisition_campaign ?? '',
-    account_owner: company.account_owner || '',
-    industry: company.industry || '',
-    tags: (company.tags || []).join(', '),
-    address: company.address || '',
-    website: company.website || '',
-    what_they_make: company.what_they_make || '',
-    notes: company.notes || '',
+  const formFrom = (c: Company) => ({
+    name: c.name,
+    status: c.status,
+    acquisition_source: c.acquisition_source ?? '',
+    acquisition_campaign: c.acquisition_campaign ?? '',
+    account_owner: c.account_owner || '',
+    industry: c.industry || '',
+    tags: (c.tags || []).join(', '),
+    address: c.address || '',
+    website: c.website || '',
+    what_they_make: c.what_they_make || '',
+    notes: c.notes || '',
   });
+  const [editData, setEditData] = useState(() => formFrom(company));
+  // The form is copied from the account as it is NOW when editing starts. Copying it once at
+  // open meant a value saved meanwhile (a proposal's Save, Fill from website) was written back
+  // as the old empty value on the next edit.
+  const startEditing = () => {
+    setEditData(formFrom(company));
+    setConfirmArchive(false);
+    setEditing(true);
+  };
+  const cancelEditing = () => {
+    setEditData(formFrom(company));
+    setEditing(false);
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -206,19 +219,7 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
         ...normalizeAcquisition(editData),
       };
       const updated = await crm.updateCompany(company.id, payload);
-      setEditData({
-        name: updated.name,
-        status: updated.status,
-        acquisition_source: updated.acquisition_source ?? '',
-        acquisition_campaign: updated.acquisition_campaign ?? '',
-        account_owner: updated.account_owner || '',
-        industry: updated.industry || '',
-        tags: (updated.tags || []).join(', '),
-        address: updated.address || '',
-        website: updated.website || '',
-        what_they_make: updated.what_they_make || '',
-        notes: updated.notes || '',
-      });
+      setEditData(formFrom(updated));
       setEditing(false);
       setSaved(true);
       onSaved();
@@ -284,17 +285,32 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
                 )}
               </button>
             )}
-            <button onClick={() => setEditing(!editing)} className="p-2 text-clay-muted active:opacity-70">
-              <Edit2 className="w-5 h-5" />
-            </button>
-            <button onClick={() => setConfirmArchive(true)} className="p-2 text-clay-muted-soft active:opacity-70 hover:text-clay-error transition-colors" aria-label="Archive company">
-              <Trash2 className="w-5 h-5" />
-            </button>
+            {editing ? (
+              <button onClick={cancelEditing} className="px-2 py-1.5 text-xs font-medium text-clay-muted active:opacity-70">
+                Cancel
+              </button>
+            ) : (
+              <button onClick={startEditing} className="p-2 text-clay-muted active:opacity-70" aria-label="Edit company">
+                <Edit2 className="w-5 h-5" />
+              </button>
+            )}
+            {!editing && (
+              <button onClick={() => setConfirmArchive(true)} className="p-2 text-clay-muted-soft active:opacity-70 hover:text-clay-error transition-colors" aria-label="Archive company">
+                <Trash2 className="w-5 h-5" />
+              </button>
+            )}
             <button onClick={onClose} className="p-2 text-clay-muted active:opacity-70">
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
+
+          {confirmArchive && (
+            <div className="mb-4 rounded-xl border border-clay-hairline bg-clay-surface p-4">
+              <div className="flex gap-3"><span className="text-2xl">🗑️</span><div><p className="font-semibold text-clay-ink">Archive this company?</p><p className="text-xs text-clay-muted mt-1">{company.name} and its linked contacts will be hidden from lists. You can undo this under Recent changes on This week.</p></div></div>
+              <div className="grid grid-cols-2 gap-2 mt-3"><button onClick={() => { setConfirmArchive(false); setSaving(true); deleteEntity('company', company.id, company.name).then(() => { setSaving(false); addToast('Company archived'); onClose(); }).catch(err => { setSaving(false); setError('Could not archive: ' + (err.message || 'Unknown error')); }); }} className="px-3 py-2.5 bg-clay-error text-white text-sm font-medium rounded-lg">Archive</button><button onClick={() => setConfirmArchive(false)} className="px-3 py-2.5 bg-clay-card text-clay-ink text-sm font-medium rounded-lg">Cancel</button></div>
+            </div>
+          )}
 
         {/* Brand logo */}
         <div className="flex items-center gap-3 mb-4">
@@ -796,12 +812,6 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
             </div>
             <InteractionThread meetings={accountInteractions} allContacts={contacts} deals={deals} companies={companies} />
           </div>
-          {confirmArchive && (
-            <div className="mt-4 rounded-xl border border-clay-hairline bg-clay-surface p-4">
-              <div className="flex gap-3"><span className="text-2xl">🗑️</span><div><p className="font-semibold text-clay-ink">Archive this company?</p><p className="text-xs text-clay-muted mt-1">{company.name} and its linked contacts will be hidden from lists. You can undo this under Recent changes on This week.</p></div></div>
-              <div className="grid grid-cols-2 gap-2 mt-3"><button onClick={() => { setConfirmArchive(false); setSaving(true); deleteEntity('company', company.id, company.name).then(() => { setSaving(false); addToast('Company archived'); onClose(); }).catch(err => { setSaving(false); setError('Could not archive: ' + (err.message || 'Unknown error')); }); }} className="px-3 py-2.5 bg-clay-error text-white text-sm font-medium rounded-lg">Archive</button><button onClick={() => setConfirmArchive(false)} className="px-3 py-2.5 bg-clay-card text-clay-ink text-sm font-medium rounded-lg">Cancel</button></div>
-            </div>
-          )}
         </div>
       </motion.div>
     </div>
