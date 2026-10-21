@@ -5,7 +5,23 @@
 
 export type ProposalField = 'website' | 'decision_maker' | 'what_they_make' | 'address' | 'new_company';
 export type ProposalStatus = 'pending' | 'applied' | 'rejected' | 'stale' | 'failed';
-export type ProposalAction = 'save' | 'reject';
+export type ProposalAction = 'save' | 'reject' | 'same';
+/** Why Pat skipped a new lead; Hermes learns from it (lib docs: migration 20261020090000). */
+export type RejectReason = 'closed' | 'customer' | 'not_fit';
+
+export const REJECT_REASON_LABELS: Record<RejectReason, string> = {
+  closed: 'Closed',
+  customer: 'Customer',
+  not_fit: 'Not a fit',
+};
+
+/** An existing account Hermes thinks this new lead may be (name looks alike, no exact match). */
+export interface MaybeSame {
+  id: string;
+  name: string;
+  status: string;
+  why: string;
+}
 
 export interface EnrichmentProposal {
   id: string;
@@ -30,7 +46,11 @@ export interface EnrichmentProposal {
     what_they_make?: string;
     archetype?: string;
     fit_noul?: number;
+    website?: string;
+    maybe_same?: MaybeSame | null;
+    open_check?: string;
   } | null;
+  reject_reason?: RejectReason | null;
   quote_check: 'passed';
   reason: string | null;
   status: ProposalStatus;
@@ -135,6 +155,10 @@ export function proposalMessage(proposal: EnrichmentProposal, companyName: strin
     heading,
     ...(valueLine ? [valueLine] : []),
     ...(isNewLead && d.what_they_make ? [`Makes: ${escapeHtml(d.what_they_make)}`] : []),
+    ...(isNewLead && d.maybe_same
+      ? [`⚠️ Might be <b>${escapeHtml(d.maybe_same.name)}</b> (${escapeHtml(d.maybe_same.status.replace(/_/g, ' '))}): ${escapeHtml(d.maybe_same.why)}`]
+      : []),
+    ...(isNewLead && d.open_check ? [`Open: ${escapeHtml(d.open_check)}`] : []),
     '',
     `<i>“${escapeHtml(shortQuote)}”</i>`,
     `Source: <a href="${escapeHtml(proposal.source_url)}">${escapeHtml(displayUrl(proposal.source_url))}</a> (${TIER_LABEL[proposal.source_tier]})`,
@@ -153,8 +177,31 @@ const BUTTON_LABELS: Partial<Record<ProposalField, [string, string]>> = {
   decision_maker: ['✅ Save', '❌ Not right'],
 };
 
-/** Two buttons; the labels fit what Save does for this kind of proposal. */
-export function proposalButtons(proposalId: string, field: ProposalField = 'website') {
+const REASON_CODE: Record<RejectReason, string> = { closed: 'c', customer: 'u', not_fit: 'n' };
+const shorten = (name: string, max = 22) => (name.length > max ? `${name.slice(0, max - 1)}…` : name);
+
+/**
+ * The buttons; labels fit what Save does. A new lead is skipped with a reason (Closed,
+ * Customer, Not a fit), and offers "Same as <account>" when Hermes saw a look-alike.
+ */
+export function proposalButtons(
+  proposalId: string,
+  field: ProposalField = 'website',
+  details?: EnrichmentProposal['details'],
+) {
+  if (field === 'new_company') {
+    const same = details?.maybe_same;
+    return [
+      [
+        { text: '✅ Add', callback_data: `p:${proposalId}:s` },
+        ...(same ? [{ text: `🔗 Same as ${shorten(same.name)}`, callback_data: `p:${proposalId}:m` }] : []),
+      ],
+      (Object.keys(REASON_CODE) as RejectReason[]).map((reason) => ({
+        text: REJECT_REASON_LABELS[reason],
+        callback_data: `p:${proposalId}:r${REASON_CODE[reason]}`,
+      })),
+    ];
+  }
   const [save, reject] = BUTTON_LABELS[field] ?? ['✅ Save', '❌ Not theirs'];
   return [[
     { text: save, callback_data: `p:${proposalId}:s` },
@@ -162,14 +209,19 @@ export function proposalButtons(proposalId: string, field: ProposalField = 'webs
   ]];
 }
 
-const CALLBACK = /^p:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):([sr])$/;
+const CALLBACK = /^p:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):(s|m|r[cun]?)$/;
+const REASON_BY_CODE: Record<string, RejectReason> = { c: 'closed', u: 'customer', n: 'not_fit' };
 
-/** The proposal and action a button carries, or null for anything else. */
-export function parseProposalCallback(data: unknown): { id: string; action: ProposalAction } | null {
+/** The proposal, action and skip reason a button carries, or null for anything else. */
+export function parseProposalCallback(data: unknown): { id: string; action: ProposalAction; reason?: RejectReason } | null {
   if (typeof data !== 'string') return null;
   const match = CALLBACK.exec(data);
   if (!match) return null;
-  return { id: match[1], action: match[2] === 's' ? 'save' : 'reject' };
+  const code = match[2];
+  if (code === 's') return { id: match[1], action: 'save' };
+  if (code === 'm') return { id: match[1], action: 'same' };
+  const reason = REASON_BY_CODE[code.slice(1)];
+  return reason ? { id: match[1], action: 'reject', reason } : { id: match[1], action: 'reject' };
 }
 
 /** A Save may only fill what the proposal saw: the field must still hold current_value. */
@@ -178,10 +230,14 @@ export function stillAsProposed(proposal: Pick<EnrichmentProposal, 'current_valu
 }
 
 /** The line added under a decided proposal, and the toast shown on the tap. */
-export function decisionText(status: ProposalStatus, note?: string | null): { footer: string; toast: string } {
+export function decisionText(status: ProposalStatus, note?: string | null, reason?: RejectReason | null): { footer: string; toast: string } {
   switch (status) {
     case 'applied': return { footer: '✅ <b>Saved to LeadPulse</b>', toast: 'Saved' };
-    case 'rejected': return { footer: '❌ <b>Not saved</b>', toast: 'Not saved' };
+    case 'rejected':
+      if (note?.startsWith('same as ')) return { footer: `🔗 <b>Linked:</b> ${escapeHtml(note)}`, toast: 'Linked to the account' };
+      return reason
+        ? { footer: `❌ <b>Skipped: ${REJECT_REASON_LABELS[reason].toLowerCase()}</b>`, toast: `Skipped: ${REJECT_REASON_LABELS[reason].toLowerCase()}` }
+        : { footer: '❌ <b>Not saved</b>', toast: 'Not saved' };
     case 'stale': return { footer: `⚠️ <b>Not saved:</b> ${escapeHtml(note || 'the field changed since this was proposed')}`, toast: 'Changed since proposed: not saved' };
     case 'failed': return { footer: `⚠️ <b>Could not save:</b> ${escapeHtml(note || 'try again later')}`, toast: 'Could not save' };
     default: return { footer: '', toast: 'Still waiting' };

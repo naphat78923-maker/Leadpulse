@@ -15,7 +15,9 @@ import {
   proposalMessage,
   stillAsProposed,
   type EnrichmentProposal,
+  type ProposalAction,
   type ProposalStatus,
+  type RejectReason,
 } from '@/utils/proposals';
 
 export interface TelegramOps {
@@ -53,7 +55,7 @@ export async function sendPendingProposals(db: SupabaseClient = supabase, tg: Te
   for (const proposal of await pendingUnsent(db)) {
     try {
       const name = await companyName(db, proposal);
-      const messageId = await tg.send(proposalMessage(proposal, name), proposalButtons(proposal.id, proposal.field));
+      const messageId = await tg.send(proposalMessage(proposal, name), proposalButtons(proposal.id, proposal.field, proposal.details));
       const { error } = await db.from('enrichment_proposals')
         .update({ telegram_message_id: messageId, sent_at: new Date().toISOString() })
         .eq('id', proposal.id).eq('status', 'pending');
@@ -66,15 +68,52 @@ export async function sendPendingProposals(db: SupabaseClient = supabase, tg: Te
   return { sent, failed };
 }
 
-async function settle(db: SupabaseClient, id: string, status: ProposalStatus, note: string | null): Promise<boolean> {
+async function settle(
+  db: SupabaseClient, id: string, status: ProposalStatus, note: string | null, reason: RejectReason | null = null,
+): Promise<boolean> {
   const { data, error } = await db.from('enrichment_proposals')
-    .update({ status, decision_note: note, decided_at: new Date().toISOString() })
+    .update({ status, decision_note: note, decided_at: new Date().toISOString(), ...(reason ? { reject_reason: reason } : {}) })
     .eq('id', id).eq('status', 'pending')
     .select('id');
   return !error && (data?.length ?? 0) === 1;
 }
 
-type Decision = { status: ProposalStatus; note: string | null; proposal: EnrichmentProposal | null; retry?: boolean };
+type Decision = {
+  status: ProposalStatus; note: string | null; proposal: EnrichmentProposal | null; retry?: boolean; reason?: RejectReason | null;
+};
+
+const domainOf = (url: string | null | undefined): string | null => {
+  try {
+    return url ? new URL(url).hostname.toLowerCase().replace(/^www\./, '') : null;
+  } catch {
+    return null;
+  }
+};
+
+/** "Same as <account>": the new lead is an account Pat already has. Its name (and website
+ *  domain) become aliases of that account, so Hermes recognises it next time. */
+async function linkToExisting(db: SupabaseClient, proposal: EnrichmentProposal): Promise<Decision> {
+  const same = proposal.details?.maybe_same;
+  if (proposal.field !== 'new_company' || !same?.id) {
+    return { status: 'pending', note: 'no account to link to', proposal, retry: true };
+  }
+  const { data: account, error } = await db.from('companies').select('id, name').eq('id', same.id).maybeSingle();
+  if (error) return { status: 'pending', note: 'could not read the account', proposal, retry: true };
+  if (!account) {
+    await settle(db, proposal.id, 'stale', 'that account no longer exists');
+    return { status: 'stale', note: 'that account no longer exists', proposal };
+  }
+  const domain = domainOf(proposal.details?.website);
+  const aliases = [
+    { company_id: same.id, kind: 'name', value: proposal.value.trim(), source: `proposal ${proposal.id}` },
+    ...(domain ? [{ company_id: same.id, kind: 'domain', value: domain, source: `proposal ${proposal.id}` }] : []),
+  ];
+  // Already-known aliases conflict on the unique index; that is fine, the link exists.
+  await db.from('company_aliases').insert(aliases);
+  const note = `same as ${(account as { name: string }).name}`;
+  const ok = await settle(db, proposal.id, 'rejected', note, 'customer');
+  return ok ? { status: 'rejected', note, proposal, reason: 'customer' } : { status: 'pending', note: 'could not record', proposal, retry: true };
+}
 
 function evidenceRow(
   proposal: EnrichmentProposal,
@@ -241,16 +280,21 @@ async function saveNewCompany(db: SupabaseClient, proposal: EnrichmentProposal):
 }
 
 /** Applies one decision. Transient failures leave the proposal pending so the tap can be retried. */
-export async function decideProposal(db: SupabaseClient, id: string, action: 'save' | 'reject'): Promise<Decision> {
+export async function decideProposal(
+  db: SupabaseClient, id: string, action: ProposalAction, reason: RejectReason | null = null,
+): Promise<Decision> {
   const { data: row, error } = await db.from('enrichment_proposals').select('*').eq('id', id).maybeSingle();
   if (error) return { status: 'pending', note: 'could not read the proposal', proposal: null, retry: true };
   if (!row) return { status: 'failed', note: 'proposal not found', proposal: null };
   const proposal = row as EnrichmentProposal;
   if (proposal.status !== 'pending') return { status: proposal.status, note: proposal.decision_note, proposal };
 
+  if (action === 'same') return linkToExisting(db, proposal);
   if (action === 'reject') {
-    const ok = await settle(db, id, 'rejected', null);
-    return ok ? { status: 'rejected', note: null, proposal } : { status: 'pending', note: 'could not record', proposal, retry: true };
+    // Skip reasons belong to new leads; other proposals are a plain "not theirs".
+    const why = proposal.field === 'new_company' ? reason : null;
+    const ok = await settle(db, id, 'rejected', null, why);
+    return ok ? { status: 'rejected', note: null, proposal, reason: why } : { status: 'pending', note: 'could not record', proposal, retry: true };
   }
 
   const target = (PROPOSAL_FIELDS as Record<string, { kind: string } | undefined>)[proposal.field];
@@ -272,14 +316,15 @@ export async function decideProposal(db: SupabaseClient, id: string, action: 'sa
  */
 export async function decideFromApp(
   id: string,
-  action: 'save' | 'reject',
+  action: ProposalAction,
   db: SupabaseClient = supabase,
   tg: TelegramOps = telegram,
+  reason: RejectReason | null = null,
 ): Promise<{ status: ProposalStatus; note: string | null; retry: boolean }> {
-  const result = await decideProposal(db, id, action);
+  const result = await decideProposal(db, id, action, reason);
   const messageId = result.proposal?.telegram_message_id;
   if (!result.retry && result.proposal && messageId) {
-    const { footer } = decisionText(result.status, result.note);
+    const { footer } = decisionText(result.status, result.note, result.reason);
     if (footer) {
       const name = await companyName(db, result.proposal);
       await tg.edit(messageId, `${proposalMessage(result.proposal, name)}\n\n${footer} (in LeadPulse)`).catch(() => undefined);
@@ -315,8 +360,8 @@ export async function handleTelegramUpdate(
     await tg.answer(query.id, 'Unknown button');
     return 'ignored: unknown button';
   }
-  const result = await decideProposal(db, parsed.id, parsed.action);
-  const { footer, toast } = decisionText(result.status, result.note);
+  const result = await decideProposal(db, parsed.id, parsed.action, parsed.reason ?? null);
+  const { footer, toast } = decisionText(result.status, result.note, result.reason);
   if (result.retry) {
     await tg.answer(query.id, `Could not ${parsed.action === 'save' ? 'save' : 'record'} — tap again`);
     return `retry: ${result.note}`;
