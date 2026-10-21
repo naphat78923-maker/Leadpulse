@@ -25,10 +25,8 @@ export default function LayaBuyerSignalsSection({
 
   return (
     <div className="mt-4 pt-4 border-t border-clay-hairline" data-testid="laya-buyer-signals">
-      <h3 className="text-sm font-semibold text-clay-ink mb-1">🧠 Laya buyer signals</h3>
-      <p className="text-[11px] text-clay-muted mb-3">
-        Verbatim buyer replies on open deals, interpreted on demand by the local Laya worker. Advisory only — never changes priority, stage, or workflow.
-      </p>
+      <h3 className="text-sm font-semibold text-clay-ink mb-1">Buyer replies</h3>
+      <p className="text-[11px] text-clay-muted mb-3">What Laya reads in each buyer&rsquo;s latest reply. It never changes the deal.</p>
       <div className="space-y-3">
         {scorable.map(deal => (
           <div key={deal.id}>

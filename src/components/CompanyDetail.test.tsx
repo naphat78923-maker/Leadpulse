@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { Company } from '@/types/crm';
 
+const provider = vi.hoisted(() => ({ deals: [] as unknown[], meetings: [] as unknown[] }));
 const crmMocks = vi.hoisted(() => ({
   updateCompany: vi.fn(async (_id: string, payload: Record<string, unknown>) => ({ ...payload })),
   getCompanyFit: vi.fn(async () => null),
@@ -12,7 +13,7 @@ vi.mock('@/lib/crm', () => crmMocks);
 vi.mock('@/components/CrmProvider', () => ({
   useCrm: () => ({
     createContact: vi.fn(), refresh: vi.fn(), deleteEntity: vi.fn(async () => undefined), addMeeting: vi.fn(),
-    meetings: [], deals: [], companies: [], accountEvents: [], accountEventsUnavailable: false,
+    meetings: provider.meetings, deals: provider.deals, companies: [], accountEvents: [], accountEventsUnavailable: false,
   }),
 }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ addToast: vi.fn() }) }));
@@ -29,6 +30,8 @@ import CompanyDetail from './CompanyDetail';
 afterEach(() => {
   cleanup();
   crmMocks.updateCompany.mockClear();
+  provider.deals = [];
+  provider.meetings = [];
 });
 
 const company = (over: Partial<Company> = {}): Company => ({
@@ -50,12 +53,69 @@ describe('CompanyDetail', () => {
     expect(crmMocks.updateCompany.mock.calls[0][1]).toMatchObject({ website: 'https://www.gateauxhouse.co.th/', address: '51/2 Soi Wat Sai' });
   });
 
-  it('asks to confirm archiving right under the header, not at the bottom', () => {
+  it('archives from the ⋯ menu and confirms right under the header, not at the bottom', () => {
     render(panel(company()));
-    fireEvent.click(screen.getByRole('button', { name: 'Archive company' }));
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Archive company' }));
     const confirm = screen.getByText('Archive this company?');
-    const logo = screen.getByTestId('logo');
-    expect(confirm.compareDocumentPosition(logo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const details = screen.getByRole('button', { name: 'Details' });
+    expect(confirm.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('leads with the next follow-up and lists open deals with a link to each', () => {
+    provider.deals = [
+      { id: 'd1', company_id: 'c1', title: 'Butter', stage: 'contacted', followup_date: '2026-10-23', next_action: 'Send price list', contact_ids: [] },
+      { id: 'd2', company_id: 'c1', title: 'Old order', stage: 'closed_won', followup_date: null, next_action: null, contact_ids: [] },
+      { id: 'd3', company_id: 'other', title: 'Not this account', stage: 'contacted', followup_date: '2026-10-22', next_action: null, contact_ids: [] },
+    ];
+    render(panel(company()));
+    expect(screen.getByText('Butter · Send price list')).toBeTruthy();
+    const link = screen.getByRole('link', { name: /Butter/ });
+    expect(link.getAttribute('href')).toBe('/deals?deal=d1');
+    expect(screen.getByText('1 open · 1 closed or parked')).toBeTruthy();
+    expect(screen.queryByText('Not this account')).toBeNull();
+  });
+
+  it('folds details, leaves empty fields out and hides the route-update lines in notes', () => {
+    render(panel(company({ website: 'https://www.gateauxhouse.co.th/', notes: 'Likes the 500g pack.\n\n[ROUTE UPDATE 2026-10-15]\nOfficial website links the LINE OA.' })));
+    expect(screen.queryByText('Likes the 500g pack.')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    expect(screen.getByText('Likes the 500g pack.')).toBeTruthy();
+    expect(screen.queryByText(/ROUTE UPDATE/)).toBeNull();
+    expect(screen.queryByText('What they make')).toBeNull();
+    expect(screen.queryByText('—')).toBeNull();
+  });
+
+  it('shows roles on people, suggests the founder as the one who decides, and saves a role', async () => {
+    const people = [
+      { id: 'k1', name: 'Janista', company_id: 'c1', identity_quality: 'named', job_title: 'Founder' },
+      { id: 'k2', name: 'Ploy', company_id: 'c1', identity_quality: 'named', job_title: 'Pastry chef' },
+    ] as never[];
+    render(<CompanyDetail company={company({ champion_contact_id: 'k2' })} onClose={vi.fn()} onSaved={vi.fn()} contacts={[]} companyContacts={people} />);
+    expect(screen.getByText('Champion')).toBeTruthy();
+    expect(screen.queryByText(/Who must say yes/)).toBeNull();
+    expect(screen.getByText('Janista is the Founder. Set as the one who decides?')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Set' }));
+    await waitFor(() => expect(crmMocks.updateCompany).toHaveBeenCalledTimes(1));
+    expect(crmMocks.updateCompany.mock.calls[0][1]).toMatchObject({ decision_maker_contact_id: 'k1', map_status: 'complete' });
+  });
+
+  it('sets a role from the ⋯ on a person', async () => {
+    const people = [{ id: 'k2', name: 'Ploy', company_id: 'c1', identity_quality: 'named', job_title: 'Pastry chef' }] as never[];
+    render(<CompanyDetail company={company()} onClose={vi.fn()} onSaved={vi.fn()} contacts={[]} companyContacts={people} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Set role for Ploy' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Blocker' }));
+    await waitFor(() => expect(crmMocks.updateCompany).toHaveBeenCalledTimes(1));
+    expect(crmMocks.updateCompany.mock.calls[0][1]).toMatchObject({ blocker_contact_id: 'k2', blocker_label: null });
+  });
+
+  it('shows sales and rewards for customers only', () => {
+    render(panel(company()));
+    expect(screen.queryByText('Sales')).toBeNull();
+    cleanup();
+    render(panel(company({ status: 'active_customer' })));
+    expect(screen.getByText('Sales')).toBeTruthy();
+    expect(screen.queryByText(/Rewards given/)).toBeNull();
   });
 
   it('discards edits only on an explicit Cancel', () => {
