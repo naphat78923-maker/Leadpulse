@@ -197,7 +197,7 @@ function Accounts() {
         onClick={() => setSelectedCompany(company.id)}
         className="flex items-center gap-3 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg p-3 cursor-pointer active:bg-clay-surface"
       >
-        <CompanyLogo src={company.logo_url} name={company.name} id={company.id} size={40} />
+        <CompanyLogo src={company.logo_url} name={company.name} id={company.id} size={44} />
         <div className="min-w-0 flex-1">
           <h4 className="text-sm font-medium text-clay-ink truncate">{company.name}</h4>
           {people ? (

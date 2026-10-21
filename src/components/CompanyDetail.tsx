@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { Company, COMPANY_STATUS_LABELS, CompanyStatus, Contact } from '@/types/crm';
-import { Building2, X, Edit2, Loader2, Check, UserPlus, Trash2, Gift, ShoppingCart, ChevronRight, Plus } from 'lucide-react';
+import { Company, COMPANY_STATUS_LABELS, CompanyStatus, Contact, STAGE_LABELS } from '@/types/crm';
+import Link from 'next/link';
+import { Briefcase, Building2, CalendarClock, X, Edit2, Loader2, Check, UserPlus, Trash2, Gift, ShoppingCart, ChevronDown, ChevronRight, Lightbulb, MoreHorizontal, Plus, Sparkles } from 'lucide-react';
 import clsx from 'clsx';
 import { useToast } from '@/components/ToastProvider';
 import { useCrm } from '@/components/CrmProvider';
@@ -10,10 +11,12 @@ import * as crm from '@/lib/crm';
 import { resizeImageToSquare, validateLogoFile } from '@/lib/image';
 import CompanyLogo from '@/components/CompanyLogo';
 import WebsiteFill from '@/components/WebsiteFill';
-import StakeholderMiniMap from '@/components/StakeholderMiniMap';
+import EntityAvatar from '@/components/EntityAvatar';
 import LayaBuyerSignalsSection from '@/components/LayaBuyerSignalsSection';
 import { FitCard, SourceChip, WaitingForYou } from '@/components/AccountProfile';
-import { sourcesFor, type CompanyFit, type EvidenceRow } from '@/utils/account-profile';
+import { ROLE_LABELS, dealLabel, fitChipLabel, nextStep, roleOf, rolePatch, suggestDecider, type PersonRole, openDeals, readableNotes, sourcesFor, type CompanyFit, type EvidenceRow } from '@/utils/account-profile';
+import LayaLeadTierBadge from '@/components/LayaLeadTierBadge';
+import { bestLeadSignal, dealsWithVerbatimBuyerReply } from '@/utils/lead-scoring';
 import type { EnrichmentProposal } from '@/utils/proposals';
 import ContactDetail from '@/components/ContactDetail';
 import InteractionThread from '@/components/InteractionThread';
@@ -25,9 +28,26 @@ import { isCompanyRoute } from '@/utils/contact-identity';
 import { businessDateKey, businessDaysBetween, isCalendarDateKey } from '@/utils/business-time';
 import { formatScheduleDate } from '@/utils/deal-schedule';
 import { deriveRetentionDueSignals, existingRetentionReferenceDate } from '@/utils/followup-policy';
+import { deriveMapStatus } from '@/utils/stakeholder-map';
 import { ACQUISITION_SOURCE_OPTIONS, acquisitionLabel, normalizeAcquisition } from '@/utils/acquisition-source';
 
 const statusOptions: CompanyStatus[] = ['prospect', 'active_customer', 'inactive', 'lost'];
+
+const ROLE_STYLE: Record<PersonRole, string> = {
+  decides: 'bg-clay-lavender/25 text-clay-ink',
+  champion: 'bg-clay-mint/30 text-clay-ink',
+  blocker: 'bg-clay-error/15 text-clay-error',
+};
+
+/** One "label · value" line in Details; only rendered when there is a value. */
+function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-2">
+      <span className="text-clay-muted">{label}</span>
+      <span className="flex flex-wrap items-center text-clay-body">{children}</span>
+    </div>
+  );
+}
 
 interface CompanyDetailProps {
   company: Company;
@@ -91,6 +111,38 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
     ?? sourceOf('contact', contact.id, 'line', contact.line)
     ?? sourceOf('contact', contact.id, 'email', contact.email)
     ?? sourceOf('contact', contact.id, 'phone', contact.phone);
+
+  // Layout state: the ⋯ menu, folded Details, long notes, and the full activity list.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [showAllActivity, setShowAllActivity] = useState(false);
+  const [roleFor, setRoleFor] = useState<string | null>(null);
+  const [roleSaving, setRoleSaving] = useState(false);
+  const [repliesOpen, setRepliesOpen] = useState(false);
+  const suggestion = suggestDecider(company, people);
+  // Roles live on people: who decides, who champions, who blocks (same fields the old map used).
+  const setRole = async (contactId: string, role: PersonRole | null) => {
+    setRoleSaving(true);
+    try {
+      await crm.updateCompany(company.id, rolePatch(company, contactId, role));
+      setRoleFor(null);
+      onSaved();
+      refresh();
+      addToast(role ? `Set as ${ROLE_LABELS[role].toLowerCase()}` : 'Role cleared');
+    } catch (err) {
+      addToast('Could not save the role: ' + (err instanceof Error ? err.message : 'error'));
+    } finally {
+      setRoleSaving(false);
+    }
+  };
+  const companyDeals = useMemo(() => deals.filter((d) => d.company_id === company.id), [deals, company.id]);
+  const liveDeals = useMemo(() => openDeals(companyDeals), [companyDeals]);
+  const step = useMemo(() => nextStep(companyDeals, today), [companyDeals, today]);
+  const leadSignal = useMemo(() => bestLeadSignal(companyDeals), [companyDeals]);
+  const buyerReplyDeals = useMemo(() => dealsWithVerbatimBuyerReply(companyDeals).length, [companyDeals]);
+  const isCustomer = company.status === 'active_customer' || company.status === 'inactive';
+  const notes = readableNotes(company.notes);
 
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -194,6 +246,7 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
     website: c.website || '',
     what_they_make: c.what_they_make || '',
     notes: c.notes || '',
+    blocker_label: c.blocker_label || '',
   });
   const [editData, setEditData] = useState(() => formFrom(company));
   // The form is copied from the account as it is NOW when editing starts. Copying it once at
@@ -217,7 +270,9 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
         ...editData,
         tags: editData.tags ? editData.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
         ...normalizeAcquisition(editData),
+        blocker_label: editData.blocker_label.trim() || null,
       };
+      Object.assign(payload, { map_status: deriveMapStatus({ ...company, ...payload }) });
       const updated = await crm.updateCompany(company.id, payload);
       setEditData(formFrom(updated));
       setEditing(false);
@@ -235,7 +290,7 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
 
   return (
     <>
-    <div className="fixed inset-0 flex items-end md:items-center justify-center z-50 p-0 md:p-4">
+    <div className="fixed inset-0 flex items-end md:items-stretch justify-center md:justify-end z-50 p-0">
       <motion.div
         className="absolute inset-0 bg-black/50"
         variants={overlayVariants}
@@ -247,7 +302,8 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
       />
       <motion.div
         className={clsx(
-          'relative bg-white dark:bg-clay-card w-full md:max-w-md md:rounded-2xl rounded-t-2xl p-6 max-h-[80vh] overflow-y-auto',
+          // Bottom sheet on a phone; a full-height side panel on desktop, so a long record needs less scrolling.
+          'relative bg-white dark:bg-clay-card w-full md:max-w-lg rounded-t-2xl md:rounded-none md:rounded-l-2xl p-6 max-h-[85vh] md:max-h-none md:h-full overflow-y-auto',
           saving ? 'opacity-80' : saved ? 'ring-2 ring-clay-success/40' : ''
         )}
         variants={panelVariants}
@@ -257,98 +313,95 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
         transition={tweenSlow}
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-4">
-          {editing ? (
-            <input
-              type="text"
-              value={editData.name}
-              onChange={e => setEditData(prev => ({ ...prev, name: e.target.value }))}
-              className="text-lg font-semibold text-clay-ink bg-transparent border-b border-clay-ink outline-none flex-1 mr-2"
-            />
-          ) : (
-            <h2 className="text-lg font-semibold text-clay-ink">{company.name}</h2>
-          )}
-          <div className="flex items-center gap-1">
-            {editing && (
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="p-2 text-clay-success active:opacity-70 transition-all disabled:opacity-50"
-                aria-label="Save company"
-              >
-                {saving ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
+        <div className="mb-4 flex items-start gap-3.5">
+          <CompanyLogo src={company.logo_url} name={company.name} id={company.id} size={64} />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2">
+              {editing ? (
+                <input
+                  type="text"
+                  value={editData.name}
+                  onChange={e => setEditData(prev => ({ ...prev, name: e.target.value }))}
+                  aria-label="Account name"
+                  className="min-w-0 flex-1 text-lg font-semibold text-clay-ink bg-transparent border-b border-clay-ink outline-none"
+                />
+              ) : (
+                <h2 className="text-lg font-semibold leading-tight text-clay-ink">{company.name}</h2>
+              )}
+              <div className="relative flex shrink-0 items-center gap-0.5">
+                {editing && (
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="p-2 text-clay-success active:opacity-70 transition-all disabled:opacity-50"
+                    aria-label="Save company"
+                  >
+                    {saving ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <span className={clsx('inline-flex transition-transform', saved && 'scale-110')}>
+                        <Check className="w-5 h-5" />
+                      </span>
+                    )}
+                  </button>
+                )}
+                {editing ? (
+                  <button onClick={cancelEditing} className="px-2 py-1.5 text-xs font-medium text-clay-muted active:opacity-70">
+                    Cancel
+                  </button>
                 ) : (
-                  <span className={clsx('inline-flex transition-transform', saved && 'scale-110')}>
-                    <Check className="w-5 h-5" />
+                  <button onClick={startEditing} className="p-2 text-clay-muted active:opacity-70" aria-label="Edit company">
+                    <Edit2 className="w-5 h-5" />
+                  </button>
+                )}
+                {!editing && (
+                  <button onClick={() => setMenuOpen((v) => !v)} className="p-2 text-clay-muted active:opacity-70" aria-label="More actions" aria-expanded={menuOpen}>
+                    <MoreHorizontal className="w-5 h-5" />
+                  </button>
+                )}
+                <button onClick={onClose} className="p-2 text-clay-muted active:opacity-70" aria-label="Close">
+                  <X className="w-5 h-5" />
+                </button>
+                {menuOpen && !editing && (
+                  <div className="absolute right-0 top-10 z-10 w-44 overflow-hidden rounded-xl border border-clay-hairline bg-white py-1 text-sm shadow-lg dark:bg-clay-card" role="menu">
+                    <label htmlFor={`logo-upload-${company.id}`} onClick={() => setMenuOpen(false)} className="flex cursor-pointer items-center gap-2 px-3 py-2 text-clay-ink hover:bg-clay-surface" role="menuitem">
+                      {logoSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Building2 className="w-4 h-4" />}
+                      {company.logo_url ? 'Replace logo' : 'Upload logo'}
+                    </label>
+                    {company.logo_url && (
+                      <button onClick={() => { setMenuOpen(false); void handleRemoveLogo(); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-clay-ink hover:bg-clay-surface" role="menuitem">
+                        <X className="w-4 h-4" /> Remove logo
+                      </button>
+                    )}
+                    <button onClick={() => { setMenuOpen(false); setConfirmArchive(true); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-clay-error hover:bg-clay-surface" role="menuitem" aria-label="Archive company">
+                      <Trash2 className="w-4 h-4" /> Archive
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+            {!editing && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                <span className="rounded bg-clay-card px-1.5 py-0.5 text-[11px] text-clay-body">{COMPANY_STATUS_LABELS[company.status]}</span>
+                {fit && (
+                  <span className={clsx('inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium', fit.fits ? 'bg-clay-lavender/20 text-clay-ink' : 'bg-clay-card text-clay-muted-soft')}>
+                    <Sparkles className="h-3 w-3" aria-hidden="true" />{fitChipLabel(fit)}
                   </span>
                 )}
-              </button>
+                <LayaLeadTierBadge signal={leadSignal} />
+                {company.tags.length > 0 && <span className="min-w-0 truncate text-[11px] text-clay-muted">{company.tags.join(', ')}</span>}
+              </div>
             )}
-            {editing ? (
-              <button onClick={cancelEditing} className="px-2 py-1.5 text-xs font-medium text-clay-muted active:opacity-70">
-                Cancel
-              </button>
-            ) : (
-              <button onClick={startEditing} className="p-2 text-clay-muted active:opacity-70" aria-label="Edit company">
-                <Edit2 className="w-5 h-5" />
-              </button>
-            )}
-            {!editing && (
-              <button onClick={() => setConfirmArchive(true)} className="p-2 text-clay-muted-soft active:opacity-70 hover:text-clay-error transition-colors" aria-label="Archive company">
-                <Trash2 className="w-5 h-5" />
-              </button>
-            )}
-            <button onClick={onClose} className="p-2 text-clay-muted active:opacity-70">
-              <X className="w-5 h-5" />
-            </button>
           </div>
+          <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoChange} className="hidden" id={`logo-upload-${company.id}`} />
         </div>
-
+        {logoError && <div className="mb-4 text-xs text-clay-error">{logoError}</div>}
           {confirmArchive && (
             <div className="mb-4 rounded-xl border border-clay-hairline bg-clay-surface p-4">
               <div className="flex gap-3"><span className="text-2xl">🗑️</span><div><p className="font-semibold text-clay-ink">Archive this company?</p><p className="text-xs text-clay-muted mt-1">{company.name} and its linked contacts will be hidden from lists. You can undo this under Recent changes on This week.</p></div></div>
               <div className="grid grid-cols-2 gap-2 mt-3"><button onClick={() => { setConfirmArchive(false); setSaving(true); deleteEntity('company', company.id, company.name).then(() => { setSaving(false); addToast('Company archived'); onClose(); }).catch(err => { setSaving(false); setError('Could not archive: ' + (err.message || 'Unknown error')); }); }} className="px-3 py-2.5 bg-clay-error text-white text-sm font-medium rounded-lg">Archive</button><button onClick={() => setConfirmArchive(false)} className="px-3 py-2.5 bg-clay-card text-clay-ink text-sm font-medium rounded-lg">Cancel</button></div>
             </div>
           )}
-
-        {/* Brand logo */}
-        <div className="flex items-center gap-3 mb-4">
-          <CompanyLogo src={company.logo_url} name={company.name} id={company.id} size={56} />
-          <div className="flex flex-col gap-1.5">
-            <input
-              ref={logoInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleLogoChange}
-              className="hidden"
-              id={`logo-upload-${company.id}`}
-            />
-            <label
-              htmlFor={`logo-upload-${company.id}`}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-clay-hairline bg-clay-surface text-xs font-medium text-clay-ink cursor-pointer active:bg-clay-card transition-colors"
-            >
-              {logoSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Building2 className="w-3.5 h-3.5" />}
-              {company.logo_url ? 'Replace logo' : 'Upload logo'}
-            </label>
-            {company.logo_url && (
-              <button
-                onClick={handleRemoveLogo}
-                disabled={logoSaving}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-clay-hairline text-xs font-medium text-clay-muted-soft active:bg-clay-surface disabled:opacity-50 transition-colors"
-              >
-                Remove
-              </button>
-            )}
-          </div>
-        </div>
-        {logoError && <div className="mb-4 text-xs text-clay-error">{logoError}</div>}
-        {!editing && <WebsiteFill company={company} companyContacts={companyContacts} onSaved={onSaved} />}
-        {fit && <FitCard fit={fit} />}
-        {!editing && (
-          <WaitingForYou proposals={waiting} onDecided={() => { setProfileVersion((v) => v + 1); onSaved(); refresh(); }} />
-        )}
-
         {saving && (
           <div className="mb-4 flex items-center gap-2 text-sm text-clay-success animate-pulse">
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -365,7 +418,8 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
           <div className="mb-4 text-sm text-clay-error">{error}</div>
         )}
 
-        <div className="space-y-3 text-sm">
+        {editing ? (
+          <div className="space-y-3 text-sm">
           <div className="text-clay-body">
             <span className="text-clay-muted">Status: </span>
             {editing ? (
@@ -515,6 +569,18 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
           </div>
 
           <div className="text-clay-body">
+            <span className="text-clay-muted">Blocker note: </span>
+            <input
+              type="text"
+              aria-label="Blocker note"
+              placeholder="Head office approves new suppliers"
+              value={editData.blocker_label}
+              onChange={e => setEditData(prev => ({ ...prev, blocker_label: e.target.value }))}
+              className="inline-block w-2/3 px-2 py-1 border border-clay-hairline rounded text-base bg-white dark:bg-clay-card"
+            />
+          </div>
+
+          <div className="text-clay-body">
             <span className="text-clay-muted">Notes:</span>
             {editing ? (
               <textarea
@@ -530,13 +596,74 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
               </div>
             )}
           </div>
+          </div>
+        ) : (
+        <>
+        {!editing && step && (
+          <div className="mb-4 flex items-center gap-3 rounded-xl bg-clay-surface p-3">
+            <CalendarClock className="h-5 w-5 shrink-0 text-clay-muted" aria-hidden="true" />
+            <div className="min-w-0 flex-1 text-sm">
+              <p className={clsx('font-medium', step.overdueDays > 0 ? 'text-clay-error' : 'text-clay-ink')}>
+                {step.overdueDays > 0
+                  ? `Follow-up ${step.overdueDays} day${step.overdueDays === 1 ? '' : 's'} overdue`
+                  : step.date === today ? 'Follow up today' : `Follow up ${formatScheduleDate(step.date)}`}
+              </p>
+              <p className="truncate text-xs text-clay-muted">{[dealLabel(step.deal.title, company.name), step.deal.next_action].filter(Boolean).join(' · ')}</p>
+            </div>
+            <button type="button" onClick={() => setLogOpen(true)} className="shrink-0 rounded-lg border border-clay-hairline bg-white px-3 py-1.5 text-xs font-medium text-clay-ink active:bg-clay-surface dark:bg-clay-card">
+              Log
+            </button>
+          </div>
+        )}
+        {!editing && (
+          <WaitingForYou proposals={waiting} onDecided={() => { setProfileVersion((v) => v + 1); onSaved(); refresh(); }} />
+        )}
 
-          {/* Laya buyer signals — on-demand scorer per open deal carrying a verbatim buyer reply */}
-          <LayaBuyerSignalsSection
-            deals={deals.filter(d => d.company_id === company.id)}
-            companyFor={() => company}
-          />
+        <div className="space-y-3 text-sm">
+          {companyDeals.length > 0 && (
+            <div className="pt-1">
+              <div className="mb-1 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-clay-ink">Deals</h3>
+                <span className="text-xs text-clay-muted">
+                  {liveDeals.length} open{companyDeals.length > liveDeals.length ? ` · ${companyDeals.length - liveDeals.length} closed or parked` : ''}
+                </span>
+              </div>
+              {liveDeals.map((deal) => (
+                <Link
+                  key={deal.id}
+                  href={`/deals?deal=${encodeURIComponent(deal.id)}`}
+                  className="-mx-2 flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-clay-body hover:bg-clay-surface"
+                >
+                  <Briefcase className="h-4 w-4 shrink-0 text-clay-muted" aria-hidden="true" />
+                  <span className="min-w-0 flex-1 truncate text-clay-ink">{dealLabel(deal.title, company.name)}</span>
+                  <span className="shrink-0 rounded bg-clay-card px-1.5 py-0.5 text-[11px]">{STAGE_LABELS[deal.stage]}</span>
+                  {deal.followup_date && <span className="shrink-0 text-xs text-clay-muted">next {formatScheduleDate(deal.followup_date.slice(0, 10))}</span>}
+                  <ChevronRight className="h-4 w-4 shrink-0 text-clay-muted-soft" aria-hidden="true" />
+                </Link>
+              ))}
+            </div>
+          )}
 
+          {/* Buyer replies: Laya's reading of each latest reply, one line until opened */}
+          {buyerReplyDeals > 0 && (
+            <div>
+              <button type="button" onClick={() => setRepliesOpen((v) => !v)} aria-expanded={repliesOpen} className="flex w-full items-center justify-between rounded-lg border border-clay-hairline px-3 py-2 text-left text-sm">
+                <span className="min-w-0 truncate">
+                  <span className="font-medium text-clay-ink">Buyer replies</span>
+                  <span className="text-clay-muted"> · {buyerReplyDeals === 1 ? '1 deal' : `${buyerReplyDeals} deals`} with a reply to read</span>
+                </span>
+                <ChevronDown className={clsx('h-4 w-4 shrink-0 text-clay-muted transition-transform', repliesOpen && 'rotate-180')} aria-hidden="true" />
+              </button>
+              {repliesOpen && (
+                <LayaBuyerSignalsSection
+                  deals={companyDeals}
+                  companyFor={() => company}
+                />
+              )}
+            </div>
+          )}
+          {isCustomer && (
+            <>
           {health && (
             <div className="mt-4 pt-4 border-t border-clay-hairline">
               <h3 className="text-sm font-semibold text-clay-ink">Customer health</h3>
@@ -556,8 +683,8 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
               )}
             </div>
           )}
-
-          {/* Rewards history (retention, read-only) */}
+            {/* Rewards history (retention, read-only): only once a reward was given */}
+            {meetings.some((m) => m.company_id === company.id && m.type === 'reward') && (
           <div className="mt-4 pt-4 border-t border-clay-hairline">
             <h3 className="text-sm font-semibold text-clay-ink flex items-center gap-1.5">
               <Gift className="w-4 h-4 text-clay-ochre" /> Rewards given
@@ -579,11 +706,11 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
               );
             })()}
           </div>
-
+            )}
           {/* Sales Section — log repeat orders without touching the deal board */}
           <div className="mt-4 pt-4 border-t border-clay-hairline">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold text-clay-ink">🛒 Sales</h3>
+              <h3 className="text-sm font-semibold text-clay-ink">Sales</h3>
               <button
                 onClick={() => setShowLogSale(!showLogSale)}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-clay-hairline bg-clay-surface text-xs font-medium text-clay-ink active:bg-clay-card transition-colors"
@@ -593,7 +720,7 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
               </button>
             </div>
             <p className="text-[11px] text-clay-muted mb-1">
-              Repeat order from an existing customer? Log it here — Buying signals pick it up instantly.
+              Log a repeat order; buying signals update right away.
             </p>
 
             {showLogSale && (
@@ -633,11 +760,8 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
               </div>
             )}
           </div>
-
-          <div className="mt-4">
-            <StakeholderMiniMap company={company} companyName={company.name} onUpdated={onSaved} />
-          </div>
-
+            </>
+          )}
           {/* Contacts Section */}
           <div className="mt-4 pt-4 border-t border-clay-hairline">
             <div className="flex items-center justify-between mb-2">
@@ -736,21 +860,36 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
               </div>
             )}
 
+            {suggestion && (
+              <div className="mb-2 flex items-center gap-2 rounded-lg border border-dashed border-clay-hairline px-3 py-2 text-sm">
+                <Lightbulb className="h-4 w-4 shrink-0 text-clay-muted" aria-hidden="true" />
+                <span className="min-w-0 flex-1 text-clay-body">{suggestion.name} is the {suggestion.job_title}. Set as the one who decides?</span>
+                <button type="button" onClick={() => void setRole(suggestion.id, 'decides')} disabled={roleSaving} className="shrink-0 rounded-lg border border-clay-hairline bg-white px-2.5 py-1 text-xs font-medium text-clay-ink disabled:opacity-60 dark:bg-clay-card">Set</button>
+              </div>
+            )}
+            {company.blocker_label?.trim() && !company.blocker_contact_id && (
+              <p className="mb-2 text-xs text-clay-muted"><span className={clsx('mr-1.5 rounded px-1.5 py-0.5 text-[10px] font-medium', ROLE_STYLE.blocker)}>Blocker</span>{company.blocker_label}</p>
+            )}
             {people.length > 0 ? (
               <div className="space-y-2">
                 {people.map((contact: Contact) => {
                   const source = contactSource(contact);
                   return (
                   <div key={contact.id} className="bg-clay-surface rounded-lg">
+                  <div className="flex items-center">
                   <button
                     type="button"
                     onClick={() => setOpenContactId(contact.id)}
                     aria-label={`Open contact: ${contact.name}`}
-                    className="flex w-full items-center gap-2 rounded-lg p-3 text-left text-sm text-clay-body hover:bg-clay-card transition-colors"
+                    className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg p-3 text-left text-sm text-clay-body hover:bg-clay-card transition-colors"
                   >
+                    <EntityAvatar kind="person" name={contact.name} id={contact.id} size={32} className="flex-shrink-0" />
                     <span className="min-w-0 flex-1">
-                      <span className="block font-medium text-clay-ink">{contact.name}</span>
-                      <span className="block text-xs text-clay-muted">{contact.job_title || contact.email || '—'}</span>
+                      <span className="flex flex-wrap items-center gap-1.5 font-medium text-clay-ink">
+                        {contact.name}
+                        {(() => { const role = roleOf(company, contact.id); return role && <span className={clsx('rounded px-1.5 py-0.5 text-[10px] font-medium', ROLE_STYLE[role])}>{ROLE_LABELS[role]}</span>; })()}
+                      </span>
+                      <span className="block text-xs text-clay-muted">{[contact.job_title || contact.email, !contact.email && !contact.phone && !contact.line ? 'no channel yet' : null].filter(Boolean).join(' · ')}</span>
                       {contact.phone && (
                         <span className="block text-xs text-clay-muted-soft">📱 {contact.phone}</span>
                       )}
@@ -758,16 +897,37 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
                         <span className="block text-xs text-clay-ochre">📱 {contact.phone_second}</span>
                       )}
                     </span>
-                    <ChevronRight className="w-4 h-4 shrink-0 text-clay-muted-soft" />
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setRoleFor((id) => (id === contact.id ? null : contact.id))}
+                    aria-label={`Set role for ${contact.name}`}
+                    aria-expanded={roleFor === contact.id}
+                    className="mr-1 shrink-0 rounded-lg p-2 text-clay-muted-soft hover:bg-clay-card"
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </button>
+                  </div>
+                  {roleFor === contact.id && (
+                    <div className="flex flex-wrap gap-1.5 px-3 pb-2.5" role="group" aria-label={`Role for ${contact.name}`}>
+                      {(['decides', 'champion', 'blocker'] as const).map((role) => (
+                        <button key={role} type="button" onClick={() => void setRole(contact.id, role)} disabled={roleSaving}
+                          aria-pressed={roleOf(company, contact.id) === role}
+                          className={clsx('rounded-md px-2 py-1 text-xs font-medium disabled:opacity-60', roleOf(company, contact.id) === role ? ROLE_STYLE[role] : 'border border-clay-hairline bg-white text-clay-ink dark:bg-clay-card')}>
+                          {ROLE_LABELS[role]}
+                        </button>
+                      ))}
+                      {roleOf(company, contact.id) && (
+                        <button type="button" onClick={() => void setRole(contact.id, null)} disabled={roleSaving} className="rounded-md px-2 py-1 text-xs text-clay-muted disabled:opacity-60">No role</button>
+                      )}
+                    </div>
+                  )}
                   {source && <div className="flex flex-wrap items-center px-3 pb-2 -mt-1.5"><SourceChip source={source} /></div>}
                   </div>
                   );
                 })}
               </div>
-            ) : (
-              <p className="text-xs text-clay-muted-soft">No named person yet. Add one above.</p>
-            )}
+            ) : null}
 
             {routes.length > 0 && (
               <div className="mt-3">
@@ -797,7 +957,6 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
               </div>
             )}
           </div>
-
           {/* Activity — every interaction with this account or its people */}
           <div className="mt-4 pt-4 border-t border-clay-hairline">
             <div className="flex items-center justify-between mb-2">
@@ -810,9 +969,66 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
                 <Plus className="w-3.5 h-3.5" /> Log interaction
               </button>
             </div>
-            <InteractionThread meetings={accountInteractions} allContacts={contacts} deals={deals} companies={companies} />
+            <InteractionThread meetings={showAllActivity ? accountInteractions : accountInteractions.slice(0, 2)} allContacts={contacts} deals={deals} companies={companies} />
+            {accountInteractions.length > 2 && (
+              <button type="button" onClick={() => setShowAllActivity((v) => !v)} className="mt-2 text-xs font-medium text-clay-muted">
+                {showAllActivity ? 'Show less' : `Show all ${accountInteractions.length}`}
+              </button>
+            )}
           </div>
+          {/* Details: folded; empty fields are left out rather than shown as "—" */}
+          <div className="mt-4 pt-4 border-t border-clay-hairline">
+            <button type="button" onClick={() => setDetailsOpen((v) => !v)} aria-expanded={detailsOpen} className="flex w-full items-center justify-between text-sm font-semibold text-clay-ink">
+              Details
+              <ChevronDown className={clsx('h-4 w-4 text-clay-muted transition-transform', detailsOpen && 'rotate-180')} aria-hidden="true" />
+            </button>
+            {detailsOpen && (
+              <div className="mt-2 space-y-2 text-sm">
+                {company.website && (
+                  <DetailRow label="Website">
+                    <span className="break-all">{company.website}</span>
+                    {(() => { const source = sourceOf('company', company.id, 'website', company.website); return source && <SourceChip source={source} />; })()}
+                  </DetailRow>
+                )}
+                {company.what_they_make && (
+                  <DetailRow label="What they make">
+                    <span>{company.what_they_make}</span>
+                    {(() => { const source = sourceOf('company', company.id, 'what_they_make', company.what_they_make); return source && <SourceChip source={source} />; })()}
+                  </DetailRow>
+                )}
+                {company.address ? (
+                  <DetailRow label="Address">
+                    <span>{company.address}</span>
+                    {(() => { const source = sourceOf('company', company.id, 'address', company.address); return source && <SourceChip source={source} />; })()}
+                  </DetailRow>
+                ) : waiting.some((p) => p.field === 'address') ? (
+                  <DetailRow label="Address"><span className="text-clay-muted">Waiting for you above</span></DetailRow>
+                ) : null}
+                {company.industry && <DetailRow label="Industry"><span>{company.industry}</span></DetailRow>}
+                {(acquisitionLabel(company) || company.lead_source) && (
+                  <DetailRow label="Source"><span>{acquisitionLabel(company) ?? company.lead_source}</span></DetailRow>
+                )}
+                {notes && (
+                  <DetailRow label="Notes">
+                    <span className="whitespace-pre-line text-xs leading-relaxed">
+                      {notesOpen || notes.length <= 180 ? notes : `${notes.slice(0, 180).trimEnd()}…`}
+                    </span>
+                    {notes.length > 180 && (
+                      <button type="button" onClick={() => setNotesOpen((v) => !v)} className="ml-1 text-xs font-medium text-clay-muted">
+                        {notesOpen ? 'less' : 'more'}
+                      </button>
+                    )}
+                  </DetailRow>
+                )}
+                {fit && <FitCard fit={fit} />}
+                <WebsiteFill company={company} companyContacts={companyContacts} onSaved={onSaved} />
+              </div>
+            )}
+          </div>
+
         </div>
+        </>
+        )}
       </motion.div>
     </div>
 
