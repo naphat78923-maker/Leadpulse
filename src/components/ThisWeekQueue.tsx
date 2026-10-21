@@ -21,7 +21,10 @@ import { buildDoNext, type DoNextItem, type DoNextKind } from '@/utils/do-next';
 import type { AttentionCandidate } from '@/utils/followup-policy';
 import { laneTimelines } from '@/utils/lane-time';
 import type { CheckInRow, ThisWeekQueue as Queue } from '@/utils/this-week-queue';
-import { checkInSplit, daysOverdue, dueByDay, groupOverdueByAge, touchesLastSevenDays } from '@/utils/this-week-stats';
+import { checkInLine, checkInSplit, daysOverdue, dueByDay, dueWeekLine, groupOverdueByAge, overdueLine, touchesLastSevenDays, touchesLine } from '@/utils/this-week-stats';
+import ClayCanvas from '@/components/clay3d/ClayCanvas';
+import type { ClaySpec } from '@/components/clay3d/scenes';
+import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion';
 
 interface ThisWeekQueueProps {
   queue: Queue;
@@ -83,6 +86,8 @@ function StatCard({
   valueClass,
   caption,
   chart,
+  scene,
+  reduceMotion,
   onClick,
   active,
   index,
@@ -93,7 +98,10 @@ function StatCard({
   value: number;
   valueClass?: string;
   caption: string;
+  /** flat chart: shown while the clay scene loads, or instead of it without WebGL */
   chart: ReactNode;
+  scene: ClaySpec;
+  reduceMotion: boolean;
   onClick: () => void;
   active?: boolean;
   index: number;
@@ -115,8 +123,10 @@ function StatCard({
         <span className="truncate">{label}</span>
       </span>
       <span className={clsx('mt-0.5 block text-2xl font-semibold leading-tight', valueClass ?? 'text-clay-ink')}>{value}</span>
-      <span className="mt-2 block h-[18px]" aria-hidden="true">{chart}</span>
-      <span className="mt-1.5 block truncate text-[11px] text-clay-muted">{caption}</span>
+      <span className="mt-0.5 block min-h-[2.8em] text-xs leading-snug text-clay-muted">{caption}</span>
+      <span className="mt-1 block h-[92px] sm:h-[104px]" aria-hidden="true">
+        <ClayCanvas spec={scene} fallback={chart} reduceMotion={reduceMotion} />
+      </span>
     </button>
   );
 }
@@ -414,6 +424,7 @@ export default function ThisWeekQueue({
   const days = useMemo(() => dueByDay(dueThisWeek, today), [dueThisWeek, today]);
   const split = useMemo(() => checkInSplit(checkIns), [checkIns]);
   const touches = useMemo(() => touchesLastSevenDays(meetings, today), [meetings, today]);
+  const reduceMotion = usePrefersReducedMotion();
 
   // Deals where the buyer spoke last, or Laya needs a call. Shown once, above the dated lists.
   const { activities = [] } = useCrm();
@@ -443,8 +454,6 @@ export default function ThisWeekQueue({
   );
 
   const isEmpty = needsReview.length + overdue.length + dueThisWeek.length + checkIns.length + needsDate.length === 0;
-  const oldGroup = ageGroups.find(g => g.id === 'over_two_weeks');
-  const tomorrow = days[1]?.items.length ?? 0;
   const tabs: { id: Tab; label: string; count: number }[] = [
     { id: 'overdue', label: 'Overdue', count: overdue.length },
     { id: 'week', label: 'This week', count: dueThisWeek.length },
@@ -506,7 +515,9 @@ export default function ThisWeekQueue({
               valueClass={overdue.length > 0 ? 'text-clay-error' : undefined}
               active={tab === 'overdue'}
               onClick={() => openTab('overdue')}
-              caption={oldGroup ? `${oldGroup.items.length} over 2 weeks` : overdue.length > 0 ? 'All under 2 weeks' : 'Nothing overdue'}
+              caption={overdueLine(overdue, today)}
+              reduceMotion={reduceMotion}
+              scene={{ kind: 'overdue', groups: (['over_two_weeks', 'last_week', 'this_week'] as const).map(id => ageGroups.find(g => g.id === id)?.items.length ?? 0) as [number, number, number] }}
               chart={
                 <SegmentBar
                   segments={['over_two_weeks', 'last_week', 'this_week'].map((id, i) => ({
@@ -523,7 +534,9 @@ export default function ThisWeekQueue({
               value={dueThisWeek.length}
               active={tab === 'week'}
               onClick={() => openTab('week')}
-              caption={days[0].items.length > 0 ? `${days[0].items.length} due today` : tomorrow > 0 ? `${tomorrow} due tomorrow` : 'None today'}
+              caption={dueWeekLine(days)}
+              reduceMotion={reduceMotion}
+              scene={{ kind: 'week', counts: days.map(d => d.items.length) }}
               chart={<WeekBars counts={days.map(d => d.items.length)} />}
             />
             <StatCard
@@ -532,7 +545,9 @@ export default function ThisWeekQueue({
               label="Check-ins"
               value={checkIns.length}
               onClick={() => document.getElementById('check-ins')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })}
-              caption={[split.at_risk && `${split.at_risk} at-risk`, split.dormant && `${split.dormant} dormant`, split.watch && `${split.watch} watch`].filter(Boolean).join(' · ') || 'All healthy'}
+              caption={checkInLine(split)}
+              reduceMotion={reduceMotion}
+              scene={{ kind: 'checkins', counts: [split.at_risk, split.dormant, split.watch, split.reorder_only, split.healthy] }}
               chart={
                 <SegmentBar
                   segments={(['at_risk', 'dormant', 'watch', 'reorder_only', 'healthy'] as const).map(key => ({ value: split[key], className: TIER[key].dot }))}
@@ -545,7 +560,9 @@ export default function ThisWeekQueue({
               label="Touches · 7 days"
               value={touches.total}
               onClick={() => openTab('week')}
-              caption={`${touches.previous} the week before`}
+              caption={touchesLine(touches, today)}
+              reduceMotion={reduceMotion}
+              scene={{ kind: 'touches', series: touches.series, previous: touches.previous }}
               chart={<Sparkline series={touches.series} />}
             />
           </div>

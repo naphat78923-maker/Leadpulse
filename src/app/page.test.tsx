@@ -122,7 +122,9 @@ describe('This week page', () => {
 
     const cards = screen.getByLabelText('This week at a glance');
     expect(cards.textContent).toMatch(/Overdue\s*1/);
-    expect(cards.textContent).toMatch(/1 over 2 weeks/);
+    expect(cards.textContent).toMatch(/1 waiting over 2 weeks\. Oldest: 20 days\./);
+    expect(cards.textContent).toMatch(/1 on \w+day\. Today is clear\./);
+    expect(cards.textContent).toMatch(/Up from 0 the week before\. Busiest: today\./);
     expect(cards.textContent).toMatch(/Due this week\s*1/);
     expect(cards.textContent).toMatch(/Check-ins\s*1/);
     expect(cards.textContent).toMatch(/Touches · 7 days\s*1/);

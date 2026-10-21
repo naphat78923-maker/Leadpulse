@@ -80,3 +80,51 @@ export function touchesLastSevenDays(meetings: readonly Pick<Meeting, 'date' | '
   }
   return { total, positive, previous, series: days.map(day => counts.get(day) ?? 0) };
 }
+
+/* ── Written lines under each card's number ───────────────────────────────── */
+
+function weekday(dateKey: string): string {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-GB', { weekday: 'long', timeZone: 'UTC' });
+}
+
+/** "11 waiting over 2 weeks. Oldest: 34 days." */
+export function overdueLine(overdue: readonly AttentionCandidate[], today: string): string {
+  if (overdue.length === 0) return 'Nothing overdue.';
+  const ages = overdue.map(item => daysOverdue(item.dueDate, today));
+  const oldest = Math.max(...ages);
+  const old = ages.filter(days => ageGroup(days) === 'over_two_weeks').length;
+  const lead = old > 0 ? `${old} waiting over 2 weeks.` : 'All under 2 weeks.';
+  return `${lead} Oldest: ${oldest} day${oldest === 1 ? '' : 's'}.`;
+}
+
+/** "1 tomorrow, 2 on Tuesday. Today is clear." */
+export function dueWeekLine(days: ReturnType<typeof dueByDay>): string {
+  const busy = days.filter(d => d.items.length > 0);
+  if (busy.length === 0) return 'Nothing due in the next 7 days.';
+  const when = (d: (typeof days)[number]) => (d.offset === 0 ? 'today' : d.offset === 1 ? 'tomorrow' : `on ${weekday(d.date)}`);
+  const parts = busy.slice(0, 2).map(d => `${d.items.length} ${when(d)}`);
+  const more = busy.length > 2 ? ', and more later' : '';
+  const clear = days[0].items.length === 0 ? ' Today is clear.' : '';
+  return `${parts.join(', ')}${more}.${clear}`;
+}
+
+/** "12 at risk, 9 to watch, 3 dormant, 2 reorders due." */
+export function checkInLine(split: ReturnType<typeof checkInSplit>): string {
+  const parts = [
+    split.at_risk && `${split.at_risk} at risk`,
+    split.watch && `${split.watch} to watch`,
+    split.dormant && `${split.dormant} dormant`,
+    split.reorder_only && `${split.reorder_only} reorder${split.reorder_only === 1 ? '' : 's'} due`,
+  ].filter(Boolean);
+  return parts.length ? `${parts.join(', ')}.` : 'Everyone is healthy.';
+}
+
+/** "Up from 2 the week before. Busiest: Thursday." */
+export function touchesLine(touches: ReturnType<typeof touchesLastSevenDays>, today: string): string {
+  if (touches.total === 0) return touches.previous ? `None yet, after ${touches.previous} the week before.` : 'No touches in the last 7 days.';
+  const trend = touches.total > touches.previous ? `Up from ${touches.previous}` : touches.total < touches.previous ? `Down from ${touches.previous}` : 'Same as';
+  const peak = Math.max(...touches.series);
+  const busiest = addDaysToDateKey(today, touches.series.indexOf(peak) - 6);
+  return `${trend} the week before. Busiest: ${busiest === today ? 'today' : weekday(busiest)}.`;
+}
