@@ -17,13 +17,13 @@ afterEach(() => cleanup());
 const desktopNav = () => within(document.querySelector('aside') as HTMLElement);
 
 describe('Sidebar', () => {
-  it('shows exactly the three pages', () => {
+  it('shows the three daily pages and Sales', () => {
     nav.pathname = '/deals';
     render(<Sidebar />);
 
     const links = desktopNav().getAllByRole('link');
-    expect(links.map((a) => a.textContent)).toEqual(['This week', 'Pipeline', 'Accounts']);
-    expect(links.map((a) => a.getAttribute('href'))).toEqual(['/', '/deals', '/companies']);
+    expect(links.map((a) => a.textContent)).toEqual(['This week', 'Pipeline', 'Accounts', 'Sales']);
+    expect(links.map((a) => a.getAttribute('href'))).toEqual(['/', '/deals', '/companies', '/sales']);
     expect(desktopNav().queryByRole('button', { name: 'More' })).toBeNull();
   });
 });
