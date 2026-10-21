@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState, useMemo } from 'react';
+import { Suspense, useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Company, COMPANY_STATUS_LABELS, Contact, Deal } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
@@ -15,7 +15,9 @@ import { bestLeadSignal, type LeadSignal } from '@/utils/lead-scoring';
 import { isCompanyRoute } from '@/utils/contact-identity';
 import { linkInText, routeContact, type LeadRoute } from '@/utils/lead-apply';
 import { useBusinessDateKey } from '@/utils/useBusinessDateKey';
-import { BadgeCheck, CircleX, Clock, Loader2, Moon, Plus, Search, Sprout, Tag, User, Users, type LucideIcon } from 'lucide-react';
+import * as crm from '@/lib/crm';
+import { fitChipLabel, type CompanyFit } from '@/utils/account-profile';
+import { BadgeCheck, CircleX, Clock, Loader2, Moon, Plus, Search, Sparkles, Sprout, Tag, User, Users, type LucideIcon } from 'lucide-react';
 import clsx from 'clsx';
 import { PageTransition } from '@/components/motion';
 
@@ -93,6 +95,24 @@ function Accounts() {
     }
     return map;
   }, [contacts]);
+
+  // Laya's saved fit grade per prospect, and proposals waiting for Pat per account. Both are
+  // extras: if either fails to load, rows simply show without that chip.
+  const [fits, setFits] = useState<Map<string, CompanyFit>>(new Map());
+  const [waitingByCompany, setWaitingByCompany] = useState<Map<string, number>>(new Map());
+  useEffect(() => {
+    let cancelled = false;
+    Promise.allSettled([crm.getCompanyFits(), crm.getPendingProposals()]).then(([fitResult, waitingResult]) => {
+      if (cancelled) return;
+      if (fitResult.status === 'fulfilled') setFits(fitResult.value);
+      if (waitingResult.status === 'fulfilled') {
+        const counts = new Map<string, number>();
+        for (const p of waitingResult.value) if (p.company_id) counts.set(p.company_id, (counts.get(p.company_id) ?? 0) + 1);
+        setWaitingByCompany(counts);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [dbCompanies]);
 
   // Deterministic Laya lead-tier rollup per company (hottest open deal).
   // No model call — safe to compute for every row on any device.
@@ -211,6 +231,26 @@ function Accounts() {
               </span>
             )}
             <LayaLeadTierBadge signal={signalByCompanyId.get(company.id) ?? null} />
+            {(() => {
+              const fit = fits.get(company.id);
+              return fit && (
+                <span
+                  title={`Laya fit: ${fit.grades.map((g) => `${g.archetype.replace(/_/g, ' ')} ${Math.round(g.noul * 100)}%`).join(' · ')}`}
+                  className={clsx(
+                    'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium',
+                    fit.fits ? 'bg-clay-lavender/20 text-clay-ink' : 'bg-clay-card text-clay-muted-soft',
+                  )}
+                >
+                  <Sparkles className="h-3 w-3" aria-hidden="true" />
+                  {fitChipLabel(fit)}
+                </span>
+              );
+            })()}
+            {(waitingByCompany.get(company.id) ?? 0) > 0 && (
+              <span className="inline-flex items-center rounded bg-clay-warning/20 px-1.5 py-0.5 text-[10px] font-medium text-clay-warning-strong">
+                {waitingByCompany.get(company.id)} to review
+              </span>
+            )}
           </div>
         </div>
       </div>

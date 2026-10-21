@@ -122,6 +122,8 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
         size: el.size,
         address: el.address,
         website: el.website,
+        // Saved by the account editor and by approved proposals; drafts and the panel read it.
+        what_they_make: el.what_they_make ?? null,
         logo_url: el.logo_url ?? null,
         notes: el.notes,
         created_at: el.created_at || new Date().toISOString(),

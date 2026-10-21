@@ -5,7 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 vi.mock('@/lib/telegram', () => ({ sendTelegramMessage: vi.fn(), editTelegramMessage: vi.fn(), answerTelegramCallback: vi.fn() }));
 
-const { decideProposal, handleTelegramUpdate, sameBusiness, sendPendingProposals } = await import('./proposals-data');
+const { decideFromApp, decideProposal, handleTelegramUpdate, sameBusiness, sendPendingProposals } = await import('./proposals-data');
 
 type Row = Record<string, unknown>;
 type Filter = (row: Row) => boolean;
@@ -247,6 +247,31 @@ describe('handleTelegramUpdate', () => {
     expect(await handleTelegramUpdate(press(`p:${PID}:s`), '8800', fakeDb(tables), ops)).toBe('save: applied');
     expect(ops.answer).toHaveBeenCalledWith('cb1', 'Saved');
     expect(ops.edit).toHaveBeenCalledWith(55, expect.stringContaining('Saved to LeadPulse'));
+  });
+});
+
+describe('decideFromApp', () => {
+  const ops = () => ({ send: vi.fn(async () => 1), edit: vi.fn(async () => undefined), answer: vi.fn(async () => undefined) });
+
+  it('saves from LeadPulse and updates the Telegram message to match', async () => {
+    tables.enrichment_proposals[0].telegram_message_id = 55;
+    const tg = ops();
+    expect(await decideFromApp(PID, 'save', fakeDb(tables), tg)).toEqual({ status: 'applied', note: null, retry: false });
+    expect(tables.companies[0].website).toBe('https://www.gateauxhouse.co.th/');
+    expect(tg.edit).toHaveBeenCalledWith(55, expect.stringContaining('Saved to LeadPulse</b> (in LeadPulse)'));
+  });
+
+  it('does not touch Telegram for a proposal that was never sent', async () => {
+    const tg = ops();
+    expect((await decideFromApp(PID, 'reject', fakeDb(tables), tg)).status).toBe('rejected');
+    expect(tg.edit).not.toHaveBeenCalled();
+  });
+
+  it('reports a retry without editing anything', async () => {
+    tables.enrichment_proposals[0].telegram_message_id = 55;
+    const tg = ops();
+    expect(await decideFromApp(PID, 'save', fakeDb(tables, { failUpdatesOn: 'companies' }), tg)).toMatchObject({ status: 'pending', retry: true });
+    expect(tg.edit).not.toHaveBeenCalled();
   });
 });
 

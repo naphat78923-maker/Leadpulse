@@ -2,6 +2,8 @@
 
 import { supabase } from './supabase';
 import { Company, Contact, Deal, Meeting } from '@/types/crm';
+import { fitFromAnswers, type CompanyFit, type EvidenceRow } from '@/utils/account-profile';
+import type { EnrichmentProposal, ProposalStatus } from '@/utils/proposals';
 
 // Soft-delete (archive) helpers — recoverable, never a hard DELETE.
 export async function softDelete(entity: 'companies' | 'contacts' | 'deals' | 'meetings', id: string) {
@@ -494,4 +496,68 @@ export async function getLatestDealJudgments(): Promise<LayaJudgmentRow[]> {
     .not('deal_id', 'is', null);
   if (error) throw error;
   return (data as LayaJudgmentRow[] | null) ?? [];
+}
+
+// ─── Account profile: Laya's fit grade, sources, and proposals waiting for Pat ───
+
+/** Laya's latest fit grade per prospect (saved by the Mac worker), keyed by company id. */
+export async function getCompanyFits(): Promise<Map<string, CompanyFit>> {
+  const { data, error } = await supabase
+    .from('laya_judgments_latest')
+    .select('company_id, status, answers, scored_at')
+    .eq('question_set', 'fit')
+    .eq('status', 'scored');
+  if (error) throw error;
+  const fits = new Map<string, CompanyFit>();
+  for (const row of (data ?? []) as Array<{ company_id: string | null; answers: Record<string, { noul?: unknown }> | null; scored_at: string }>) {
+    const fit = row.company_id ? fitFromAnswers(row.answers, row.scored_at) : null;
+    if (row.company_id && fit) fits.set(row.company_id, fit);
+  }
+  return fits;
+}
+
+/** Laya's latest fit grade for one account, or null when it has none. */
+export async function getCompanyFit(companyId: string): Promise<CompanyFit | null> {
+  const { data, error } = await supabase
+    .from('laya_judgments_latest')
+    .select('answers, scored_at, status')
+    .eq('question_set', 'fit')
+    .eq('company_id', companyId)
+    .maybeSingle();
+  if (error) throw error;
+  const row = data as { answers: Record<string, { noul?: unknown }> | null; scored_at: string; status: string } | null;
+  return row?.status === 'scored' ? fitFromAnswers(row.answers, row.scored_at) : null;
+}
+
+/** Where this account's and its contacts' saved values came from (applied sources only). */
+export async function getCompanyEvidence(companyId: string): Promise<EvidenceRow[]> {
+  const { data, error } = await supabase
+    .from('enrichment_evidence')
+    .select('entity_type, entity_id, field, value, source_url, source_tier, quote, recorded_at')
+    .eq('company_id', companyId)
+    .eq('outcome', 'applied');
+  if (error) throw error;
+  return (data ?? []) as EvidenceRow[];
+}
+
+/** Proposals still waiting for Pat: one account's, or every account's (for the list chips). */
+export async function getPendingProposals(companyId?: string): Promise<EnrichmentProposal[]> {
+  let query = supabase.from('enrichment_proposals').select('*').eq('status', 'pending').order('proposed_at', { ascending: true });
+  if (companyId) query = query.eq('company_id', companyId);
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []) as EnrichmentProposal[];
+}
+
+/** Save or reject a proposal from LeadPulse; the same rules as the Telegram buttons. */
+export async function decideProposalInApp(id: string, action: 'save' | 'reject'): Promise<{ status: ProposalStatus; note: string | null; retry: boolean }> {
+  const response = await fetch(`/api/proposals/${encodeURIComponent(id)}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action }),
+  });
+  const body = await response.json().catch(() => null) as { status?: ProposalStatus; note?: string | null; retry?: boolean; error?: string } | null;
+  // A 503 carries status 'pending' and retry: the tap can be tried again.
+  if (!body?.status) throw new Error(body?.error || `Could not ${action === 'save' ? 'save' : 'record'} (${response.status})`);
+  return { status: body.status, note: body.note ?? null, retry: Boolean(body.retry) };
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   dbdSearchUrl,
+  displayQuote,
   decisionText,
   displayUrl,
   parseProposalCallback,
@@ -108,12 +109,32 @@ describe('profile and new-lead proposals', () => {
   });
 });
 
+describe('displayQuote', () => {
+  it('reads like the page, without markdown', () => {
+    expect(displayQuote('- โรงงาน ที่อยู่ : 51/2 ซอย วัดไทร')).toBe('โรงงาน ที่อยู่ : 51/2 ซอย วัดไทร');
+    expect(displayQuote('###### Restaurateur & Co-Founder\n\n### Tao Ingudananda')).toBe('Restaurateur & Co-Founder Tao Ingudananda');
+    expect(displayQuote('Email: [hello@x.example](mailto:hello@x.example) and **bold**')).toBe('Email: hello@x.example and bold');
+    expect(displayQuote('Price 5 - 10 kg')).toBe('Price 5 - 10 kg');
+  });
+
+  it('is what Telegram shows', () => {
+    expect(proposalMessage(proposal({ field: 'address', value: 'x', quote: '- Floor 2, Room 2A' }), 'Belén')).toContain('“Floor 2, Room 2A”');
+  });
+});
+
 describe('buttons', () => {
   it('round-trips both buttons within Telegram’s 64-byte limit', () => {
     const [[save, reject]] = proposalButtons(ID);
     expect(Buffer.byteLength(save.callback_data)).toBeLessThanOrEqual(64);
     expect(parseProposalCallback(save.callback_data)).toEqual({ id: ID, action: 'save' });
     expect(parseProposalCallback(reject.callback_data)).toEqual({ id: ID, action: 'reject' });
+  });
+
+  it('labels the buttons for what Save does', () => {
+    expect(proposalButtons(ID, 'new_company')[0].map(b => b.text)).toEqual(['✅ Add', '❌ Skip']);
+    expect(proposalButtons(ID, 'decision_maker')[0].map(b => b.text)).toEqual(['✅ Save', '❌ Not right']);
+    expect(proposalButtons(ID, 'address')[0].map(b => b.text)).toEqual(['✅ Save', '❌ Not theirs']);
+    expect(parseProposalCallback(proposalButtons(ID, 'new_company')[0][0].callback_data)).toEqual({ id: ID, action: 'save' });
   });
 
   it('ignores anything else', () => {

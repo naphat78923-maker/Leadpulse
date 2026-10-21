@@ -54,6 +54,12 @@ function BuyerEvidenceProbe() {
   return <p>Buyer evidence: {String(deals[0]?.buyer_reply)}</p>;
 }
 
+function WhatTheyMakeProbe() {
+  const { companies, loading } = useCrm();
+  if (loading) return <p>Loading data</p>;
+  return <p>What they make: {String(companies[0]?.what_they_make)}</p>;
+}
+
 function AccountEventAvailabilityProbe() {
   const { accountEventsUnavailable, loading } = useCrm();
   if (loading) return <p>Loading data</p>;
@@ -130,6 +136,12 @@ describe('CrmProvider refresh lifecycle', () => {
     render(<CrmProvider><BuyerEvidenceProbe /></CrmProvider>);
 
     expect(await screen.findByText('Buyer evidence: Please send a sample quote.')).toBeTruthy();
+  });
+
+  it('keeps what an account makes, which drafts and the account panel read', async () => {
+    crmMocks.getCompanies.mockResolvedValueOnce([{ id: 'c1', name: 'Synthetic Bakery', status: 'prospect', what_they_make: 'red velvet cake' }]);
+    render(<CrmProvider><WhatTheyMakeProbe /></CrmProvider>);
+    expect(await screen.findByText('What they make: red velvet cake')).toBeTruthy();
   });
 
   it('surfaces an account-event read failure separately from an empty event history', async () => {
