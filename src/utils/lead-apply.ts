@@ -38,7 +38,8 @@ export interface MissingDetail {
   label: string;
 }
 
-const digits = (value: string | null | undefined) => (value ?? '').replace(/\D/g, '').replace(/^66/, '0');
+/** A phone number as comparable digits: '+66 81-234 5678' and '081 234 5678' are the same. */
+export const phoneDigits = (value: string | null | undefined) => (value ?? '').replace(/\D/g, '').replace(/^66/, '0');
 const same = (a: string | null | undefined, b: string) => (a ?? '').trim().toLowerCase().replace(/^@/, '') === b.trim().toLowerCase().replace(/^@/, '');
 
 /** Details the page states that the account and its contacts do not hold yet. */
@@ -51,7 +52,7 @@ export function missingDetails(
   const notes = (company.notes ?? '').toLowerCase();
   if (lead.address && !company.address?.trim()) found.push({ key: 'address', label: lead.address });
   if (lead.email && !contacts.some(c => same(c.email, lead.email!))) found.push({ key: 'email', label: lead.email });
-  if (lead.phone && !contacts.some(c => [c.phone, c.phone_second].some(p => p && digits(p) === digits(lead.phone)))) found.push({ key: 'phone', label: lead.phone });
+  if (lead.phone && !contacts.some(c => [c.phone, c.phone_second].some(p => p && phoneDigits(p) === phoneDigits(lead.phone)))) found.push({ key: 'phone', label: lead.phone });
   if (lead.line && !contacts.some(c => same(c.line, lead.line!))) found.push({ key: 'line', label: `LINE ${lead.line}` });
   if (lead.instagram && !notes.includes(lead.instagram.toLowerCase())) found.push({ key: 'instagram', label: `Instagram @${lead.instagram}` });
   if (lead.facebook && !notes.includes(lead.facebook.toLowerCase())) found.push({ key: 'facebook', label: `Facebook ${lead.facebook}` });
@@ -106,6 +107,15 @@ const hostOf = (website: string | null | undefined) => {
     return null;
   }
 };
+
+/** "Gateaux House Co., Ltd." and "gateaux house" are the same business. */
+export function sameBusiness(a: string | null | undefined, b: string): boolean {
+  const key = (v: string) => v.toLowerCase()
+    .replace(/\b(co|ltd|limited|company|plc|inc|the)\b\.?/g, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, '');
+  const x = key(a ?? '');
+  return x.length > 0 && x === key(b);
+}
 
 /** An existing account with the same name or the same website, so a capture does not duplicate it. */
 export function existingAccount<T extends Pick<Company, 'name' | 'website'>>(companies: readonly T[], name: string, website: string): T | null {
