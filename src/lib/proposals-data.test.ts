@@ -5,7 +5,9 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 vi.mock('@/lib/telegram', () => ({ sendTelegramMessage: vi.fn(), editTelegramMessage: vi.fn(), answerTelegramCallback: vi.fn() }));
 
-const { decideFromApp, decideProposal, handleTelegramUpdate, sameBusiness, sendPendingProposals } = await import('./proposals-data');
+const { decideFromApp, decideProposal, handleTelegramUpdate, sameBusiness, sendPendingProposals, setClockForTests } = await import('./proposals-data');
+// Thursday 22 Oct 2026, 10:00 in Bangkok: the next owner search is Tuesday 27 Oct.
+setClockForTests(() => new Date('2026-10-22T03:00:00Z'));
 
 type Row = Record<string, unknown>;
 type Filter = (row: Row) => boolean;
@@ -200,7 +202,7 @@ describe('decideProposal: new lead', () => {
     }));
   });
 
-  it('adds one prospect company, no deal or contact, and records where the name came from', async () => {
+  it('adds one prospect company, no contact, and records where the name came from', async () => {
     const result = await decideProposal(fakeDb(tables), LEAD, 'save');
     expect(result.status).toBe('applied');
     const added = tables.companies.find(c => c.name === 'Kind Kones Bakery')!;
@@ -209,7 +211,26 @@ describe('decideProposal: new lead', () => {
     expect(String(added.notes)).toContain('https://guide.example/vegan-bakeries-bangkok');
     expect(tables.contacts ?? []).toHaveLength(0);
     expect(tables.enrichment_evidence).toEqual([expect.objectContaining({ entity_id: added.id, company_id: added.id, field: 'name', source_tier: 'press' })]);
-    expect(result.note).toBe(`company ${added.id}`);
+    expect(result.note).toBe(`company ${added.id}; deal ${tables.deals[0].id}`);
+  });
+
+  it('starts it with a Research deal due on the next owner-search day, so it is on This week and researched', async () => {
+    const result = await decideProposal(fakeDb(tables), LEAD, 'save');
+    const added = tables.companies.find(c => c.name === 'Kind Kones Bakery')!;
+    expect(tables.deals).toEqual([expect.objectContaining({
+      title: 'Kind Kones Bakery — Butter', client: 'Kind Kones Bakery', company_id: added.id, stage: 'research',
+      workflow_action: 'outreach', priority: 'high', followup_date: '2026-10-27',
+      next_action: 'Find the owner, then send a first message',
+    })]);
+    expect(result.followup).toBe('2026-10-27');
+  });
+
+  it('keeps the account when the deal cannot be saved, and says so', async () => {
+    const result = await decideProposal(fakeDb(tables, { failInsertsOn: 'deals' }), LEAD, 'save');
+    expect(result.status).toBe('applied');
+    expect(result.note).toContain('no deal yet: add one from Pipeline');
+    expect(result.followup).toBeNull();
+    expect(tables.companies.some(c => c.name === 'Kind Kones Bakery')).toBe(true);
   });
 
   it('never adds a business that is already in LeadPulse', async () => {

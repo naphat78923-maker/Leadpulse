@@ -3,6 +3,8 @@
 // with a button. Loading, sending and saving live in lib/proposals-data.ts; the buttons
 // arrive at app/api/telegram/webhook.
 
+import { FIT_THRESHOLD } from './prospectFit.ts';
+
 export type ProposalField = 'website' | 'decision_maker' | 'what_they_make' | 'address' | 'new_company';
 export type ProposalStatus = 'pending' | 'applied' | 'rejected' | 'stale' | 'failed';
 export type ProposalAction = 'save' | 'reject' | 'same';
@@ -230,9 +232,17 @@ export function stillAsProposed(proposal: Pick<EnrichmentProposal, 'current_valu
 }
 
 /** The line added under a decided proposal, and the toast shown on the tap. */
-export function decisionText(status: ProposalStatus, note?: string | null, reason?: RejectReason | null): { footer: string; toast: string } {
+export function decisionText(
+  status: ProposalStatus, note?: string | null, reason?: RejectReason | null, followup?: string | null,
+): { footer: string; toast: string } {
   switch (status) {
-    case 'applied': return { footer: '✅ <b>Saved to LeadPulse</b>', toast: 'Saved' };
+    case 'applied':
+      // A new lead: say when it comes back, so Pat knows it isn't lost.
+      if (followup) {
+        const day = dayLabel(followup);
+        return { footer: `✅ <b>Added to LeadPulse.</b> Owner search ${day}, then it's on This week.`, toast: `Added · on This week ${day}` };
+      }
+      return { footer: '✅ <b>Saved to LeadPulse</b>', toast: 'Saved' };
     case 'rejected':
       if (note?.startsWith('same as ')) return { footer: `🔗 <b>Linked:</b> ${escapeHtml(note)}`, toast: 'Linked to the account' };
       return reason
@@ -242,4 +252,48 @@ export function decisionText(status: ProposalStatus, note?: string | null, reaso
     case 'failed': return { footer: `⚠️ <b>Could not save:</b> ${escapeHtml(note || 'try again later')}`, toast: 'Could not save' };
     default: return { footer: '', toast: 'Still waiting' };
   }
+}
+
+/* ── A new lead's first step ──────────────────────────────────────────────── */
+
+/** Hermes searches for owners on Tuesdays and Thursdays (07:00 Bangkok, cron 5f4badc292f5). */
+const OWNER_SEARCH_WEEKDAYS = [2, 4];
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const utc = (key: string) => { const [y, m, d] = key.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)); };
+
+/** '2026-10-27' → 'Tue 27 Oct'. */
+export function dayLabel(key: string): string {
+  const d = utc(key);
+  return `${WEEKDAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
+}
+
+/** The next owner-search day after `today` (a lead approved on a search day waits for the next one). */
+export function nextOwnerSearch(today: string): string {
+  const d = utc(today);
+  do d.setUTCDate(d.getUTCDate() + 1); while (!OWNER_SEARCH_WEEKDAYS.includes(d.getUTCDay()));
+  return d.toISOString().slice(0, 10);
+}
+
+export const NEW_LEAD_NEXT_ACTION = 'Find the owner, then send a first message';
+
+/**
+ * The Research deal an approved new lead starts with. It puts the lead on This week and in
+ * Hermes's owner search (which only looks at accounts with an open deal).
+ */
+export function newLeadDeal(companyId: string, name: string, fitNoul: number | null | undefined, today: string) {
+  return {
+    title: `${name} — Butter`,
+    client: name,
+    company_id: companyId,
+    product: 'Butter',
+    stage: 'research',
+    workflow_action: 'outreach',
+    priority: typeof fitNoul === 'number' && fitNoul >= FIT_THRESHOLD ? 'high' : 'medium',
+    next_action: NEW_LEAD_NEXT_ACTION,
+    followup_date: nextOwnerSearch(today),
+    currency: 'THB',
+    contact_ids: [] as string[],
+  };
 }
