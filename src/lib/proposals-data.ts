@@ -10,6 +10,7 @@ import {
   PROPOSALS_PER_SEND,
   isCompanyField,
   decisionText,
+  newLeadDeal,
   parseProposalCallback,
   proposalButtons,
   proposalMessage,
@@ -19,6 +20,7 @@ import {
   type ProposalStatus,
   type RejectReason,
 } from '@/utils/proposals';
+import { businessDateKey } from '@/utils/business-time';
 
 export interface TelegramOps {
   send: (html: string, buttons?: InlineButton[][]) => Promise<number>;
@@ -27,6 +29,10 @@ export interface TelegramOps {
 }
 
 const telegram: TelegramOps = { send: sendTelegramMessage, edit: editTelegramMessage, answer: answerTelegramCallback };
+
+/** The moment a decision is made; tests pin it. */
+let today = () => new Date();
+export function setClockForTests(clock: () => Date) { today = clock; }
 
 /** The account a proposal is about; a new lead is named by the proposal itself. */
 async function companyName(db: SupabaseClient, proposal: EnrichmentProposal): Promise<string> {
@@ -80,6 +86,8 @@ async function settle(
 
 type Decision = {
   status: ProposalStatus; note: string | null; proposal: EnrichmentProposal | null; retry?: boolean; reason?: RejectReason | null;
+  /** a new lead's first follow-up date, when its Research deal was created */
+  followup?: string | null;
 };
 
 const domainOf = (url: string | null | undefined): string | null => {
@@ -275,8 +283,20 @@ async function saveNewCompany(db: SupabaseClient, proposal: EnrichmentProposal):
   await db.from('enrichment_evidence').insert(
     evidenceRow(proposal, { type: 'company', id: newId, companyId: newId }, 'name', company.name),
   );
-  await settle(db, id, 'applied', `company ${newId}`);
-  return { status: 'applied', note: `company ${newId}`, proposal };
+
+  // Its first step: a Research deal puts it on This week and in Hermes's owner search. The
+  // account is already saved, so a failed deal is reported, not retried as a new account.
+  const deal = newLeadDeal(newId, company.name, d.fit_noul, businessDateKey(today()));
+  const { data: dealRows, error: dealError } = await db.from('deals').insert(deal).select('id');
+  const dealId = (dealRows as Array<{ id: string }> | null)?.[0]?.id;
+  const { data: dealBack } = dealId && !dealError
+    ? await db.from('deals').select('id, company_id, followup_date').eq('id', dealId).maybeSingle()
+    : { data: null };
+  const dealOk = (dealBack as { company_id?: string; followup_date?: string } | null)?.company_id === newId
+    && (dealBack as { followup_date?: string }).followup_date === deal.followup_date;
+  const note = dealOk ? `company ${newId}; deal ${dealId}` : `company ${newId}; no deal yet: add one from Pipeline`;
+  await settle(db, id, 'applied', note);
+  return { status: 'applied', note, proposal, followup: dealOk ? deal.followup_date : null };
 }
 
 /** Applies one decision. Transient failures leave the proposal pending so the tap can be retried. */
@@ -324,7 +344,7 @@ export async function decideFromApp(
   const result = await decideProposal(db, id, action, reason);
   const messageId = result.proposal?.telegram_message_id;
   if (!result.retry && result.proposal && messageId) {
-    const { footer } = decisionText(result.status, result.note, result.reason);
+    const { footer } = decisionText(result.status, result.note, result.reason, result.followup);
     if (footer) {
       const name = await companyName(db, result.proposal);
       await tg.edit(messageId, `${proposalMessage(result.proposal, name)}\n\n${footer} (in LeadPulse)`).catch(() => undefined);
@@ -361,7 +381,7 @@ export async function handleTelegramUpdate(
     return 'ignored: unknown button';
   }
   const result = await decideProposal(db, parsed.id, parsed.action, parsed.reason ?? null);
-  const { footer, toast } = decisionText(result.status, result.note, result.reason);
+  const { footer, toast } = decisionText(result.status, result.note, result.reason, result.followup);
   if (result.retry) {
     await tg.answer(query.id, `Could not ${parsed.action === 'save' ? 'save' : 'record'} — tap again`);
     return `retry: ${result.note}`;

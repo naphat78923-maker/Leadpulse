@@ -9,6 +9,9 @@ import {
   proposalMessage,
   stillAsProposed,
   type EnrichmentProposal,
+  dayLabel,
+  newLeadDeal,
+  nextOwnerSearch,
 } from './proposals';
 
 const ID = '3f1c2b4a-5d6e-4f70-8a9b-0c1d2e3f4a5b';
@@ -188,7 +191,27 @@ describe('displayUrl / decisionText', () => {
 
   it('says plainly what happened', () => {
     expect(decisionText('applied').footer).toContain('Saved to LeadPulse');
+    expect(decisionText('applied', 'company c; deal d', null, '2026-10-27')).toEqual({
+      footer: "✅ <b>Added to LeadPulse.</b> Owner search Tue 27 Oct, then it's on This week.",
+      toast: 'Added · on This week Tue 27 Oct',
+    });
     expect(decisionText('rejected').footer).toContain('Not saved');
     expect(decisionText('stale', 'website is now https://x.example').footer).toContain('website is now https://x.example');
+  });
+});
+
+describe('a new lead’s first step', () => {
+  it('waits for the next Tuesday or Thursday owner search', () => {
+    expect(nextOwnerSearch('2026-10-19')).toBe('2026-10-20'); // Mon → Tue
+    expect(nextOwnerSearch('2026-10-20')).toBe('2026-10-22'); // Tue (after the run) → Thu
+    expect(nextOwnerSearch('2026-10-22')).toBe('2026-10-27'); // Thu → next Tue
+    expect(nextOwnerSearch('2026-10-24')).toBe('2026-10-27'); // Sat → Tue
+    expect(dayLabel('2026-10-27')).toBe('Tue 27 Oct');
+  });
+
+  it('is a Research deal, high priority only when Laya judged a fit', () => {
+    expect(newLeadDeal('c1', 'Larna House', 0.12, '2026-10-22')).toMatchObject({ title: 'Larna House — Butter', stage: 'research', priority: 'medium', followup_date: '2026-10-27' });
+    expect(newLeadDeal('c1', 'Larna House', 0.81, '2026-10-22').priority).toBe('high');
+    expect(newLeadDeal('c1', 'Larna House', undefined, '2026-10-22').priority).toBe('medium');
   });
 });
