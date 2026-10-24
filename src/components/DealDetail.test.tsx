@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { Deal } from '@/types/crm';
 import { localDateKey } from '@/utils/deal-board';
+import { addDaysToDateKey } from '@/utils/deal-workflow';
+import { LANE_PLAYBOOKS } from '@/utils/lane-playbook';
 
 const crmMocks = vi.hoisted(() => ({
   updateDeal: vi.fn(),
@@ -320,4 +322,78 @@ describe('DealDetail cadence', () => {
   });
 });
 
+});
+
+describe('DealDetail lane playbooks', () => {
+  beforeEach(() => {
+    crmMocks.updateDealIfUnchanged.mockReset().mockResolvedValue(deal);
+    addToast.mockReset();
+    logActivity.mockReset();
+  });
+
+  afterEach(cleanup);
+
+  const editLane = (target: Deal) => {
+    render(<DealDetail deal={target} onClose={vi.fn()} onSaved={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit deal' }));
+  };
+  const field = (label: string) => screen.getByLabelText(label) as HTMLInputElement;
+  const dateField = () => document.querySelector('input[type="date"]') as HTMLInputElement;
+
+  it('fills the lane\'s date and next action when the deal has no date, and saves them with the move', async () => {
+    editLane({ ...deal, followup_date: null });
+    fireEvent.change(screen.getByLabelText('Action lane'), { target: { value: 'reply' } });
+
+    const expected = addDaysToDateKey(localDateKey(), LANE_PLAYBOOKS.reply!.days);
+    expect(dateField().value).toBe(expected);
+    expect(screen.getByText('+2 days · Waiting on reply default')).toBeTruthy();
+    expect(field('Next action').value).toBe(LANE_PLAYBOOKS.reply!.nextAction);
+    expect(screen.getByText(`Replaces: ${deal.next_action}`)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save deal' }));
+    await waitFor(() => expect(crmMocks.updateDealIfUnchanged).toHaveBeenCalledTimes(1));
+    const [, , payload] = crmMocks.updateDealIfUnchanged.mock.calls[0];
+    expect(payload).toMatchObject({
+      workflow_action: 'reply',
+      followup_date: expected,
+      next_action: LANE_PLAYBOOKS.reply!.nextAction,
+    });
+  });
+
+  it('keeps a date already on the deal and offers the default instead', async () => {
+    editLane({ ...deal, followup_date: '2099-01-15' });
+    fireEvent.change(screen.getByLabelText('Action lane'), { target: { value: 'sample' } });
+
+    expect(dateField().value).toBe('2099-01-15');
+    expect(screen.getByText(/The deal's date is kept/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Sample status'), { target: { value: 'sent' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save deal' }));
+
+    await waitFor(() => expect(crmMocks.updateDealIfUnchanged).toHaveBeenCalledTimes(1));
+    const [, , payload] = crmMocks.updateDealIfUnchanged.mock.calls[0];
+    expect('followup_date' in payload).toBe(false);
+    expect(payload.next_action).toBe(LANE_PLAYBOOKS.sample!.nextAction);
+  });
+
+  it('takes the defaults back out when the lane goes back to the deal\'s own', () => {
+    editLane({ ...deal, followup_date: null });
+    fireEvent.change(screen.getByLabelText('Action lane'), { target: { value: 'reply' } });
+    fireEvent.change(screen.getByLabelText('Action lane'), { target: { value: 'outreach' } });
+
+    expect(dateField().value).toBe('');
+    expect(field('Next action').value).toBe(deal.next_action);
+    fireEvent.click(screen.getByRole('button', { name: 'Save deal' }));
+    expect(crmMocks.updateDealIfUnchanged).not.toHaveBeenCalled();
+  });
+
+  it('swaps one lane\'s defaults for another, but never what Pat typed', () => {
+    editLane({ ...deal, followup_date: null });
+    fireEvent.change(field('Next action'), { target: { value: 'Call the chef on Monday' } });
+    fireEvent.change(screen.getByLabelText('Action lane'), { target: { value: 'reply' } });
+    expect(field('Next action').value).toBe('Call the chef on Monday');
+
+    fireEvent.change(screen.getByLabelText('Action lane'), { target: { value: 'reschedule' } });
+    expect(dateField().value).toBe(addDaysToDateKey(localDateKey(), LANE_PLAYBOOKS.reschedule!.days));
+    expect(field('Next action').value).toBe('Call the chef on Monday');
+  });
 });
