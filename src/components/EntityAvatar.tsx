@@ -56,7 +56,7 @@ export default function EntityAvatar({
   const seed = (id && String(id).trim()) || name.trim() || 'entity';
   const accent = accentFromSeed(seed);
   const palette = CLAY_ACCENT_STYLE[accent];
-  const mark = (initialsProp?.trim() || entityInitials(name)).slice(0, 2);
+  const mark = (initialsProp?.trim() || entityInitials(name, kind)).slice(0, 2);
   const radius = maskRadius(kind);
   const fontSize = Math.max(10, Math.round(size * (mark.length > 1 ? 0.34 : 0.4)));
   const label = kind === 'org' ? `${name} logo` : name;
