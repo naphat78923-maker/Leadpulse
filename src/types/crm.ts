@@ -36,6 +36,8 @@ export interface Company {
   blocker_contact_id?: string | null;
   blocker_label?: string | null;
   map_status?: 'unknown' | 'partial' | 'complete';
+  /** a branch points at its main account ("Branch of" in Possible duplicates); null = none */
+  parent_company_id?: string | null;
 }
 
 // ─── Contacts ───

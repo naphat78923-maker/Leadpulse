@@ -4,7 +4,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef } f
 import { Company, Contact, Deal, Meeting } from '@/types/crm';
 import * as crm from '@/lib/crm';
 
-export type ActivityType = 'quick_action' | 'edit' | 'create' | 'delete' | 'restore';
+export type ActivityType = 'quick_action' | 'edit' | 'create' | 'delete' | 'restore' | 'merge';
 
 export interface ActivityEntry {
   id: string;
@@ -37,7 +37,8 @@ interface CrmContextType {
   deleteEntity: (entity: ActivityEntry['entity'], id: string, label: string) => Promise<void>;
   restoreEntity: (entity: ActivityEntry['entity'], id: string) => Promise<void>;
   activities: ActivityEntry[];
-  logActivity: (entry: Omit<ActivityEntry, 'id' | 'timestamp'>) => void;
+  /** Returns an id that undoActivity accepts, before and after the entry is saved. */
+  logActivity: (entry: Omit<ActivityEntry, 'id' | 'timestamp'>) => string;
   markActivityApplied: (id: string) => void;
   undoActivity: (id: string) => Promise<boolean>;
 }
@@ -59,7 +60,7 @@ const CrmContext = createContext<CrmContextType>({
   deleteEntity: async () => {},
   restoreEntity: async () => {},
   activities: [],
-  logActivity: () => {},
+  logActivity: () => '',
   markActivityApplied: () => {},
   undoActivity: async () => false,
 });
@@ -84,6 +85,11 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
   const [activities, setActivities] = useState<ActivityEntry[]>([]);
   const initialized = useRef(false);
   const hasCompletedInitialLoad = useRef(false);
+  // A toast's Undo keeps the id logActivity returned and runs after later renders: undo reads
+  // the current entries, and a saved entry is found by the local id it started with.
+  const activitiesRef = useRef<ActivityEntry[]>([]);
+  const savedIds = useRef(new Map<string, string>());
+  useEffect(() => { activitiesRef.current = activities; }, [activities]);
 
   const refresh = useCallback(async () => {
     // Only the first load blocks the page. Background refreshes must keep open
@@ -135,6 +141,7 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
         blocker_contact_id: el.blocker_contact_id ?? null,
         blocker_label: el.blocker_label ?? null,
         map_status: el.map_status ?? 'unknown',
+        parent_company_id: el.parent_company_id ?? null,
       })) as any);
 
       setContacts(mContacts.map((el: any) => ({
@@ -247,23 +254,31 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
       description: entry.description || null,
       undo_payload: entry.undoPayload || null,
     }).then((saved: any) => {
+      savedIds.current.set(localId, saved.id);
       setActivities(prev => prev.map(a => a.id === localId ? { ...a, id: saved.id } : a));
     }).catch((err: any) => {
       console.error('Failed to persist activity event:', err);
     });
+    return localId;
   }, []);
 
   const markActivityApplied = useCallback((id: string) => {
     setActivities(prev => prev.map(a => a.id === id ? { ...a, applied: true } : a));
   }, []);
 
-  const undoActivity = useCallback(async (id: string) => {
-    const activity = activities.find(a => a.id === id);
+  const undoActivity = useCallback(async (requestedId: string) => {
+    // Right after the save the entry may still carry its local id, or already the saved one.
+    const id = savedIds.current.get(requestedId) ?? requestedId;
+    const isEntry = (a: ActivityEntry) => a.id === id || a.id === requestedId;
+    const activity = activitiesRef.current.find(isEntry);
     if (!activity?.undoPayload || activity.applied === false) return false;
 
     try {
       const table = TABLE_FOR[activity.entity];
-      if (activity.type === 'delete') {
+      if (activity.type === 'merge') {
+        // Undo a merge = move everything back and restore the archived account.
+        await crm.unmergeCompanies(activity.undoPayload.merge_id);
+      } else if (activity.type === 'delete') {
         // Undo a deletion = restore the archived row.
         await crm.restoreEntity(table, activity.entityId!);
       } else if (activity.type === 'create') {
@@ -271,8 +286,10 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
         await crm.softDelete(table, activity.entityId!);
       } else if (activity.entity === 'deal' && activity.entityId) {
         await crm.updateDeal(activity.entityId, activity.undoPayload);
+      } else if (activity.entity === 'company' && activity.entityId) {
+        await crm.updateCompany(activity.entityId, activity.undoPayload);
       }
-      setActivities(prev => prev.map(a => a.id === id ? { ...a, applied: false } : a));
+      setActivities(prev => prev.map(a => isEntry(a) ? { ...a, applied: false } : a));
       if (/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(id)) {
         await crm.updateActivityEvent(id, { applied: false } as any).catch(() => {});
       }
@@ -282,7 +299,7 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
       console.error('Undo activity failed:', err);
       return false;
     }
-  }, [activities, refresh]);
+  }, [refresh]);
 
   useEffect(() => {
     if (!initialized.current) {

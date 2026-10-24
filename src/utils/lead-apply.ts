@@ -94,7 +94,8 @@ export function routeContact(companyId: string, companyName: string, route: Lead
   };
 }
 
-const hostOf = (website: string | null | undefined) => {
+/** A website's host without www; a social profile keeps its path. */
+export const hostOf = (website: string | null | undefined) => {
   const value = (website ?? '').trim();
   if (!value) return null;
   try {

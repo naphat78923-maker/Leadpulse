@@ -10,6 +10,7 @@ const profile = vi.hoisted(() => ({ fits: new Map<string, unknown>(), waiting: [
 vi.mock('@/lib/crm', () => ({
   getCompanyFits: async () => profile.fits,
   getPendingProposals: async () => profile.waiting,
+  getDuplicateDismissals: async () => new Set<string>(),
 }));
 vi.mock('next/navigation', () => ({ useSearchParams: () => query.params }));
 const modal = vi.hoisted(() => ({ props: {} as Record<string, any> }));
@@ -18,10 +19,11 @@ vi.mock('@/components/CompanyLogo', () => ({ default: () => null }));
 vi.mock('@/components/EntityAvatar', () => ({ default: () => null }));
 vi.mock('@/components/LayaLeadTierBadge', () => ({ default: () => null }));
 vi.mock('@/components/CompanyDetail', () => ({
-  default: ({ company, companyContacts, onClose }: { company: Company; companyContacts: Contact[]; onClose: () => void }) => (
+  default: ({ company, companyContacts, onClose, onOpenCompany }: { company: Company; companyContacts: Contact[]; onClose: () => void; onOpenCompany: (id: string) => void }) => (
     <div data-testid="company-detail">
       {company.name} · {companyContacts.length} people
       <button onClick={onClose}>Close account</button>
+      <button onClick={() => onOpenCompany('c1')}>Open main account</button>
     </div>
   ),
 }));
@@ -75,6 +77,22 @@ describe('Accounts page', () => {
     expect(screen.getByText('1 to review')).toBeTruthy();
   });
 
+
+  it('shows possible duplicates above the list, opens one, and steps aside while searching', async () => {
+    setCrm();
+    crm.value = { ...(crm.value as object), companies: [company('c1', 'Veganerie'), company('c2', 'Veganerie Corporation Co., Ltd.')] };
+    render(<AccountsPage />);
+
+    expect(await screen.findByText('Possible duplicates')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Open Veganerie Corporation Co., Ltd.' }));
+    expect(screen.getByTestId('company-detail').textContent).toContain('Veganerie Corporation Co., Ltd.');
+    // A branch's panel opens its main account in the same place.
+    fireEvent.click(screen.getByRole('button', { name: 'Open main account' }));
+    expect(screen.getByTestId('company-detail').textContent).toContain('Veganerie · ');
+
+    fireEvent.change(screen.getByPlaceholderText(/search accounts or people/i), { target: { value: 'vegan' } });
+    expect(screen.queryByText('Possible duplicates')).toBeNull();
+  });
 
   it('finds an account by one of its people and names the match', () => {
     setCrm();

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { Company } from '@/types/crm';
 
-const provider = vi.hoisted(() => ({ deals: [] as unknown[], meetings: [] as unknown[] }));
+const provider = vi.hoisted(() => ({ deals: [] as unknown[], meetings: [] as unknown[], companies: [] as unknown[] }));
 const crmMocks = vi.hoisted(() => ({
   updateCompany: vi.fn(async (_id: string, payload: Record<string, unknown>) => ({ ...payload })),
   getCompanyFit: vi.fn(async () => null),
@@ -13,7 +13,7 @@ vi.mock('@/lib/crm', () => crmMocks);
 vi.mock('@/components/CrmProvider', () => ({
   useCrm: () => ({
     createContact: vi.fn(), refresh: vi.fn(), deleteEntity: vi.fn(async () => undefined), addMeeting: vi.fn(),
-    meetings: provider.meetings, deals: provider.deals, companies: [], accountEvents: [], accountEventsUnavailable: false,
+    meetings: provider.meetings, deals: provider.deals, companies: provider.companies, accountEvents: [], accountEventsUnavailable: false,
   }),
 }));
 vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ addToast: vi.fn() }) }));
@@ -32,6 +32,7 @@ afterEach(() => {
   crmMocks.updateCompany.mockClear();
   provider.deals = [];
   provider.meetings = [];
+  provider.companies = [];
 });
 
 const company = (over: Partial<Company> = {}): Company => ({
@@ -51,6 +52,22 @@ describe('CompanyDetail', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save company' }));
     await waitFor(() => expect(crmMocks.updateCompany).toHaveBeenCalledTimes(1));
     expect(crmMocks.updateCompany.mock.calls[0][1]).toMatchObject({ website: 'https://www.gateauxhouse.co.th/', address: '51/2 Soi Wat Sai' });
+  });
+
+  it('shows the main account of a branch, and the branches of a main account, each opening in place', () => {
+    const main = company({ id: 'b1', name: 'Broccoli Revolution' });
+    const branch = company({ id: 'b2', name: 'Broccoli Revolution - Sukhumvit Rd', parent_company_id: 'b1' });
+    provider.companies = [main, branch];
+    const onOpenCompany = vi.fn();
+    const view = render(<CompanyDetail company={branch} onClose={vi.fn()} onSaved={vi.fn()} contacts={[]} companyContacts={[]} onOpenCompany={onOpenCompany} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Branch of Broccoli Revolution' }));
+    expect(onOpenCompany).toHaveBeenCalledWith('b1');
+
+    view.rerender(<CompanyDetail company={main} onClose={vi.fn()} onSaved={vi.fn()} contacts={[]} companyContacts={[]} onOpenCompany={onOpenCompany} />);
+    expect(screen.getByText('1 branch:')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Sukhumvit Rd' }));
+    expect(onOpenCompany).toHaveBeenCalledWith('b2');
+    expect(screen.queryByText(/Branch of/)).toBeNull();
   });
 
   it('archives from the ⋯ menu and confirms right under the header, not at the bottom', () => {
