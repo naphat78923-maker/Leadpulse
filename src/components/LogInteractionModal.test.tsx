@@ -15,6 +15,9 @@ vi.mock('@/components/CrmProvider', () => ({
 }));
 
 import LogInteractionModal from './LogInteractionModal';
+import { localDateKey } from '@/utils/deal-board';
+import { addDaysToDateKey } from '@/utils/deal-workflow';
+import { LANE_PLAYBOOKS } from '@/utils/lane-playbook';
 
 const deal: Deal = {
   id: 'deal-1',
@@ -651,6 +654,94 @@ describe('LogInteractionModal next action continuation', () => {
   });
 });
 
+describe('LogInteractionModal lane playbooks', () => {
+  beforeEach(() => {
+    crmMocks.updateDealIfUnchanged.mockReset().mockResolvedValue(deal);
+    refresh.mockReset().mockResolvedValue(undefined);
+    logActivity.mockReset();
+  });
+
+  afterEach(cleanup);
+
+  const renderFor = (target: Deal) => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    render(
+      <LogInteractionModal isOpen onClose={onClose} onSave={onSave} deals={[target]} contacts={[]} companies={[]} selectedDealId={target.id} />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /More: move lane/ }));
+    return { onSave, onClose };
+  };
+  const nextActionField = () => screen.getByLabelText('Next action on this deal') as HTMLInputElement;
+
+  it('fills the lane\'s date and next action on a deal with no date, and saves them with the move', async () => {
+    const { onClose } = renderFor({ ...deal, followup_date: null });
+    fireEvent.click(screen.getByRole('radio', { name: /Log outreach and wait for reply/i }));
+
+    const expected = addDaysToDateKey(localDateKey(), LANE_PLAYBOOKS.reply!.days);
+    expect((screen.getByLabelText('Next follow-up date') as HTMLInputElement).value).toBe(expected);
+    expect(screen.getByText(/\+2 days · Waiting on reply default/)).toBeTruthy();
+    expect(nextActionField().value).toBe(LANE_PLAYBOOKS.reply!.nextAction);
+    // A date is chosen, so the "no follow-up date" prompt is gone.
+    expect(screen.queryByRole('button', { name: /^Set \+3 days$/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    const [, , updates] = crmMocks.updateDealIfUnchanged.mock.calls[0];
+    expect(updates).toMatchObject({ workflow_action: 'reply', followup_date: expected, next_action: LANE_PLAYBOOKS.reply!.nextAction });
+  });
+
+  it('keeps a follow-up date already on the deal', async () => {
+    const { onClose } = renderFor({ ...deal, followup_date: '2099-01-15' });
+    fireEvent.click(screen.getByRole('radio', { name: /Log outreach and wait for reply/i }));
+
+    expect(screen.getByRole('radio', { name: 'Keep' }).getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    const [, , updates] = crmMocks.updateDealIfUnchanged.mock.calls[0];
+    expect('followup_date' in updates).toBe(false);
+    expect(updates.next_action).toBe(LANE_PLAYBOOKS.reply!.nextAction);
+  });
+
+  it('starts a Follow-up move from the deal\'s own date rather than the default', () => {
+    renderFor({ ...deal, followup_date: '2099-01-15' });
+    fireEvent.click(screen.getByRole('radio', { name: /Log outreach and set a follow-up date/i }));
+    expect((screen.getByLabelText('Next follow-up date') as HTMLInputElement).value).toBe('2099-01-15');
+    expect(nextActionField().value).toBe(LANE_PLAYBOOKS.reschedule!.nextAction);
+  });
+
+  it('takes the defaults back out when the deal stays in its lane', async () => {
+    const { onClose } = renderFor({ ...deal, followup_date: null });
+    fireEvent.click(screen.getByRole('radio', { name: /Log outreach and wait for reply/i }));
+    fireEvent.click(screen.getByRole('radio', { name: /Keep current/i }));
+
+    expect(nextActionField().value).toBe('');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(crmMocks.updateDealIfUnchanged).not.toHaveBeenCalled();
+  });
+
+  it('never replaces what Pat typed or picked', () => {
+    renderFor({ ...deal, followup_date: null });
+    fireEvent.change(nextActionField(), { target: { value: 'Call the chef on Monday' } });
+    fireEvent.click(screen.getByRole('radio', { name: /^\+1 week/ }));
+    fireEvent.click(screen.getByRole('radio', { name: /Log outreach and wait for reply/i }));
+
+    expect(nextActionField().value).toBe('Call the chef on Monday');
+    expect(screen.getByRole('radio', { name: /^\+1 week/ }).getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('lets Pat clear the filled next action, which then keeps the deal\'s own', async () => {
+    const { onClose } = renderFor({ ...deal, followup_date: null });
+    fireEvent.click(screen.getByRole('radio', { name: /Log outreach and wait for reply/i }));
+    fireEvent.change(nextActionField(), { target: { value: '' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    const [, , updates] = crmMocks.updateDealIfUnchanged.mock.calls[0];
+    expect('next_action' in updates).toBe(false);
+  });
+});
 
 describe('LogInteractionModal quick logging', () => {
   beforeEach(() => {

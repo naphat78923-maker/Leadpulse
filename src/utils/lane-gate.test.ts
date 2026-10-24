@@ -128,3 +128,36 @@ describe('dragging into Waiting on reply — the buyer\'s exact words', () => {
     expect('buyer_reply' in updates).toBe(false);
   });
 });
+
+describe('lane playbook fields on a move', () => {
+  it('writes the date and next action given for Waiting on reply and Sample', () => {
+    for (const target of ['reply', 'sample'] as const) {
+      const { updates } = buildLaneGateDecision(
+        deal,
+        { target, channel: 'call', sample_status: 'sent', followup_date: '2026-09-17', next_action: 'Check the sample arrived' },
+        opts
+      );
+      expect(updates).toMatchObject({ followup_date: '2026-09-17', next_action: 'Check the sample arrived' });
+    }
+  });
+
+  it('keeps the deal\'s date and next action when the fields are left empty', () => {
+    const scheduled = { ...deal, followup_date: '2026-09-30' };
+    for (const target of ['reply', 'sample'] as const) {
+      const { updates } = buildLaneGateDecision(scheduled, { target, channel: 'call', sample_status: 'sent' }, opts);
+      expect('followup_date' in updates).toBe(false);
+      expect('next_action' in updates).toBe(false);
+    }
+  });
+
+  it('writes the next action on Testing and Follow-up moves too', () => {
+    const testing = buildLaneGateDecision(
+      { ...deal, sample_status: 'received' },
+      { target: 'testing', followup_date: '2026-09-22', next_action: 'Ask how the test went' },
+      opts
+    );
+    expect(testing.updates).toMatchObject({ followup_date: '2026-09-22', next_action: 'Ask how the test went' });
+    const followup = buildLaneGateDecision(deal, { target: 'reschedule', followup_date: '2026-09-29', next_action: 'Check in on next steps' }, opts);
+    expect(followup.updates).toMatchObject({ followup_date: '2026-09-29', next_action: 'Check in on next steps' });
+  });
+});

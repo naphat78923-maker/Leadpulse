@@ -6,7 +6,7 @@ import { getWorkflowAction, isOnJourneyBoard } from './deal-workflow.ts';
 import { daysBetween, inRetentionSystem, type ISODate } from './retentionCadence.ts';
 import { businessDateKey } from './business-time.ts';
 
-export type BoardAttentionFilter = 'all' | 'overdue' | 'today' | 'needs-review' | 'laya-review' | 'missing-data' | 'waiting-on-you' | 'stalled';
+export type BoardAttentionFilter = 'all' | 'overdue' | 'today' | 'needs-review' | 'laya-review' | 'missing-data' | 'waiting-on-you' | 'stalled' | 'park-suggested';
 
 /**
  * "do-now": overdue first, then by due date (the default). "hottest": highest tier first.
@@ -37,6 +37,8 @@ export interface DealBoardFilters {
   waitingOnYouIds?: ReadonlySet<string>;
   /** deal ids past their lane's stall threshold (lane-time.ts); used by the 'stalled' filter */
   stalledIds?: ReadonlySet<string>;
+  /** deal ids at the nudge limit with no reply (park-suggestion.ts); used by the 'park-suggested' filter */
+  parkSuggestedIds?: ReadonlySet<string>;
   sort?: BoardSort;
   /** dealId -> hotness (higher is hotter) for the 'hottest' sort; computed by the caller */
   hotness?: ReadonlyMap<string, number>;
@@ -244,6 +246,7 @@ export function filterAndSortBoardDeals(deals: Deal[], filters: DealBoardFilters
     if (filters.attention === 'missing-data' && !filters.missingDataIds?.has(deal.id)) return false;
     if (filters.attention === 'waiting-on-you' && !filters.waitingOnYouIds?.has(deal.id)) return false;
     if (filters.attention === 'stalled' && !filters.stalledIds?.has(deal.id)) return false;
+    if (filters.attention === 'park-suggested' && !filters.parkSuggestedIds?.has(deal.id)) return false;
 
     if (search) {
       const searchable = `${deal.client} ${deal.title}`.toLocaleLowerCase();

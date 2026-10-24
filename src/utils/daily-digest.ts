@@ -12,12 +12,19 @@ export interface DigestWaiting {
   label: string;
 }
 
+/** A deal at the nudge limit with no reply (park-suggestion.ts): offered, never parked. */
+export interface DigestParkSuggestion {
+  name: string;
+  /** e.g. "4 sends, no reply" */
+  label: string;
+}
+
 export interface DailyDigest {
   /** Telegram HTML (b, a) with every value escaped. */
   text: string;
-  /** Nothing is waiting, overdue, due today or up for a check-in: no message is sent. */
+  /** Nothing is waiting, overdue, due today, up for a check-in or to park: no message is sent. */
   isEmpty: boolean;
-  counts: { waiting: number; overdue: number; dueToday: number; checkIns: number; needsReview: number };
+  counts: { waiting: number; overdue: number; dueToday: number; checkIns: number; needsReview: number; parkSuggested: number };
 }
 
 /** How many rows each list shows before "and N more". */
@@ -46,11 +53,13 @@ function followupRow(item: AttentionCandidate, lead?: string): string {
 export function buildDailyDigest(input: {
   queue: ThisWeekQueue;
   waiting: readonly DigestWaiting[];
+  parkSuggested?: readonly DigestParkSuggestion[];
   today: string;
   /** Link back to This week; omitted when unknown. */
   appUrl?: string | null;
 }): DailyDigest {
   const { queue, waiting, today } = input;
+  const parkSuggested = input.parkSuggested ?? [];
   // A held contact is a decision, not a chase: it is counted under "need a decision" only.
   const contactable = (item: AttentionCandidate) => item.holds.length === 0;
   const overdue = queue.overdue.filter(contactable).sort((a, b) => daysOverdue(b.dueDate, today) - daysOverdue(a.dueDate, today));
@@ -63,6 +72,7 @@ export function buildDailyDigest(input: {
     dueToday: dueToday.length,
     checkIns: queue.checkIns.length,
     needsReview: queue.needsReview.length,
+    parkSuggested: parkSuggested.length,
   };
   const isEmpty = Object.values(counts).every(count => count === 0);
 
@@ -72,6 +82,7 @@ export function buildDailyDigest(input: {
     counts.overdue > 0 && `${counts.overdue} overdue`,
     counts.checkIns > 0 && `${counts.checkIns} ${counts.checkIns === 1 ? 'check-in' : 'check-ins'}`,
     counts.needsReview > 0 && `${counts.needsReview} need a decision`,
+    counts.parkSuggested > 0 && `${counts.parkSuggested} could be parked`,
   ].filter(Boolean).join(' · ');
 
   const checkInDetail = [split.at_risk && `${split.at_risk} at-risk`, split.dormant && `${split.dormant} dormant`, split.watch && `${split.watch} watch`]
@@ -91,6 +102,15 @@ export function buildDailyDigest(input: {
       overdue.slice(0, LIST_LIMIT).map(item => followupRow(item, `${daysOverdue(item.dueDate, today)}d`)),
       overdue.length,
     ),
+    // A question, not a change: parking stays Pat's call, from the Pipeline filter it links to.
+    ...list(
+      'Park this deal?',
+      parkSuggested.slice(0, LIST_LIMIT).map(item => `<b>${escapeHtml(item.name)}</b> · ${escapeHtml(item.label)}`),
+      parkSuggested.length,
+    ),
+    ...(parkSuggested.length > 0 && input.appUrl
+      ? [`<a href="${escapeHtml(`${input.appUrl}/deals?filter=park-suggested`)}">Review on Pipeline</a>`]
+      : []),
     ...(counts.checkIns > 0
       ? ['', `<b>Customer check-ins</b>`, `${counts.checkIns} due${checkInDetail ? ` (${checkInDetail})` : ''}`]
       : []),
