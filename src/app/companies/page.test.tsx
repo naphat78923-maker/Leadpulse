@@ -6,17 +6,16 @@ const crm = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 const query = vi.hoisted(() => ({ params: new URLSearchParams() }));
 
 vi.mock('@/components/CrmProvider', () => ({ useCrm: () => crm.value }));
-const profile = vi.hoisted(() => ({ fits: new Map<string, unknown>(), waiting: [] as Array<{ company_id: string | null }> }));
+const profile = vi.hoisted(() => ({ waiting: [] as Array<{ company_id: string | null }> }));
 vi.mock('@/lib/crm', () => ({
-  getCompanyFits: async () => profile.fits,
   getPendingProposals: async () => profile.waiting,
 }));
+vi.mock('@/utils/useBusinessDateKey', () => ({ useBusinessDateKey: () => '2026-10-25' }));
 vi.mock('next/navigation', () => ({ useSearchParams: () => query.params }));
 const modal = vi.hoisted(() => ({ props: {} as Record<string, any> }));
 vi.mock('@/components/CreateModal', () => ({ default: (props: Record<string, any>) => { modal.props = props; return null; } }));
 vi.mock('@/components/CompanyLogo', () => ({ default: () => null }));
 vi.mock('@/components/EntityAvatar', () => ({ default: () => null }));
-vi.mock('@/components/LayaLeadTierBadge', () => ({ default: () => null }));
 vi.mock('@/components/CompanyDetail', () => ({
   default: ({ company, companyContacts, onClose }: { company: Company; companyContacts: Contact[]; onClose: () => void }) => (
     <div data-testid="company-detail">
@@ -34,12 +33,13 @@ import AccountsPage from './page';
 afterEach(() => {
   cleanup();
   query.params = new URLSearchParams();
-  profile.fits = new Map();
   profile.waiting = [];
+  window.localStorage.clear();
 });
 
-const company = (id: string, name: string): Company =>
-  ({ id, name, status: 'prospect', tags: [], industry: null, logo_url: null } as unknown as Company);
+const company = (id: string, name: string, extra: Partial<Company> = {}): Company =>
+  ({ id, name, status: 'prospect', tags: [], industry: null, logo_url: null, last_contact_date: null, ...extra } as unknown as Company);
+const rowNames = () => screen.getAllByRole('button').map((b) => b.textContent ?? '').filter((t) => /Sunshine|Haoma|Gallo/.test(t));
 const contact = (id: string, name: string, companyId: string | null, extra: Partial<Contact> = {}): Contact =>
   ({ id, name, company_id: companyId, email: null, job_title: null, ...extra } as unknown as Contact);
 
@@ -60,21 +60,59 @@ function setCrm() {
 }
 
 describe('Accounts page', () => {
-  it("shows Laya's fit grade and how many proposals wait for review", async () => {
-    const { fitFromAnswers } = await import('@/utils/account-profile');
-    profile.fits = new Map([
-      ['c1', fitFromAnswers({ fit_bakery_patisserie_brands: { noul: 0.65 }, fit_modern_trade_specialty_retail: { noul: 0.21 }, fit_plant_based_restaurant_cafe: { noul: 0.17 } }, 'x')],
-      ['c2', fitFromAnswers({ fit_bakery_patisserie_brands: { noul: 0.16 }, fit_modern_trade_specialty_retail: { noul: 0.13 }, fit_plant_based_restaurant_cafe: { noul: 0.14 } }, 'x')],
-    ]);
-    profile.waiting = [{ company_id: 'c1' }, { company_id: null }];
+  it('shows how many proposals wait for review', async () => {
+    profile.waiting = [{ company_id: 'c1' }, { company_id: 'c1' }, { company_id: null }];
     setCrm();
     render(<AccountsPage />);
 
-    await waitFor(() => expect(screen.getByText('Bakery 65%')).toBeTruthy());
-    expect(screen.getByText('No fit')).toBeTruthy();
-    expect(screen.getByText('1 to review')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('2 to review')).toBeTruthy());
   });
 
+  it('shows what each account makes, its next follow-up or last touch, and its status', () => {
+    setCrm();
+    crm.value.companies = [
+      company('c1', 'Sunshine Market', { industry: 'Supermarket', what_they_make: 'Croissants' }),
+      company('c2', 'Haoma', { industry: 'Restaurant', status: 'active_customer', last_contact_date: '2026-10-13' }),
+    ];
+    crm.value.deals = [{ id: 'd1', title: 'Butter', stage: 'contacted', company_id: 'c1', followup_date: '2026-10-27' }];
+    render(<AccountsPage />);
+
+    expect(screen.getByText('Croissants')).toBeTruthy();
+    expect(screen.queryByText('Supermarket')).toBeNull();
+    expect(screen.getByText('Restaurant')).toBeTruthy();
+    expect(screen.getAllByText('Follow up Tue').length).toBeGreaterThan(0);
+    expect(screen.getByText('Last touch 12d ago')).toBeTruthy();
+    expect(screen.getByText('Customer')).toBeTruthy();
+    expect(screen.getByText('Prospect')).toBeTruthy();
+  });
+
+  it('keeps tags off the row', () => {
+    setCrm();
+    crm.value.companies = [company('c1', 'Sunshine Market', { tags: ['CSV-audit-2026-09-14', 'VG Saveur'] })];
+    render(<AccountsPage />);
+    expect(screen.queryByText(/CSV-audit/)).toBeNull();
+  });
+
+  it('sorts by follow-up or last touch and remembers the choice', () => {
+    setCrm();
+    crm.value.companies = [
+      company('c1', 'Sunshine Market', { last_contact_date: '2026-10-01' }),
+      company('c2', 'Haoma', { last_contact_date: '2026-10-20' }),
+      company('c3', 'Gallo'),
+    ];
+    crm.value.deals = [{ id: 'd1', title: 'Butter', stage: 'contacted', company_id: 'c3', followup_date: '2026-10-26' }];
+    render(<AccountsPage />);
+    expect(rowNames().map((t) => t.match(/Sunshine|Haoma|Gallo/)![0])).toEqual(['Gallo', 'Haoma', 'Sunshine']);
+
+    fireEvent.click(screen.getByRole('button', { name: /sort by name/i }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Follow up' }));
+    expect(rowNames().map((t) => t.match(/Sunshine|Haoma|Gallo/)![0])).toEqual(['Gallo', 'Haoma', 'Sunshine']);
+
+    fireEvent.click(screen.getByRole('button', { name: /sort by follow up/i }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Last touch' }));
+    expect(rowNames().map((t) => t.match(/Sunshine|Haoma|Gallo/)![0])).toEqual(['Haoma', 'Sunshine', 'Gallo']);
+    expect(window.localStorage.getItem('leadpulse.accounts.sort')).toBe('last_touch');
+  });
 
   it('finds an account by one of its people and names the match', () => {
     setCrm();
