@@ -132,8 +132,8 @@ function Accounts() {
   const todayKey = useBusinessDateKey();
   const [view, setView] = useState<ViewMode>('all');
   const [search, setSearch] = useState('');
-  const [sort, setSortState] = useState<AccountSort>('name');
-  useEffect(() => { setSortState(savedSort()); }, []);
+  // Read on the client only; the list renders after the CRM data loads, never on the server.
+  const [sort, setSortState] = useState<AccountSort>(() => (typeof window === 'undefined' ? 'name' : savedSort()));
   const setSort = (next: AccountSort) => {
     setSortState(next);
     try { window.localStorage.setItem(SORT_KEY, next); } catch { /* private window: the choice lasts this visit */ }
