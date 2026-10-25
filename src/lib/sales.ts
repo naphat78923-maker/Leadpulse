@@ -19,6 +19,13 @@ export async function getSalesByMonth(since: string): Promise<MonthTotal[]> {
   return ((data ?? []) as MonthTotal[]).map((m) => ({ ...m, amount: Number(m.amount) }));
 }
 
+/** Invoiced sales per account since a date (Accounts: "Sales, last 90 days"), keyed by company id. */
+export async function getSalesByCompany(since: string): Promise<Map<string, number>> {
+  const { data, error } = await supabase.rpc('sales_by_company', { since });
+  if (error) throw error;
+  return new Map(((data ?? []) as { crm_company_id: string; amount: number | string }[]).map((r) => [r.crm_company_id, Number(r.amount)]));
+}
+
 export async function getLatestInvoiceDate(): Promise<string | null> {
   const { data, error } = await supabase.rpc('latest_invoice_date');
   if (error) throw error;

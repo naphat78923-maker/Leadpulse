@@ -6,16 +6,41 @@
 import type { Company, Contact, Deal, Meeting } from '@/types/crm';
 import { openDeals } from './account-profile';
 
-export type AccountSort = 'name' | 'follow_up' | 'last_touch';
+export type AccountSort =
+  | 'follow_up'
+  | 'last_touch'
+  | 'gone_quiet'
+  | 'sales_90d'
+  | 'laya_fit'
+  | 'stage'
+  | 'newest'
+  | 'name'
+  | 'status';
+
+/** The sort menu, in its groups. 'last_touch' keeps its saved key; it reads "Recently touched". */
+export const ACCOUNT_SORT_GROUPS: { label: string; sorts: AccountSort[] }[] = [
+  { label: 'Timing', sorts: ['follow_up', 'last_touch', 'gone_quiet'] },
+  { label: 'Worth', sorts: ['sales_90d', 'laya_fit', 'stage'] },
+  { label: 'Other', sorts: ['newest', 'name', 'status'] },
+];
 
 export const ACCOUNT_SORT_LABELS: Record<AccountSort, string> = {
-  name: 'Name',
-  follow_up: 'Follow up',
-  last_touch: 'Last touch',
+  follow_up: 'Follow up soonest',
+  last_touch: 'Recently touched',
+  gone_quiet: 'Gone quiet',
+  sales_90d: 'Sales, last 90 days',
+  laya_fit: 'Best Laya fit',
+  stage: 'Deal stage, furthest',
+  newest: 'Newest added',
+  name: 'Name A to Z',
+  status: 'By status',
 };
 
-export const isAccountSort = (value: unknown): value is AccountSort =>
-  value === 'name' || value === 'follow_up' || value === 'last_touch';
+const SORTS = new Set<string>(Object.keys(ACCOUNT_SORT_LABELS));
+export const isAccountSort = (value: unknown): value is AccountSort => typeof value === 'string' && SORTS.has(value);
+
+/** How far an open deal has got, for "Deal stage, furthest". Outreach is the start. */
+export const LANE_RANK: Record<string, number> = { outreach: 1, reschedule: 2, reply: 3, sample: 4, testing: 5 };
 
 const DATE_KEY = /^\d{4}-\d{2}-\d{2}/;
 const dateKey = (value: string | null | undefined) => DATE_KEY.exec(value ?? '')?.[0] ?? null;
@@ -119,39 +144,81 @@ export function lastTouchLabel(date: string, today: string): WhenLabel {
   return { text: `Last touch ${ago}`, short: ago, tone: 'past', date };
 }
 
-/** The one date a row shows: last touch when sorting by it, otherwise the next follow-up and,
- *  without one, the last touch. Null when the account has neither. */
+/** The one date a row shows: last touch when sorting by it (or by gone quiet), otherwise the
+ *  next follow-up and, without one, the last touch. Null when the account has neither. */
 export function rowWhen(
   sort: AccountSort,
   followUp: string | undefined,
   lastTouch: string | undefined,
   today: string,
 ): WhenLabel | null {
-  if (sort !== 'last_touch' && followUp) return followUpLabel(followUp, today);
+  if (sort !== 'last_touch' && sort !== 'gone_quiet' && followUp) return followUpLabel(followUp, today);
   return lastTouch ? lastTouchLabel(lastTouch, today) : null;
+}
+
+/** companyId → the furthest lane among its open deals (LANE_RANK); accounts with none are absent. */
+export function furthestStages(deals: readonly Pick<Deal, 'company_id' | 'stage' | 'workflow_action'>[]): Map<string, number> {
+  const result = new Map<string, number>();
+  for (const deal of deals) {
+    if (!deal.company_id || deal.stage === 'closed_won' || deal.stage === 'closed_lost') continue;
+    const rank = LANE_RANK[deal.workflow_action ?? ''] ?? 0;
+    if (rank > (result.get(deal.company_id) ?? 0)) result.set(deal.company_id, rank);
+  }
+  return result;
+}
+
+/** Number-valued sorts: companyId → value, higher first. */
+export interface AccountSortValues {
+  /** invoiced sales in the last 90 days, baht */
+  sales?: ReadonlyMap<string, number>;
+  /** Laya's best fit Noul for accounts it judged a fit */
+  fits?: ReadonlyMap<string, number>;
+  /** furthestStages() */
+  stages?: ReadonlyMap<string, number>;
 }
 
 const byName = (a: Pick<Company, 'name'>, b: Pick<Company, 'name'>) =>
   a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
 
-/** Name A–Z; soonest follow-up first (overdue on top); or most recent touch first. Accounts
- *  without the date go last, A–Z. */
-export function sortAccounts<T extends Pick<Company, 'id' | 'name'>>(
+/** Order by a date or a number; accounts without one go last, A–Z. */
+function byValue<T extends Pick<Company, 'id' | 'name'>, V extends string | number>(
+  list: T[],
+  values: ReadonlyMap<string, V> | undefined,
+  direction: 1 | -1,
+): T[] {
+  return list.sort((a, b) => {
+    const va = values?.get(a.id);
+    const vb = values?.get(b.id);
+    if (va !== undefined && vb !== undefined && va !== vb) return va < vb ? -direction : direction;
+    if (va !== undefined && vb === undefined) return -1;
+    if (va === undefined && vb !== undefined) return 1;
+    return byName(a, b);
+  });
+}
+
+/** Sort the Accounts list. Follow up: soonest first, overdue on top. Recently touched: newest
+ *  touch first; gone quiet: oldest touch first. Sales, fit and stage: highest first. Newest:
+ *  latest added first. By status is A–Z here; the page groups it. Accounts without the value go
+ *  last, A–Z. */
+export function sortAccounts<T extends Pick<Company, 'id' | 'name'> & Partial<Pick<Company, 'created_at'>>>(
   companies: readonly T[],
   sort: AccountSort,
   followUps: ReadonlyMap<string, string>,
   touches: ReadonlyMap<string, string>,
+  values: AccountSortValues = {},
 ): T[] {
   const list = companies.slice();
-  if (sort === 'name') return list.sort(byName);
-  const dates = sort === 'follow_up' ? followUps : touches;
-  const direction = sort === 'follow_up' ? 1 : -1;
-  return list.sort((a, b) => {
-    const da = dates.get(a.id);
-    const db = dates.get(b.id);
-    if (da && db && da !== db) return da < db ? -direction : direction;
-    if (da && !db) return -1;
-    if (!da && db) return 1;
-    return byName(a, b);
-  });
+  switch (sort) {
+    case 'follow_up': return byValue(list, followUps, 1);
+    case 'last_touch': return byValue(list, touches, -1);
+    case 'gone_quiet': return byValue(list, touches, 1);
+    case 'sales_90d': return byValue(list, values.sales, -1);
+    case 'laya_fit': return byValue(list, values.fits, -1);
+    case 'stage': return byValue(list, values.stages, -1);
+    case 'newest': {
+      const added = new Map(list.filter((c) => c.created_at).map((c) => [c.id, c.created_at as string]));
+      return byValue(list, added, -1);
+    }
+    default: return list.sort(byName);
+  }
 }

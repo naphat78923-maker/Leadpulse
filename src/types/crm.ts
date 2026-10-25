@@ -13,6 +13,8 @@ export interface Company {
   acquisition_source?: 'outbound' | 'meta_ad' | 'referral' | 'inbound_other' | null;
   /** optional campaign or ad name for the acquisition source */
   acquisition_campaign?: string | null;
+  /** Pat's Local / Export choice (utils/account-market.ts); null = not set, rules decide */
+  market?: 'local' | 'export' | null;
   account_owner: string;
   last_contact_date: string | null;
   tags: string[];

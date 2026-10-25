@@ -122,6 +122,7 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
         lead_source: el.lead_source,
         acquisition_source: el.acquisition_source ?? null,
         acquisition_campaign: el.acquisition_campaign ?? null,
+        market: el.market === 'local' || el.market === 'export' ? el.market : null,
         account_owner: el.account_owner || 'Pat',
         tags: el.tags || [],
         industry: el.industry,

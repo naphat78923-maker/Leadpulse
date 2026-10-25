@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Company, Contact, Deal, Meeting } from '@/types/crm';
-import { followUpLabel, lastTouchLabel, lastTouches, nextFollowUps, rowWhen, sortAccounts } from './account-row';
+import { followUpLabel, furthestStages, isAccountSort, lastTouchLabel, lastTouches, nextFollowUps, rowWhen, sortAccounts } from './account-row';
 
 const TODAY = '2026-10-25'; // a Sunday
 
@@ -103,8 +103,51 @@ describe('sorting accounts', () => {
     expect(sortAccounts(list, 'last_touch', followUps, touches).map((c) => c.id)).toEqual(['c', 'a', 'b', 'd']);
   });
 
+  it('puts the oldest touch first for gone quiet, never-touched last', () => {
+    expect(sortAccounts(list, 'gone_quiet', followUps, touches).map((c) => c.id)).toEqual(['a', 'c', 'b', 'd']);
+  });
+
+  it('puts the highest sales, fit or stage first, accounts without one last A–Z', () => {
+    const sales = new Map([['b', 1200], ['d', 56000]]);
+    expect(sortAccounts(list, 'sales_90d', followUps, touches, { sales }).map((c) => c.id)).toEqual(['d', 'b', 'a', 'c']);
+    const fits = new Map([['a', 0.41], ['c', 0.83]]);
+    expect(sortAccounts(list, 'laya_fit', followUps, touches, { fits }).map((c) => c.id)).toEqual(['c', 'a', 'b', 'd']);
+    expect(sortAccounts(list, 'sales_90d', followUps, touches).map((c) => c.name)).toEqual(['Apple', 'banana', 'Cherry', 'date']);
+  });
+
+  it('puts the newest account first', () => {
+    const dated = [company('a', 'A', { created_at: '2026-01-01' }), company('b', 'B', { created_at: '2026-10-20' }), company('c', 'C')];
+    expect(sortAccounts(dated, 'newest', followUps, touches).map((c) => c.id)).toEqual(['b', 'a', 'c']);
+  });
+
+  it('keeps the old saved sort keys valid and rejects unknown ones', () => {
+    expect(isAccountSort('last_touch')).toBe(true);
+    expect(isAccountSort('gone_quiet')).toBe(true);
+    expect(isAccountSort('revenue')).toBe(false);
+  });
+
   it('does not reorder the list it was given', () => {
     sortAccounts(list, 'follow_up', followUps, touches);
     expect(list.map((c) => c.id)).toEqual(['a', 'b', 'c', 'd']);
+  });
+});
+
+describe('furthest deal stage', () => {
+  it('ranks testing above sample above outreach, ignoring closed deals', () => {
+    const stages = furthestStages([
+      deal('a', null, { workflow_action: 'outreach' }),
+      deal('a', null, { workflow_action: 'sample' }),
+      deal('b', null, { workflow_action: 'testing', stage: 'closed_lost' }),
+      deal('c', null, { workflow_action: 'testing' }),
+    ]);
+    expect(stages.get('a')).toBe(4);
+    expect(stages.has('b')).toBe(false);
+    expect(stages.get('c')).toBe(5);
+  });
+});
+
+describe('row date while sorting by gone quiet', () => {
+  it('shows the last touch, like Recently touched', () => {
+    expect(rowWhen('gone_quiet', '2026-10-27', '2026-10-20', TODAY)?.text).toBe('Last touch 5d ago');
   });
 });
