@@ -64,7 +64,7 @@ export default function AccountMarketChip({ company, call }: { company: Company;
   const label = marketLabel(call);
   const tone = call.market ?? 'unsure';
   return (
-    <div ref={ref} className="pointer-events-auto relative z-10 justify-self-start">
+    <div ref={ref} className={clsx('pointer-events-auto relative justify-self-start', open ? 'z-40' : 'z-10')}>
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
@@ -72,9 +72,12 @@ export default function AccountMarketChip({ company, call }: { company: Company;
         aria-expanded={open}
         aria-label={`${label}. Set Local or Export for ${company.name}`}
         disabled={saving}
-        className={clsx('whitespace-nowrap rounded-md px-1.5 py-0.5 text-[11px] font-medium', CHIP[tone])}
+        className="flex items-center"
       >
-        {call.market ? label : 'Not sure · set'}
+        {/* Phones give every button a 44px tap area; the pill stays chip-sized inside it. */}
+        <span className={clsx('whitespace-nowrap rounded-md px-1.5 py-0.5 text-[11px] font-medium', CHIP[tone])}>
+          {call.market ? label : 'Not sure · set'}
+        </span>
       </button>
       {open && (
         <div role="menu" className="absolute left-0 top-7 z-30 w-40 rounded-xl border border-clay-hairline bg-white p-1 shadow-lg dark:bg-clay-card">

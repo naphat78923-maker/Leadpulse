@@ -32,6 +32,11 @@ describe('location rules', () => {
     expect(marketFromRules(account({ tags: ['Vietnam'] }), [{ phone: '090 123 4567', phone_second: null, email: null }]).market).toBe('export');
   });
 
+  it('trusts a country named in the address over a Thai-sounding street', () => {
+    expect(marketFromRules(account({ address: '56B Jalan Siam, 10400 George Town, Penang, Malaysia' }))).toEqual({ market: 'export', source: 'rule', country: 'Malaysia' });
+    expect(marketFromRules(account({ address: 'Ekamai earth' })).market).toBe('local');
+  });
+
   it('leaves it to Pat when the evidence points both ways or nowhere', () => {
     expect(marketFromRules(account({ tags: ['Thailand', 'export'] })).market).toBeNull();
     expect(marketFromRules(account()).market).toBeNull();

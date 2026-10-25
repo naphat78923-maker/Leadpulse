@@ -55,7 +55,7 @@ const COUNTRIES: Country[] = [
 ];
 
 const THAI_WORDS =
-  /\b(thailand|thai|bangkok|bkk|siam|chiang ?mai|chiang ?rai|phuket|pattaya|hua ?hin|krabi|samui|khon ?kaen|nonthaburi|sukhumvit|silom|thong ?lo|thonglor|ekkamai)\b/i;
+  /\b(thailand|thai|bangkok|bkk|siam|chiang ?mai|chiang ?rai|phuket|pattaya|hua ?hin|krabi|samui|khon ?kaen|nonthaburi|sukhumvit|silom|thong ?lo|thonglor|ekk?amai)\b/i;
 const THAI_SCRIPT = /[฀-๿]/;
 
 /** The host's last label ("shop.example.co.th" → "th"), or null. */
@@ -91,6 +91,14 @@ function phoneCountry(phone: string): 'thai' | 'thai_local' | Country | null {
 
 /** Where the rules place an account, from its own details only. */
 export function marketFromRules(company: MarketCompany, contacts: readonly MarketContact[] = []): MarketCall {
+  // An address that names its country settles it: "Jalan Siam, Penang, Malaysia" is abroad
+  // even though "Siam" reads Thai.
+  const address = company.address ?? '';
+  if (!/\bthailand\b/i.test(address) && !THAI_SCRIPT.test(address)) {
+    const named = COUNTRIES.filter((c) => !/[^a-z ]/i.test(c.name) && new RegExp(`\\b${c.name}\\b`, 'i').test(address));
+    if (named.length === 1) return { market: 'export', source: 'rule', country: named[0].name };
+  }
+
   const tags = company.tags ?? [];
   const text = [company.name, company.industry, company.what_they_make, company.address, company.website, ...tags]
     .filter(Boolean)
