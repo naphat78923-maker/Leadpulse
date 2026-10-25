@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useState } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { Meeting } from '@/types/crm';
 
@@ -12,6 +13,9 @@ const crmMocks = vi.hoisted(() => ({
   createMeeting: vi.fn(),
   updateContact: vi.fn(),
   updateCompany: vi.fn(),
+  createActivityEvent: vi.fn(),
+  updateActivityEvent: vi.fn(),
+  unmergeCompanies: vi.fn(),
 }));
 
 vi.mock('@/lib/crm', () => crmMocks);
@@ -64,6 +68,21 @@ function AccountEventAvailabilityProbe() {
   const { accountEventsUnavailable, loading } = useCrm();
   if (loading) return <p>Loading data</p>;
   return <p>Account-event source unavailable: {String(accountEventsUnavailable)}</p>;
+}
+
+// A merge logged from the Possible duplicates review, undone later through the id logActivity gave.
+function MergeUndoProbe() {
+  const { loading, logActivity, undoActivity } = useCrm();
+  const [id, setId] = useState('');
+  const [undone, setUndone] = useState('');
+  if (loading) return <p>Loading data</p>;
+  return (
+    <>
+      <button onClick={() => setId(logActivity({ type: 'merge', entity: 'company', entityId: 'c1', label: 'Merged account', undoPayload: { merge_id: 'm1' } }))}>Log merge</button>
+      <button onClick={() => void undoActivity(id).then((ok) => setUndone(String(ok)))}>Undo merge</button>
+      <p>Undone: {undone}</p>
+    </>
+  );
 }
 
 describe('CrmProvider refresh lifecycle', () => {
@@ -142,6 +161,22 @@ describe('CrmProvider refresh lifecycle', () => {
     crmMocks.getCompanies.mockResolvedValueOnce([{ id: 'c1', name: 'Synthetic Bakery', status: 'prospect', what_they_make: 'red velvet cake' }]);
     render(<CrmProvider><WhatTheyMakeProbe /></CrmProvider>);
     expect(await screen.findByText('What they make: red velvet cake')).toBeTruthy();
+  });
+
+  it('undoes a merge by the id logActivity returned, after the entry is saved', async () => {
+    const savedId = '0f0f0f0f-1111-2222-3333-444444444444';
+    crmMocks.createActivityEvent.mockResolvedValue({ id: savedId });
+    crmMocks.updateActivityEvent.mockResolvedValue({});
+    crmMocks.unmergeCompanies.mockResolvedValue(undefined);
+    render(<CrmProvider><MergeUndoProbe /></CrmProvider>);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Log merge' }));
+    await waitFor(() => expect(crmMocks.createActivityEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'merge', undo_payload: { merge_id: 'm1' } })));
+    fireEvent.click(screen.getByRole('button', { name: 'Undo merge' }));
+
+    expect(await screen.findByText('Undone: true')).toBeTruthy();
+    expect(crmMocks.unmergeCompanies).toHaveBeenCalledExactlyOnceWith('m1');
+    expect(crmMocks.updateActivityEvent).toHaveBeenCalledWith(savedId, { applied: false });
   });
 
   it('surfaces an account-event read failure separately from an empty event history', async () => {

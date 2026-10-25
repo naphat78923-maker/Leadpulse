@@ -4,6 +4,7 @@ import { supabase } from './supabase';
 import { Company, Contact, Deal, Meeting } from '@/types/crm';
 import { fitFromAnswers, type CompanyFit, type EvidenceRow } from '@/utils/account-profile';
 import type { EnrichmentProposal, ProposalStatus } from '@/utils/proposals';
+import { pairKey } from '@/utils/company-duplicates';
 
 // Soft-delete (archive) helpers — recoverable, never a hard DELETE.
 export async function softDelete(entity: 'companies' | 'contacts' | 'deals' | 'meetings', id: string) {
@@ -64,6 +65,49 @@ export async function uploadCompanyLogo(companyId: string, file: File): Promise<
 export async function deleteCompanyLogo(companyId: string): Promise<void> {
   const path = `logos/${companyId}.webp`;
   const { error } = await supabase.storage.from(COMPANY_LOGO_BUCKET).remove([path]);
+  if (error) throw error;
+}
+
+// ─── Duplicate accounts (supabase/migrations/20261025120000_company_duplicates.sql) ───
+
+/** Pairs Pat marked "Not a duplicate", as pairKey() keys. */
+export async function getDuplicateDismissals(): Promise<Set<string>> {
+  const { data, error } = await supabase.from('company_duplicate_dismissals').select('company_a, company_b');
+  if (error) throw error;
+  return new Set(((data ?? []) as { company_a: string; company_b: string }[]).map((row) => pairKey(row.company_a, row.company_b)));
+}
+
+const orderedPair = (x: string, y: string) => (x < y ? { company_a: x, company_b: y } : { company_a: y, company_b: x });
+
+export async function dismissDuplicate(x: string, y: string): Promise<void> {
+  const { error } = await supabase.from('company_duplicate_dismissals').upsert(orderedPair(x, y), { onConflict: 'company_a,company_b', ignoreDuplicates: true });
+  if (error) throw error;
+}
+
+export async function undismissDuplicate(x: string, y: string): Promise<void> {
+  const { company_a, company_b } = orderedPair(x, y);
+  const { error } = await supabase.from('company_duplicate_dismissals').delete().eq('company_a', company_a).eq('company_b', company_b);
+  if (error) throw error;
+}
+
+export interface MergeResult {
+  merge_id: string;
+  /** rows moved onto the kept account, per table */
+  moved: Record<string, number>;
+  /** the kept account's fields filled from the other */
+  filled: string[];
+}
+
+/** Moves everything from `mergeId` onto `keepId`, fills its empty fields, and archives `mergeId`. */
+export async function mergeCompanies(keepId: string, mergeId: string): Promise<MergeResult> {
+  const { data, error } = await supabase.rpc('merge_companies', { keep_id: keepId, merge_id: mergeId });
+  if (error) throw error;
+  return data as MergeResult;
+}
+
+/** Undoes a merge: rows moved back, filled fields cleared, the merged account restored. */
+export async function unmergeCompanies(mergeId: string): Promise<void> {
+  const { error } = await supabase.rpc('unmerge_companies', { merge_log_id: mergeId });
   if (error) throw error;
 }
 

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { Company, COMPANY_STATUS_LABELS, CompanyStatus, Contact, STAGE_LABELS } from '@/types/crm';
 import Link from 'next/link';
-import { Briefcase, Building2, CalendarClock, X, Edit2, Loader2, Check, UserPlus, Trash2, Gift, ShoppingCart, ChevronDown, ChevronRight, Lightbulb, MoreHorizontal, Plus, Sparkles } from 'lucide-react';
+import { Briefcase, Building2, CalendarClock, X, Edit2, Loader2, Check, UserPlus, Trash2, Gift, GitFork, ShoppingCart, ChevronDown, ChevronRight, Lightbulb, MoreHorizontal, Plus, Sparkles } from 'lucide-react';
 import clsx from 'clsx';
 import { useToast } from '@/components/ToastProvider';
 import { useCrm } from '@/components/CrmProvider';
@@ -30,6 +30,7 @@ import { formatScheduleDate } from '@/utils/deal-schedule';
 import { deriveRetentionDueSignals, existingRetentionReferenceDate } from '@/utils/followup-policy';
 import { deriveMapStatus } from '@/utils/stakeholder-map';
 import { ACQUISITION_SOURCE_OPTIONS, acquisitionLabel, normalizeAcquisition } from '@/utils/acquisition-source';
+import { branchLabel } from '@/utils/company-duplicates';
 
 const statusOptions: CompanyStatus[] = ['prospect', 'active_customer', 'inactive', 'lost'];
 
@@ -55,9 +56,11 @@ interface CompanyDetailProps {
   onSaved: () => void;
   contacts: Contact[];
   companyContacts: Contact[];
+  /** Opens another account in this panel (its main account or a branch). */
+  onOpenCompany?: (id: string) => void;
 }
 
-export default function CompanyDetail({ company, onClose, onSaved, contacts, companyContacts }: CompanyDetailProps) {
+export default function CompanyDetail({ company, onClose, onSaved, contacts, companyContacts, onOpenCompany }: CompanyDetailProps) {
   const { addToast } = useToast();
   const { createContact, refresh, deleteEntity, meetings, deals = [], companies = [], addMeeting, accountEvents = [], accountEventsUnavailable } = useCrm();
   const [openContactId, setOpenContactId] = useState<string | null>(null);
@@ -143,6 +146,10 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
   const buyerReplyDeals = useMemo(() => dealsWithVerbatimBuyerReply(companyDeals).length, [companyDeals]);
   const isCustomer = company.status === 'active_customer' || company.status === 'inactive';
   const notes = readableNotes(company.notes);
+  // "Branch of" from Possible duplicates: this account's main account, and its own branches.
+  const parentCompany = company.parent_company_id ? companies.find((c) => c.id === company.parent_company_id) ?? null : null;
+  const branches = companies.filter((c) => c.parent_company_id === company.id);
+  const linkChip = 'inline-flex items-center gap-1 rounded bg-clay-lavender/20 px-1.5 py-0.5 text-[11px] font-medium text-clay-ink';
 
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -383,6 +390,29 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
             {!editing && (
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                 <span className="rounded bg-clay-card px-1.5 py-0.5 text-[11px] text-clay-body">{COMPANY_STATUS_LABELS[company.status]}</span>
+                {parentCompany && (
+                  onOpenCompany ? (
+                    <button type="button" onClick={() => onOpenCompany(parentCompany.id)} className={linkChip}>
+                      <GitFork className="h-3 w-3" aria-hidden="true" />Branch of {parentCompany.name}
+                    </button>
+                  ) : (
+                    <span className={linkChip}><GitFork className="h-3 w-3" aria-hidden="true" />Branch of {parentCompany.name}</span>
+                  )
+                )}
+                {branches.length > 0 && (
+                  <span className="inline-flex flex-wrap items-center gap-1 rounded bg-clay-card px-1.5 py-0.5 text-[11px] text-clay-body">
+                    <GitFork className="h-3 w-3" aria-hidden="true" />
+                    {branches.length === 1 ? '1 branch:' : `${branches.length} branches:`}
+                    {branches.map((branch, i) => (
+                      <span key={branch.id}>
+                        {onOpenCompany ? (
+                          <button type="button" onClick={() => onOpenCompany(branch.id)} className="font-medium text-clay-ink underline-offset-2 hover:underline">{branchLabel(company, branch)}</button>
+                        ) : branchLabel(company, branch)}
+                        {i < branches.length - 1 ? ',' : ''}
+                      </span>
+                    ))}
+                  </span>
+                )}
                 {fit && (
                   <span className={clsx('inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium', fit.fits ? 'bg-clay-lavender/20 text-clay-ink' : 'bg-clay-card text-clay-muted-soft')}>
                     <Sparkles className="h-3 w-3" aria-hidden="true" />{fitChipLabel(fit)}

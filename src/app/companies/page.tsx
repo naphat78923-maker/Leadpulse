@@ -8,6 +8,7 @@ import CreateModal from '@/components/CreateModal';
 import CompanyDetail from '@/components/CompanyDetail';
 import ContactDetail from '@/components/ContactDetail';
 import CompanyLogo from '@/components/CompanyLogo';
+import DuplicateReview from '@/components/DuplicateReview';
 import EntityAvatar from '@/components/EntityAvatar';
 import { useQuerySelection } from '@/hooks/useQuerySelection';
 import { isCompanyRoute } from '@/utils/contact-identity';
@@ -329,6 +330,9 @@ function Accounts() {
         <SortMenu value={sort} onChange={setSort} />
       </div>
 
+      {/* Pairs that look like one business entered twice; out of the way while searching. */}
+      {!q && <DuplicateReview companies={companies} contacts={contacts} onOpenCompany={setSelectedCompany} />}
+
       {view === 'by_status' ? (
         <div className="space-y-4">
           {Object.entries(groupedByStatus).map(([status, items]) => (
@@ -373,6 +377,7 @@ function Accounts() {
           onSaved={refresh}
           contacts={contacts}
           companyContacts={contactsByCompany.get(activeCompany.id) ?? []}
+          onOpenCompany={setSelectedCompany}
         />
       )}
 
