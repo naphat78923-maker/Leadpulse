@@ -6,12 +6,21 @@ const crm = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 const query = vi.hoisted(() => ({ params: new URLSearchParams() }));
 
 vi.mock('@/components/CrmProvider', () => ({ useCrm: () => crm.value }));
-const profile = vi.hoisted(() => ({ waiting: [] as Array<{ company_id: string | null }>, logos: new Map<string, string>() }));
+const profile = vi.hoisted(() => ({
+  waiting: [] as Array<{ company_id: string | null }>,
+  logos: new Map<string, string>(),
+  fits: new Map<string, unknown>(),
+  sales: new Map<string, number>(),
+  updates: [] as Array<Record<string, unknown>>,
+}));
 vi.mock('@/lib/crm', () => ({
   getPendingProposals: async () => profile.waiting,
   getLogoProposals: async () => profile.logos,
   getDuplicateDismissals: async () => new Set<string>(),
+  getCompanyFits: async () => profile.fits,
+  updateCompany: async (id: string, updates: Record<string, unknown>) => { profile.updates.push({ id, ...updates }); },
 }));
+vi.mock('@/lib/sales', () => ({ getSalesByCompany: async () => profile.sales }));
 vi.mock('@/utils/useBusinessDateKey', () => ({ useBusinessDateKey: () => '2026-10-25' }));
 vi.mock('next/navigation', () => ({ useSearchParams: () => query.params }));
 const modal = vi.hoisted(() => ({ props: {} as Record<string, any> }));
@@ -38,12 +47,15 @@ afterEach(() => {
   query.params = new URLSearchParams();
   profile.waiting = [];
   profile.logos = new Map();
+  profile.fits = new Map();
+  profile.sales = new Map();
+  profile.updates = [];
   window.localStorage.clear();
 });
 
 const company = (id: string, name: string, extra: Partial<Company> = {}): Company =>
   ({ id, name, status: 'prospect', tags: [], industry: null, logo_url: null, last_contact_date: null, ...extra } as unknown as Company);
-const rowNames = () => screen.getAllByRole('button').map((b) => b.textContent ?? '').filter((t) => /Sunshine|Haoma|Gallo/.test(t));
+const rowNames = () => screen.getAllByRole('button', { name: /^Open account / }).map((b) => b.getAttribute('aria-label') ?? '').filter((t) => /Sunshine|Haoma|Gallo/.test(t));
 const contact = (id: string, name: string, companyId: string | null, extra: Partial<Contact> = {}): Contact =>
   ({ id, name, company_id: companyId, email: null, job_title: null, ...extra } as unknown as Contact);
 
@@ -58,6 +70,8 @@ function setCrm() {
     deals: [],
     loading: false,
     refresh: vi.fn(),
+    logActivity: vi.fn(() => 'a1'),
+    undoActivity: vi.fn(),
     createCompany: vi.fn(async () => ({ id: 'new-1' })),
     createContact: vi.fn(),
   };
@@ -107,7 +121,7 @@ describe('Accounts page', () => {
     expect(screen.queryByText(/CSV-audit/)).toBeNull();
   });
 
-  it('sorts by follow-up or last touch and remembers the choice', () => {
+  it('sorts by follow-up, recent touch or gone quiet and remembers the choice', () => {
     setCrm();
     crm.value.companies = [
       company('c1', 'Sunshine Market', { last_contact_date: '2026-10-01' }),
@@ -119,13 +133,66 @@ describe('Accounts page', () => {
     expect(rowNames().map((t) => t.match(/Sunshine|Haoma|Gallo/)![0])).toEqual(['Gallo', 'Haoma', 'Sunshine']);
 
     fireEvent.click(screen.getByRole('button', { name: /sort by name/i }));
-    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Follow up' }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Follow up soonest' }));
     expect(rowNames().map((t) => t.match(/Sunshine|Haoma|Gallo/)![0])).toEqual(['Gallo', 'Haoma', 'Sunshine']);
 
     fireEvent.click(screen.getByRole('button', { name: /sort by follow up/i }));
-    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Last touch' }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Recently touched' }));
     expect(rowNames().map((t) => t.match(/Sunshine|Haoma|Gallo/)![0])).toEqual(['Haoma', 'Sunshine', 'Gallo']);
     expect(window.localStorage.getItem('leadpulse.accounts.sort')).toBe('last_touch');
+
+    fireEvent.click(screen.getByRole('button', { name: /sort by recently touched/i }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Gone quiet' }));
+    expect(rowNames().map((t) => t.match(/Sunshine|Haoma|Gallo/)![0])).toEqual(['Sunshine', 'Haoma', 'Gallo']);
+  });
+
+  it('groups the sort menu into Timing, Worth and Other', () => {
+    setCrm();
+    render(<AccountsPage />);
+    fireEvent.click(screen.getByRole('button', { name: /sort by/i }));
+    expect(screen.getByRole('group', { name: 'Timing' })).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'Worth' })).toBeTruthy();
+    expect(screen.getByRole('menuitemradio', { name: 'Sales, last 90 days' })).toBeTruthy();
+    expect(screen.getByRole('menuitemradio', { name: 'By status' })).toBeTruthy();
+  });
+
+  it('sorts by sales in the last 90 days and shows the amount', async () => {
+    profile.sales = new Map([['c2', 12500]]);
+    setCrm();
+    render(<AccountsPage />);
+    fireEvent.click(screen.getByRole('button', { name: /sort by/i }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Sales, last 90 days' }));
+    await waitFor(() => expect(screen.getByText('฿12,500')).toBeTruthy());
+    expect(rowNames()[0]).toMatch(/Haoma/);
+  });
+
+  it('filters Local, Export and Not sure, with counts', () => {
+    setCrm();
+    crm.value.companies = [
+      company('c1', 'Sunshine Market', { address: 'Sukhumvit, Bangkok' }),
+      company('c2', 'Haoma', { tags: ['Vietnam'] }),
+      company('c3', 'Gallo'),
+    ];
+    render(<AccountsPage />);
+    const local = screen.getAllByRole('radio', { name: /Local/ })[0];
+    expect(local.textContent).toBe('Local1');
+    fireEvent.click(local);
+    expect(rowNames()).toEqual(['Open account Sunshine Market']);
+    fireEvent.click(screen.getAllByRole('radio', { name: /Export/ })[0]);
+    expect(rowNames()).toEqual(['Open account Haoma']);
+    expect(screen.getAllByText('Export · Vietnam').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getAllByRole('radio', { name: /Not sure/ })[0]);
+    expect(rowNames()).toEqual(['Open account Gallo']);
+  });
+
+  it('sets Local or Export with one tap, without opening the account', async () => {
+    setCrm();
+    render(<AccountsPage />);
+    fireEvent.click(screen.getAllByRole('button', { name: /Not sure\. Set Local or Export for Haoma/ })[0]);
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Export' }));
+    await waitFor(() => expect(profile.updates).toEqual([{ id: 'c2', market: 'export' }]));
+    expect(screen.queryByTestId('company-detail')).toBeNull();
+    expect((crm.value.logActivity as ReturnType<typeof vi.fn>).mock.calls[0][0]).toMatchObject({ entityId: 'c2', undoPayload: { market: null } });
   });
 
   it('shows possible duplicates above the list, opens one, and steps aside while searching', async () => {

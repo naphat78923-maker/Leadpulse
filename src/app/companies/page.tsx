@@ -8,6 +8,7 @@ import CreateModal from '@/components/CreateModal';
 import CompanyDetail from '@/components/CompanyDetail';
 import ContactDetail from '@/components/ContactDetail';
 import CompanyLogo from '@/components/CompanyLogo';
+import AccountMarketChip from '@/components/AccountMarketChip';
 import DuplicateReview from '@/components/DuplicateReview';
 import EntityAvatar from '@/components/EntityAvatar';
 import { useQuerySelection } from '@/hooks/useQuerySelection';
@@ -15,9 +16,13 @@ import { isCompanyRoute } from '@/utils/contact-identity';
 import { linkInText, routeContact, type LeadRoute } from '@/utils/lead-apply';
 import { useBusinessDateKey } from '@/utils/useBusinessDateKey';
 import * as crm from '@/lib/crm';
+import * as sales from '@/lib/sales';
 import {
+  ACCOUNT_SORT_GROUPS,
   ACCOUNT_SORT_LABELS,
+  furthestStages,
   isAccountSort,
+  LANE_RANK,
   lastTouches,
   nextFollowUps,
   rowWhen,
@@ -25,11 +30,25 @@ import {
   type AccountSort,
   type WhenTone,
 } from '@/utils/account-row';
+import { accountMarket, matchesMarket, type MarketCall, type MarketFilter } from '@/utils/account-market';
+import { fitChipLabel, type CompanyFit } from '@/utils/account-profile';
+import { addDaysToDateKey, WORKFLOW_LANES } from '@/utils/deal-workflow';
+import { formatBaht } from '@/utils/format';
 import { ArrowUpDown, Check, ChevronDown, Loader2, Plus, Search, User } from 'lucide-react';
 import clsx from 'clsx';
 import { PageTransition } from '@/components/motion';
 
-type ViewMode = 'all' | 'by_status';
+const MARKET_FILTERS: { value: MarketFilter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'local', label: 'Local' },
+  { value: 'export', label: 'Export' },
+  { value: 'unsure', label: 'Not sure' },
+];
+
+// "Deal stage, furthest" shows the lane's short name: "Sample", "Testing".
+const LANE_BY_RANK = new Map<number, string | undefined>(
+  Object.entries(LANE_RANK).map(([id, rank]) => [rank, WORKFLOW_LANES.find((lane) => lane.id === id)?.shortLabel]),
+);
 
 const STATUS_CHIP: Record<Company['status'], { label: string; className: string }> = {
   prospect: { label: 'Prospect', className: 'bg-clay-card text-clay-body dark:bg-white/[0.06]' },
@@ -65,7 +84,7 @@ function contactMatches(contact: Contact, q: string): boolean {
   );
 }
 
-/** "Follow up ▾": Name, Follow up or Last touch. */
+/** The sort button and its grouped menu: Timing, Worth, Other. */
 function SortMenu({ value, onChange }: { value: AccountSort; onChange: (sort: AccountSort) => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
@@ -97,25 +116,54 @@ function SortMenu({ value, onChange }: { value: AccountSort; onChange: (sort: Ac
         <ChevronDown className="hidden h-3.5 w-3.5 text-clay-muted md:block" aria-hidden="true" />
       </button>
       {open && (
-        <div role="menu" className="absolute right-0 top-[52px] z-20 w-44 rounded-xl border border-clay-hairline bg-white p-1 shadow-lg dark:bg-clay-card">
-          {(Object.keys(ACCOUNT_SORT_LABELS) as AccountSort[]).map((sort) => (
-            <button
-              key={sort}
-              type="button"
-              role="menuitemradio"
-              aria-checked={sort === value}
-              onClick={() => { onChange(sort); setOpen(false); }}
-              className={clsx(
-                'flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-sm text-clay-ink',
-                sort === value ? 'bg-clay-lavender/20' : 'hover:bg-clay-surface',
-              )}
-            >
-              {ACCOUNT_SORT_LABELS[sort]}
-              {sort === value && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
-            </button>
+        <div role="menu" className="absolute right-0 top-[52px] z-20 w-52 rounded-xl border border-clay-hairline bg-white p-1 shadow-lg dark:bg-clay-card">
+          {ACCOUNT_SORT_GROUPS.map((group) => (
+            <div key={group.label} role="group" aria-label={group.label}>
+              <p className="px-2.5 pb-0.5 pt-2 text-[11px] text-clay-muted">{group.label}</p>
+              {group.sorts.map((sort) => (
+                <button
+                  key={sort}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={sort === value}
+                  onClick={() => { onChange(sort); setOpen(false); }}
+                  className={clsx(
+                    'flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-sm text-clay-ink',
+                    sort === value ? 'bg-clay-lavender/20' : 'hover:bg-clay-surface',
+                  )}
+                >
+                  {ACCOUNT_SORT_LABELS[sort]}
+                  {sort === value && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
+                </button>
+              ))}
+            </div>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/** All · Local · Export · Not sure, with how many accounts each holds. */
+function MarketTabs({ value, counts, onChange }: { value: MarketFilter; counts: Record<MarketFilter, number>; onChange: (next: MarketFilter) => void }) {
+  return (
+    <div role="radiogroup" aria-label="Local or export" className="flex rounded-lg bg-clay-card p-0.5">
+      {MARKET_FILTERS.map((filter) => (
+        <button
+          key={filter.value}
+          type="button"
+          role="radio"
+          aria-checked={value === filter.value}
+          onClick={() => onChange(filter.value)}
+          className={clsx(
+            'flex-1 whitespace-nowrap rounded-md px-3 py-2 text-xs font-medium md:flex-none',
+            value === filter.value ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted',
+          )}
+        >
+          {filter.label}
+          {filter.value !== 'all' && <span className={clsx('ml-1', value === filter.value ? 'opacity-70' : 'text-clay-muted-soft')}>{counts[filter.value]}</span>}
+        </button>
+      ))}
     </div>
   );
 }
@@ -131,7 +179,7 @@ export default function AccountsPage() {
 
 function Accounts() {
   const todayKey = useBusinessDateKey();
-  const [view, setView] = useState<ViewMode>('all');
+  const [market, setMarket] = useState<MarketFilter>('all');
   const [search, setSearch] = useState('');
   // Read on the client only; the list renders after the CRM data loads, never on the server.
   const [sort, setSortState] = useState<AccountSort>(() => (typeof window === 'undefined' ? 'name' : savedSort()));
@@ -168,13 +216,20 @@ function Accounts() {
     return map;
   }, [contacts]);
 
-  // Proposals waiting for Pat per account, and logos found on their sites. Extras: if either
-  // fails to load, rows show without it.
+  // Proposals waiting for Pat per account, logos found on their sites, Laya's fit grades and
+  // the last 90 days of sales. Extras: if any fails to load, rows show without it.
   const [waitingByCompany, setWaitingByCompany] = useState<Map<string, number>>(new Map());
   const [logoProposals, setLogoProposals] = useState<Set<string>>(new Set());
+  const [fits, setFits] = useState<Map<string, CompanyFit>>(new Map());
+  const [recentSales, setRecentSales] = useState<Map<string, number>>(new Map());
   useEffect(() => {
     let cancelled = false;
-    Promise.allSettled([crm.getPendingProposals(), crm.getLogoProposals()]).then(([waitingResult, logoResult]) => {
+    Promise.allSettled([
+      crm.getPendingProposals(),
+      crm.getLogoProposals(),
+      crm.getCompanyFits(),
+      sales.getSalesByCompany(addDaysToDateKey(todayKey, -90)),
+    ]).then(([waitingResult, logoResult, fitResult, salesResult]) => {
       if (cancelled) return;
       if (waitingResult.status === 'fulfilled') {
         const counts = new Map<string, number>();
@@ -182,19 +237,39 @@ function Accounts() {
         setWaitingByCompany(counts);
       }
       if (logoResult.status === 'fulfilled') setLogoProposals(new Set(logoResult.value.keys()));
+      if (fitResult.status === 'fulfilled') setFits(fitResult.value);
+      if (salesResult.status === 'fulfilled') setRecentSales(salesResult.value);
     });
     return () => { cancelled = true; };
-  }, [dbCompanies]);
+  }, [dbCompanies, todayKey]);
 
   const followUps = useMemo(() => nextFollowUps(deals), [deals]);
   const touches = useMemo(() => lastTouches(companies, contacts, meetings), [companies, contacts, meetings]);
+  const stages = useMemo(() => furthestStages(deals), [deals]);
+  const fitValues = useMemo(
+    () => new Map([...fits].filter(([, fit]) => fit.fits).map(([id, fit]) => [id, fit.best.noul])),
+    [fits],
+  );
+
+  // Local / Export per account: Pat's choice, else the location rules over its details and people.
+  const markets = useMemo(() => {
+    const map = new Map<string, MarketCall>();
+    for (const company of companies) map.set(company.id, accountMarket(company, contactsByCompany.get(company.id) ?? []));
+    return map;
+  }, [companies, contactsByCompany]);
+  const marketCounts = useMemo(() => {
+    const counts: Record<MarketFilter, number> = { all: companies.length, local: 0, export: 0, unsure: 0 };
+    for (const call of markets.values()) counts[call.market ?? 'unsure'] += 1;
+    return counts;
+  }, [companies.length, markets]);
 
   const q = search.trim().toLowerCase();
 
   // An account matches on its own fields or on any of its people.
   const { filtered, matchedPeople } = useMemo(() => {
     const matchedPeople = new Map<string, Contact[]>();
-    const matching = !q ? companies : companies.filter((c) => {
+    const inMarket = companies.filter((c) => matchesMarket(markets.get(c.id) ?? { market: null, source: null, country: null }, market));
+    const matching = !q ? inMarket : inMarket.filter((c) => {
       const matches = (contactsByCompany.get(c.id) ?? []).filter((contact) => contactMatches(contact, q));
       const people = matches.filter((contact) => !isCompanyRoute(contact));
       if (people.length) matchedPeople.set(c.id, people);
@@ -206,8 +281,9 @@ function Accounts() {
         c.tags.some((t) => t.toLowerCase().includes(q))
       );
     });
-    return { filtered: sortAccounts(matching, sort, followUps, touches), matchedPeople };
-  }, [companies, contactsByCompany, q, sort, followUps, touches]);
+    const values = { sales: recentSales, fits: fitValues, stages };
+    return { filtered: sortAccounts(matching, sort, followUps, touches, values), matchedPeople };
+  }, [companies, contactsByCompany, q, sort, followUps, touches, markets, market, recentSales, fitValues, stages]);
 
   const peopleWithoutAccount = useMemo(
     () => contacts.filter((c) => !c.company_id && (!q || contactMatches(c, q))),
@@ -243,30 +319,46 @@ function Accounts() {
     );
   }
 
-  // Phone: name over what they make, the date over the status chip. Desktop: one 44px line.
+  // While sorting by sales, fit or stage, the date column shows that value instead.
+  const rowValue = (company: Company): string | null => {
+    if (sort === 'sales_90d') { const amount = recentSales.get(company.id); return amount ? formatBaht(amount) : null; }
+    if (sort === 'laya_fit') { const fit = fits.get(company.id); return fit ? fitChipLabel(fit) : null; }
+    if (sort === 'stage') return LANE_BY_RANK.get(stages.get(company.id) ?? 0) ?? null;
+    return null;
+  };
+
+  // Phone: name over what they make, the date over the chips. Desktop: one 44px line. The whole
+  // row opens the account; the Local / Export chip is its own button above it.
   const renderRow = (company: Company, showStatus: boolean) => {
     const people = matchedPeople.get(company.id);
     const makes = company.what_they_make?.trim() || company.industry?.trim() || '';
-    const when = rowWhen(sort, followUps.get(company.id), touches.get(company.id), todayKey);
+    const value = rowValue(company);
+    const when = value ? null : rowWhen(sort, followUps.get(company.id), touches.get(company.id), todayKey);
     const logoWaiting = !company.logo_url && logoProposals.has(company.id);
     const waiting = (waitingByCompany.get(company.id) ?? 0) + (logoWaiting ? 1 : 0);
     const waitingLabel = logoWaiting && waiting === 1 ? 'Logo to review' : `${waiting} to review`;
     const status = STATUS_CHIP[company.status] ?? STATUS_CHIP.prospect;
+    const call = markets.get(company.id) ?? { market: null, source: null, country: null };
     return (
-      <button
+      <div
         key={company.id}
-        type="button"
         onClick={() => setSelectedCompany(company.id)}
         className={clsx(
-          'grid w-full cursor-pointer items-center gap-x-2.5 px-3 py-2 text-left hover:bg-clay-surface active:bg-clay-surface',
+          'relative grid w-full cursor-pointer items-center gap-x-2.5 px-3 py-2 text-left hover:bg-clay-surface active:bg-clay-surface',
           'grid-cols-[36px_minmax(0,1fr)_auto] md:h-11 md:gap-x-3 md:py-0',
           showStatus
-            ? 'md:grid-cols-[32px_minmax(0,1.35fr)_minmax(0,1fr)_8.5rem_5.75rem]'
-            : 'md:grid-cols-[32px_minmax(0,1.35fr)_minmax(0,1fr)_8.5rem]',
+            ? 'md:grid-cols-[32px_minmax(0,1.35fr)_minmax(0,1fr)_8.5rem_8.5rem_5.75rem]'
+            : 'md:grid-cols-[32px_minmax(0,1.35fr)_minmax(0,1fr)_8.5rem_8.5rem]',
         )}
       >
-        <CompanyLogo src={company.logo_url} name={company.name} id={company.id} size={36} className="md:h-8! md:w-8!" />
-        <span className="flex min-w-0 flex-col gap-0.5 md:contents">
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setSelectedCompany(company.id); }}
+          aria-label={`Open account ${company.name}`}
+          className="absolute inset-0 rounded-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-clay-ink"
+        />
+        <CompanyLogo src={company.logo_url} name={company.name} id={company.id} size={36} className="pointer-events-none md:h-8! md:w-8!" />
+        <span className="pointer-events-none flex min-w-0 flex-col gap-0.5 md:contents">
           <span className="flex min-w-0 items-center gap-1.5">
             <span className="truncate text-sm font-medium text-clay-ink">{company.name}</span>
             {waiting > 0 && (
@@ -284,17 +376,21 @@ function Accounts() {
             <span className="truncate text-xs text-clay-muted md:text-[13px]">{makes}</span>
           )}
         </span>
-        <span className="flex flex-col items-end gap-1 md:contents">
-          <span className={clsx('whitespace-nowrap text-xs md:text-[12.5px]', when && WHEN_TONE[when.tone])} title={when?.date}>
-            {when && <><span className="md:hidden">{when.short}</span><span className="hidden md:inline">{when.text}</span></>}
+        <span className="pointer-events-none flex flex-col items-end gap-1 md:contents">
+          <span className="hidden md:block"><AccountMarketChip company={company} call={call} /></span>
+          <span className={clsx('whitespace-nowrap text-xs md:text-[12.5px]', value ? 'text-clay-ink' : when && WHEN_TONE[when.tone])} title={when?.date}>
+            {value ?? (when && <><span className="md:hidden">{when.short}</span><span className="hidden md:inline">{when.text}</span></>)}
           </span>
-          {showStatus && (
-            <span className={clsx('justify-self-start whitespace-nowrap rounded-md px-1.5 py-0.5 text-[11px] font-medium', status.className)}>
-              {status.label}
-            </span>
-          )}
+          <span className="flex items-center gap-1 md:contents">
+            <span className="md:hidden"><AccountMarketChip company={company} call={call} /></span>
+            {showStatus && (
+              <span className={clsx('justify-self-start whitespace-nowrap rounded-md px-1.5 py-0.5 text-[11px] font-medium', status.className)}>
+                {status.label}
+              </span>
+            )}
+          </span>
         </span>
-      </button>
+      </div>
     );
   };
 
@@ -330,17 +426,15 @@ function Accounts() {
             className="w-full pl-9 pr-4 py-3 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-clay-ink"
           />
         </div>
-        <div className="hidden md:flex bg-clay-card rounded-lg p-0.5">
-          <button onClick={() => setView('all')} className={clsx('px-3 py-2 text-xs font-medium rounded-md', view === 'all' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>All</button>
-          <button onClick={() => setView('by_status')} className={clsx('px-3 py-2 text-xs font-medium rounded-md', view === 'by_status' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>Status</button>
-        </div>
+        <div className="hidden md:block"><MarketTabs value={market} counts={marketCounts} onChange={setMarket} /></div>
         <SortMenu value={sort} onChange={setSort} />
       </div>
+      <div className="mb-3 md:hidden"><MarketTabs value={market} counts={marketCounts} onChange={setMarket} /></div>
 
       {/* Pairs that look like one business entered twice; out of the way while searching. */}
       {!q && <DuplicateReview companies={companies} contacts={contacts} onOpenCompany={setSelectedCompany} />}
 
-      {view === 'by_status' ? (
+      {sort === 'status' ? (
         <div className="space-y-4">
           {Object.entries(groupedByStatus).map(([status, items]) => (
             <div key={status}>
