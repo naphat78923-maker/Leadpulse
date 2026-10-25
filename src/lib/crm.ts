@@ -107,6 +107,10 @@ export async function findLogoOnSite(companyId: string): Promise<string | null> 
 /** Use logo: the found logo becomes the account's logo. */
 export async function acceptLogoProposal(companyId: string): Promise<string> {
   const bucket = supabase.storage.from(COMPANY_LOGO_BUCKET);
+  // Make sure the found logo is still there before clearing the old one: a second Use logo
+  // (a double tap) would otherwise delete the logo the first one just put in place.
+  const { error: missing } = await bucket.download(proposedLogoPath(companyId));
+  if (missing) throw missing;
   await bucket.remove([logoPath(companyId)]);
   const { error } = await bucket.move(proposedLogoPath(companyId), logoPath(companyId));
   if (error) throw error;
