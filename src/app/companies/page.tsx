@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState, useMemo } from 'react';
+import { Suspense, useEffect, useRef, useState, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Company, COMPANY_STATUS_LABELS, Contact, Deal } from '@/types/crm';
 import { useCrm } from '@/components/CrmProvider';
@@ -9,40 +9,50 @@ import CompanyDetail from '@/components/CompanyDetail';
 import ContactDetail from '@/components/ContactDetail';
 import CompanyLogo from '@/components/CompanyLogo';
 import EntityAvatar from '@/components/EntityAvatar';
-import LayaLeadTierBadge from '@/components/LayaLeadTierBadge';
 import { useQuerySelection } from '@/hooks/useQuerySelection';
-import { bestLeadSignal, type LeadSignal } from '@/utils/lead-scoring';
 import { isCompanyRoute } from '@/utils/contact-identity';
 import { linkInText, routeContact, type LeadRoute } from '@/utils/lead-apply';
 import { useBusinessDateKey } from '@/utils/useBusinessDateKey';
 import * as crm from '@/lib/crm';
-import { fitChipLabel, type CompanyFit } from '@/utils/account-profile';
-import { BadgeCheck, CircleX, Clock, Loader2, Moon, Plus, Search, Sparkles, Sprout, Tag, User, Users, type LucideIcon } from 'lucide-react';
+import {
+  ACCOUNT_SORT_LABELS,
+  isAccountSort,
+  lastTouches,
+  nextFollowUps,
+  rowWhen,
+  sortAccounts,
+  type AccountSort,
+  type WhenTone,
+} from '@/utils/account-row';
+import { ArrowUpDown, Check, ChevronDown, Loader2, Plus, Search, User } from 'lucide-react';
 import clsx from 'clsx';
 import { PageTransition } from '@/components/motion';
 
 type ViewMode = 'all' | 'by_status';
 
-const STATUS_ICON: Record<Company['status'], LucideIcon> = {
-  prospect: Sprout,
-  active_customer: BadgeCheck,
-  inactive: Moon,
-  lost: CircleX,
+const STATUS_CHIP: Record<Company['status'], { label: string; className: string }> = {
+  prospect: { label: 'Prospect', className: 'bg-clay-card text-clay-body dark:bg-white/[0.06]' },
+  active_customer: { label: 'Customer', className: 'bg-clay-mint/30 text-clay-ink' },
+  inactive: { label: 'Inactive', className: 'bg-clay-card text-clay-muted-soft dark:bg-white/[0.06]' },
+  lost: { label: 'Lost', className: 'bg-clay-error/10 text-clay-error' },
 };
 
-const factIcon = 'h-3.5 w-3.5 shrink-0 text-clay-muted-soft';
+const WHEN_TONE: Record<WhenTone, string> = {
+  late: 'font-medium text-clay-warning-strong dark:text-clay-ochre',
+  today: 'font-semibold text-clay-ink',
+  ahead: 'text-clay-ink',
+  past: 'text-clay-muted',
+};
 
-/** "Today", "9d ago", "3mo ago" since a saved date; null when there is none. */
-function sinceLabel(date: string | null | undefined, today: string): string | null {
-  const from = Date.parse(`${(date ?? '').slice(0, 10)}T00:00:00Z`);
-  const to = Date.parse(`${today}T00:00:00Z`);
-  if (Number.isNaN(from) || Number.isNaN(to)) return null;
-  const days = Math.round((to - from) / 86_400_000);
-  if (days < 0) return null;
-  if (days === 0) return 'Today';
-  if (days < 60) return `${days}d ago`;
-  if (days < 365) return `${Math.round(days / 30)}mo ago`;
-  return `${Math.round(days / 365)}y ago`;
+// Per-viewer convenience: the list opens in the order Pat last picked.
+const SORT_KEY = 'leadpulse.accounts.sort';
+function savedSort(): AccountSort {
+  try {
+    const value = window.localStorage.getItem(SORT_KEY);
+    return isAccountSort(value) ? value : 'name';
+  } catch {
+    return 'name';
+  }
 }
 
 function contactMatches(contact: Contact, q: string): boolean {
@@ -51,6 +61,61 @@ function contactMatches(contact: Contact, q: string): boolean {
     Boolean(contact.email?.toLowerCase().includes(q)) ||
     Boolean(contact.phone?.toLowerCase().includes(q)) ||
     Boolean(contact.job_title?.toLowerCase().includes(q))
+  );
+}
+
+/** "Follow up ▾": Name, Follow up or Last touch. */
+function SortMenu({ value, onChange }: { value: AccountSort; onChange: (sort: AccountSort) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent | KeyboardEvent) => {
+      if (e instanceof KeyboardEvent ? e.key === 'Escape' : !ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', close);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', close);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Sort by ${ACCOUNT_SORT_LABELS[value].toLowerCase()}`}
+        className="flex h-[46px] items-center gap-1.5 whitespace-nowrap rounded-lg border border-clay-hairline bg-white px-3 text-xs font-medium text-clay-ink dark:bg-clay-card"
+      >
+        <ArrowUpDown className="h-3.5 w-3.5" aria-hidden="true" />
+        {ACCOUNT_SORT_LABELS[value]}
+        <ChevronDown className="hidden h-3.5 w-3.5 text-clay-muted md:block" aria-hidden="true" />
+      </button>
+      {open && (
+        <div role="menu" className="absolute right-0 top-[52px] z-20 w-44 rounded-xl border border-clay-hairline bg-white p-1 shadow-lg dark:bg-clay-card">
+          {(Object.keys(ACCOUNT_SORT_LABELS) as AccountSort[]).map((sort) => (
+            <button
+              key={sort}
+              type="button"
+              role="menuitemradio"
+              aria-checked={sort === value}
+              onClick={() => { onChange(sort); setOpen(false); }}
+              className={clsx(
+                'flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-sm text-clay-ink',
+                sort === value ? 'bg-clay-lavender/20' : 'hover:bg-clay-surface',
+              )}
+            >
+              {ACCOUNT_SORT_LABELS[sort]}
+              {sort === value && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -67,6 +132,12 @@ function Accounts() {
   const todayKey = useBusinessDateKey();
   const [view, setView] = useState<ViewMode>('all');
   const [search, setSearch] = useState('');
+  // Read on the client only; the list renders after the CRM data loads, never on the server.
+  const [sort, setSortState] = useState<AccountSort>(() => (typeof window === 'undefined' ? 'name' : savedSort()));
+  const setSort = (next: AccountSort) => {
+    setSortState(next);
+    try { window.localStorage.setItem(SORT_KEY, next); } catch { /* private window: the choice lasts this visit */ }
+  };
   // /companies?company=<id> opens that account (links from This week and Prospect Review).
   const [selectedCompany, setSelectedCompany] = useQuerySelection('company');
   const [selectedContact, setSelectedContact] = useState<string | null>(null);
@@ -77,7 +148,7 @@ function Accounts() {
   const [modalChoice, setIsModalOpen] = useState<boolean | null>(null);
   const isModalOpen = modalChoice ?? Boolean(sharedLink);
 
-  const { companies: dbCompanies, contacts: dbContacts, deals: dbDeals, loading, refresh, createCompany, createContact } = useCrm();
+  const { companies: dbCompanies, contacts: dbContacts, deals: dbDeals, meetings = [], loading, refresh, createCompany, createContact } = useCrm();
   const companies: Company[] = dbCompanies;
   const contacts: Contact[] = dbContacts;
   const deals: Deal[] = dbDeals;
@@ -96,49 +167,28 @@ function Accounts() {
     return map;
   }, [contacts]);
 
-  // Laya's saved fit grade per prospect, and proposals waiting for Pat per account. Both are
-  // extras: if either fails to load, rows simply show without that chip.
-  const [fits, setFits] = useState<Map<string, CompanyFit>>(new Map());
+  // Proposals waiting for Pat per account. An extra: if it fails to load, rows show without it.
   const [waitingByCompany, setWaitingByCompany] = useState<Map<string, number>>(new Map());
   useEffect(() => {
     let cancelled = false;
-    Promise.allSettled([crm.getCompanyFits(), crm.getPendingProposals()]).then(([fitResult, waitingResult]) => {
+    crm.getPendingProposals().then((proposals) => {
       if (cancelled) return;
-      if (fitResult.status === 'fulfilled') setFits(fitResult.value);
-      if (waitingResult.status === 'fulfilled') {
-        const counts = new Map<string, number>();
-        for (const p of waitingResult.value) if (p.company_id) counts.set(p.company_id, (counts.get(p.company_id) ?? 0) + 1);
-        setWaitingByCompany(counts);
-      }
-    });
+      const counts = new Map<string, number>();
+      for (const p of proposals) if (p.company_id) counts.set(p.company_id, (counts.get(p.company_id) ?? 0) + 1);
+      setWaitingByCompany(counts);
+    }).catch(() => {});
     return () => { cancelled = true; };
   }, [dbCompanies]);
 
-  // Deterministic Laya lead-tier rollup per company (hottest open deal).
-  // No model call — safe to compute for every row on any device.
-  const signalByCompanyId = useMemo(() => {
-    const dealsByCompany = new Map<string, Deal[]>();
-    for (const deal of deals) {
-      if (!deal.company_id) continue;
-      const list = dealsByCompany.get(deal.company_id) ?? [];
-      list.push(deal);
-      dealsByCompany.set(deal.company_id, list);
-    }
-    const map = new Map<string, LeadSignal>();
-    for (const [companyId, companyDeals] of dealsByCompany) {
-      const signal = bestLeadSignal(companyDeals);
-      if (signal) map.set(companyId, signal);
-    }
-    return map;
-  }, [deals]);
+  const followUps = useMemo(() => nextFollowUps(deals), [deals]);
+  const touches = useMemo(() => lastTouches(companies, contacts, meetings), [companies, contacts, meetings]);
 
   const q = search.trim().toLowerCase();
 
   // An account matches on its own fields or on any of its people.
   const { filtered, matchedPeople } = useMemo(() => {
     const matchedPeople = new Map<string, Contact[]>();
-    if (!q) return { filtered: companies, matchedPeople };
-    const filtered = companies.filter((c) => {
+    const matching = !q ? companies : companies.filter((c) => {
       const matches = (contactsByCompany.get(c.id) ?? []).filter((contact) => contactMatches(contact, q));
       const people = matches.filter((contact) => !isCompanyRoute(contact));
       if (people.length) matchedPeople.set(c.id, people);
@@ -146,11 +196,12 @@ function Accounts() {
         matches.length > 0 ||
         c.name.toLowerCase().includes(q) ||
         Boolean(c.industry?.toLowerCase().includes(q)) ||
+        Boolean(c.what_they_make?.toLowerCase().includes(q)) ||
         c.tags.some((t) => t.toLowerCase().includes(q))
       );
     });
-    return { filtered, matchedPeople };
-  }, [companies, contactsByCompany, q]);
+    return { filtered: sortAccounts(matching, sort, followUps, touches), matchedPeople };
+  }, [companies, contactsByCompany, q, sort, followUps, touches]);
 
   const peopleWithoutAccount = useMemo(
     () => contacts.filter((c) => !c.company_id && (!q || contactMatches(c, q))),
@@ -186,76 +237,64 @@ function Accounts() {
     );
   }
 
+  // Phone: name over what they make, the date over the status chip. Desktop: one 44px line.
   const renderRow = (company: Company, showStatus: boolean) => {
     const people = matchedPeople.get(company.id);
-    const peopleCount = (contactsByCompany.get(company.id) ?? []).filter((c) => !isCompanyRoute(c)).length;
-    const lastContact = sinceLabel(company.last_contact_date, todayKey);
-    const StatusIcon = STATUS_ICON[company.status];
+    const makes = company.what_they_make?.trim() || company.industry?.trim() || '';
+    const when = rowWhen(sort, followUps.get(company.id), touches.get(company.id), todayKey);
+    const waiting = waitingByCompany.get(company.id) ?? 0;
+    const status = STATUS_CHIP[company.status] ?? STATUS_CHIP.prospect;
     return (
-      <div
+      <button
         key={company.id}
+        type="button"
         onClick={() => setSelectedCompany(company.id)}
-        className="flex items-center gap-3 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg p-3 cursor-pointer active:bg-clay-surface"
+        className={clsx(
+          'grid w-full cursor-pointer items-center gap-x-2.5 px-3 py-2 text-left hover:bg-clay-surface active:bg-clay-surface',
+          'grid-cols-[36px_minmax(0,1fr)_auto] md:h-11 md:gap-x-3 md:py-0',
+          showStatus
+            ? 'md:grid-cols-[32px_minmax(0,1.35fr)_minmax(0,1fr)_8.5rem_5.75rem]'
+            : 'md:grid-cols-[32px_minmax(0,1.35fr)_minmax(0,1fr)_8.5rem]',
+        )}
       >
-        <CompanyLogo src={company.logo_url} name={company.name} id={company.id} size={44} />
-        <div className="min-w-0 flex-1">
-          <h4 className="text-sm font-medium text-clay-ink truncate">{company.name}</h4>
+        <CompanyLogo src={company.logo_url} name={company.name} id={company.id} size={36} className="md:h-8! md:w-8!" />
+        <span className="flex min-w-0 flex-col gap-0.5 md:contents">
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate text-sm font-medium text-clay-ink">{company.name}</span>
+            {waiting > 0 && (
+              <span className="shrink-0 rounded-md bg-clay-warning/20 px-1.5 py-px text-[10.5px] font-medium text-clay-warning-strong dark:text-clay-ochre">
+                {waiting} to review
+              </span>
+            )}
+          </span>
           {people ? (
-            <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-clay-lavender">
+            <span className="flex min-w-0 items-center gap-1 text-xs text-clay-lavender md:text-[13px]">
               <User className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               <span className="truncate">{people.map((p) => p.name).join(', ')}</span>
-            </p>
-          ) : company.tags.length > 0 ? (
-            <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-clay-muted">
-              <Tag className={factIcon} aria-hidden="true" />
-              <span className="truncate">{company.tags.join(', ')}</span>
-            </p>
-          ) : null}
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-clay-muted">
-            {showStatus && (
-              <span className="inline-flex items-center gap-1">
-                <StatusIcon className={factIcon} aria-hidden="true" />
-                {COMPANY_STATUS_LABELS[company.status]}
-              </span>
-            )}
-            {peopleCount > 0 && (
-              <span className="inline-flex items-center gap-1">
-                <Users className={factIcon} aria-hidden="true" />
-                {peopleCount} {peopleCount === 1 ? 'person' : 'people'}
-              </span>
-            )}
-            {lastContact && (
-              <span className="inline-flex items-center gap-1" title={`Last contact ${company.last_contact_date}`}>
-                <Clock className={factIcon} aria-hidden="true" />
-                {lastContact}
-              </span>
-            )}
-            <LayaLeadTierBadge signal={signalByCompanyId.get(company.id) ?? null} />
-            {(() => {
-              const fit = fits.get(company.id);
-              return fit && (
-                <span
-                  title={`Laya fit: ${fit.grades.map((g) => `${g.archetype.replace(/_/g, ' ')} ${Math.round(g.noul * 100)}%`).join(' · ')}`}
-                  className={clsx(
-                    'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium',
-                    fit.fits ? 'bg-clay-lavender/20 text-clay-ink' : 'bg-clay-card text-clay-muted-soft',
-                  )}
-                >
-                  <Sparkles className="h-3 w-3" aria-hidden="true" />
-                  {fitChipLabel(fit)}
-                </span>
-              );
-            })()}
-            {(waitingByCompany.get(company.id) ?? 0) > 0 && (
-              <span className="inline-flex items-center rounded bg-clay-warning/20 px-1.5 py-0.5 text-[10px] font-medium text-clay-warning-strong">
-                {waitingByCompany.get(company.id)} to review
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
+            </span>
+          ) : (
+            <span className="truncate text-xs text-clay-muted md:text-[13px]">{makes}</span>
+          )}
+        </span>
+        <span className="flex flex-col items-end gap-1 md:contents">
+          <span className={clsx('whitespace-nowrap text-xs md:text-[12.5px]', when && WHEN_TONE[when.tone])} title={when?.date}>
+            {when && <><span className="md:hidden">{when.short}</span><span className="hidden md:inline">{when.text}</span></>}
+          </span>
+          {showStatus && (
+            <span className={clsx('justify-self-start whitespace-nowrap rounded-md px-1.5 py-0.5 text-[11px] font-medium', status.className)}>
+              {status.label}
+            </span>
+          )}
+        </span>
+      </button>
     );
   };
+
+  const list = (items: Company[], showStatus: boolean) => (
+    <div className="divide-y divide-clay-hairline overflow-hidden rounded-xl border border-clay-hairline bg-white dark:bg-clay-card">
+      {items.map((company) => renderRow(company, showStatus))}
+    </div>
+  );
 
   return (
     <PageTransition className="p-4 md:p-6 max-w-6xl pb-20 lg:pb-6">
@@ -272,8 +311,8 @@ function Accounts() {
         </button>
       </div>
 
-      <div className="flex items-center gap-2 mb-4">
-        <div className="flex-1 relative">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="flex-1 relative min-w-0">
           <Search className="w-4 h-4 text-clay-muted absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
@@ -283,10 +322,11 @@ function Accounts() {
             className="w-full pl-9 pr-4 py-3 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-clay-ink"
           />
         </div>
-        <div className="flex bg-clay-card rounded-lg p-0.5">
+        <div className="hidden md:flex bg-clay-card rounded-lg p-0.5">
           <button onClick={() => setView('all')} className={clsx('px-3 py-2 text-xs font-medium rounded-md', view === 'all' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>All</button>
           <button onClick={() => setView('by_status')} className={clsx('px-3 py-2 text-xs font-medium rounded-md', view === 'by_status' ? 'bg-clay-ink text-clay-canvas' : 'text-clay-muted')}>Status</button>
         </div>
+        <SortMenu value={sort} onChange={setSort} />
       </div>
 
       {view === 'by_status' ? (
@@ -294,29 +334,27 @@ function Accounts() {
           {Object.entries(groupedByStatus).map(([status, items]) => (
             <div key={status}>
               <h3 className="text-sm font-semibold text-clay-ink mb-2">{COMPANY_STATUS_LABELS[status as keyof typeof COMPANY_STATUS_LABELS] || status} ({items.length})</h3>
-              <div className="space-y-2">{items.map((company) => renderRow(company, false))}</div>
+              {list(items, false)}
             </div>
           ))}
         </div>
-      ) : (
-        <div className="space-y-2">{filtered.map((company) => renderRow(company, true))}</div>
-      )}
+      ) : filtered.length > 0 && list(filtered, true)}
 
       {peopleWithoutAccount.length > 0 && (
         <section className="mt-6">
           <h3 className="text-sm font-semibold text-clay-ink mb-2">People without an account ({peopleWithoutAccount.length})</h3>
-          <div className="space-y-2">
+          <div className="divide-y divide-clay-hairline overflow-hidden rounded-xl border border-clay-hairline bg-white dark:bg-clay-card">
             {peopleWithoutAccount.map((contact) => (
               <button
                 key={contact.id}
                 type="button"
                 onClick={() => setSelectedContact(contact.id)}
-                className="flex w-full items-center gap-3 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg p-3 text-left active:bg-clay-surface"
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-clay-surface active:bg-clay-surface md:h-11 md:gap-3 md:py-0"
               >
-                <EntityAvatar kind="person" name={contact.name} id={contact.id} size={40} className="flex-shrink-0" />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium text-clay-ink truncate">{contact.name}</span>
-                  <span className="block text-xs text-clay-muted truncate">{contact.job_title || contact.email || '—'}</span>
+                <EntityAvatar kind="person" name={contact.name} id={contact.id} size={32} className="flex-shrink-0" />
+                <span className="min-w-0 flex-1 md:flex md:items-center md:gap-3">
+                  <span className="block truncate text-sm font-medium text-clay-ink md:w-1/2 md:flex-none">{contact.name}</span>
+                  <span className="block truncate text-xs text-clay-muted md:text-[13px]">{contact.job_title || contact.email || ''}</span>
                 </span>
               </button>
             ))}
