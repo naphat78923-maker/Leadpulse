@@ -162,6 +162,9 @@ vi.mock('@/components/ToastProvider', () => ({ useToast: () => ({ addToast }) })
 
 import { CrmProvider, useCrm } from '@/components/CrmProvider';
 import DealDetail from '@/components/DealDetail';
+import { localDateKey } from '@/utils/deal-board';
+import { addDaysToDateKey } from '@/utils/deal-workflow';
+import { LANE_PLAYBOOKS } from '@/utils/lane-playbook';
 
 const company: Company = {
   id: 'company-1',
@@ -271,8 +274,11 @@ describe('end-to-end journey on synthetic fixtures', () => {
     expect(meetingRows()[0]).toMatchObject({ type: 'call', direction: 'outbound', deal_id: 'deal-1' });
     expect(persist(store.state as any)).toMatchObject({ workflow_action: 'reply', stage: 'contacted' });
     expect(persist(store.state as any).last_outcome).toMatch(/waiting on reply/);
-    // The interaction carries the deal's history, and the deal's schedule is untouched.
-    expect(persist(store.state as any).followup_date).toBeNull();
+    // The deal had no date, so the Waiting on reply playbook filled its date and next action.
+    expect(persist(store.state as any)).toMatchObject({
+      followup_date: addDaysToDateKey(localDateKey(), LANE_PLAYBOOKS.reply!.days),
+      next_action: LANE_PLAYBOOKS.reply!.nextAction,
+    });
 
     // 2 ── the client replies, and the user chooses a direct follow-up with a new date.
     fireEvent.click(screen.getByRole('button', { name: /Log touch/i }));

@@ -19,6 +19,7 @@ import {
   type ScheduleIntent,
 } from '@/utils/deal-schedule';
 import { suggestedFollowupDays } from '@/utils/followup-suggestion';
+import { lanePrefill } from '@/utils/lane-playbook';
 import { directionForEvent, type InteractionEventKind } from '@/utils/interaction-event';
 import { localDateKey } from '@/utils/deal-board';
 import ModalShell from '@/components/motion/ModalShell';
@@ -160,6 +161,8 @@ export default function LogInteractionModal({
   const [followupTouched, setFollowupTouched] = useState(false);
   /** Typed = replace the deal's next action in the same write; empty = keep, never write. */
   const [nextActionEdit, setNextActionEdit] = useState('');
+  /** The lane playbook's text last put in the field, so a lane change can swap it but never Pat's own. */
+  const [prefilledNextAction, setPrefilledNextAction] = useState('');
   const [nextWorkflowAction, setNextWorkflowAction] = useState<DealWorkflowAction | ''>('');
   const [sampleStatus, setSampleStatus] = useState<SampleStatus | ''>('');
   const [confirmSuccess, setConfirmSuccess] = useState(false);
@@ -199,6 +202,7 @@ export default function LogInteractionModal({
       setEditingDate(false);
       setFollowupDate('');
       setNextActionEdit('');
+      setPrefilledNextAction('');
       setMoreOpen(false);
       setSaving(false);
       setSaveError(null);
@@ -224,7 +228,7 @@ export default function LogInteractionModal({
   const today = localDateKey();
   // Outreach on a deal with no follow-up date: point at the first nudge rung. Never
   // preselected — logging a touch does not write the deal unless a date is chosen.
-  const suggestedDays = followupTouched || !deal
+  const suggestedDays = followupTouched || followupChoice === 'pick' || !deal
     ? null
     : suggestedFollowupDays({ kind, followupDate: deal.followup_date, laneRequiresDate });
   const scheduleIntent: ScheduleIntent =
@@ -235,9 +239,35 @@ export default function LogInteractionModal({
         : { mode: 'preserve' };
   const scheduleUpdates = scheduleUpdateForIntent(deal ?? null, scheduleIntent);
 
+  // Names the lane default in the date row while it is the date chosen.
+  const shownPrefill = deal && isChangingLane && selectedAction && !followupTouched ? lanePrefill(deal, selectedAction, today) : null;
+  const followupHint = shownPrefill?.dateIsDefault && followupChoice === 'pick' && followupDate === shownPrefill.defaultDate
+    ? `+${shownPrefill.days} days · ${WORKFLOW_BY_ID[selectedAction!].shortLabel} default`
+    : undefined;
+
   const quickDates = QUICK_FOLLOWUPS.map(q => ({ ...q, date: addDaysToDateKey(today, q.days) }));
   const isQuickDate = followupChoice === 'pick' && quickDates.some(q => q.date === followupDate);
   const contactCount = selectedContactIds.length;
+
+  // Choosing a lane fills in its playbook date and next action (lane-playbook.ts); staying
+  // takes them back out. Only what Pat has not touched is filled, and a date already on the
+  // deal is never replaced: Testing and Follow-up start from it, the others keep it.
+  const chooseLane = (target: DealWorkflowAction) => {
+    setNextWorkflowAction(target);
+    setSaveError(null);
+    if (!deal || !dealAction) return;
+    const prefill = target === dealAction ? null : lanePrefill(deal, target, today);
+    if (!followupTouched) {
+      const needsDate = target === 'testing' || target === 'reschedule';
+      const date = prefill && (prefill.dateIsDefault || needsDate) ? prefill.followupDate : null;
+      setFollowupChoice(date ? 'pick' : 'keep');
+      setFollowupDate(date ?? '');
+    }
+    if (!nextActionEdit.trim() || nextActionEdit === prefilledNextAction) {
+      setNextActionEdit(prefill?.nextAction ?? '');
+      setPrefilledNextAction(prefill?.nextAction ?? '');
+    }
+  };
 
   const chooseKind = (next: InteractionEventKind) => {
     setKind(next);
@@ -248,7 +278,8 @@ export default function LogInteractionModal({
     // The safe default is always the current lane: a target the new event does not
     // permit is dropped rather than silently kept.
     const allowed = laneTargetOptions(deal, next);
-    setNextWorkflowAction(prev => (prev && allowed.some(option => option.target === prev) ? prev : dealAction));
+    const target = nextWorkflowAction && allowed.some(option => option.target === nextWorkflowAction) ? nextWorkflowAction : dealAction;
+    if (target !== nextWorkflowAction) chooseLane(target);
   };
 
   const chooseFollowup = (choice: FollowupChoice, dateKey = '') => {
@@ -282,8 +313,11 @@ export default function LogInteractionModal({
     setNextWorkflowAction(nextDeal ? getWorkflowAction(nextDeal) : '');
     setSampleStatus('');
     setNextActionEdit('');
+    setPrefilledNextAction('');
     setConfirmSuccess(false);
-    setFollowupChoice(followupChoice === 'clear' ? 'keep' : followupChoice);
+    // A lane default belonged to the previous deal; a date Pat picked carries over.
+    if (!followupTouched) setFollowupDate('');
+    setFollowupChoice(!followupTouched || followupChoice === 'clear' ? 'keep' : followupChoice);
     setSaveError(null);
   };
 
@@ -595,6 +629,7 @@ export default function LogInteractionModal({
             label={laneRequiresDate
               ? `Date for ${WORKFLOW_BY_ID[selectedAction!].shortLabel}`
               : `Next follow-up${deal?.followup_date ? ` · now ${shortDate(deal.followup_date)}` : ''}`}
+            hint={followupHint}
           >
             <div role="radiogroup" aria-label="Next follow-up" className="flex flex-wrap gap-2">
               {!laneRequiresDate && deal?.followup_date && (
@@ -679,7 +714,7 @@ export default function LogInteractionModal({
                     <div role="radiogroup" aria-label="Deal stage after this touch" className="flex flex-wrap gap-2">
                       <Chip
                         selected={selectedAction === dealAction}
-                        onClick={() => { setNextWorkflowAction(dealAction); setSaveError(null); }}
+                        onClick={() => chooseLane(dealAction)}
                         ariaLabel={`Keep current stage · ${WORKFLOW_BY_ID[dealAction].shortLabel}`}
                       >
                         Stay in {WORKFLOW_BY_ID[dealAction].shortLabel}
@@ -689,7 +724,7 @@ export default function LogInteractionModal({
                           key={option.target}
                           selected={selectedAction === option.target}
                           tone="border-clay-teal bg-clay-mint/20 text-clay-teal"
-                          onClick={() => { setNextWorkflowAction(option.target); setSaveError(null); }}
+                          onClick={() => chooseLane(option.target)}
                           ariaLabel={option.label}
                         >
                           <ArrowRight className="h-3 w-3" />

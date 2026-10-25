@@ -4,12 +4,13 @@
 import type { Company, Contact, Deal, Meeting } from '@/types/crm';
 import * as crm from '@/lib/crm';
 import { fetchReorderSignalRows, rankSignals } from '@/lib/historical';
-import { buildAfternoonNudge, buildDailyDigest, type AfternoonNudge, type DailyDigest, type DigestWaiting } from '@/utils/daily-digest';
+import { buildAfternoonNudge, buildDailyDigest, type AfternoonNudge, type DailyDigest, type DigestParkSuggestion, type DigestWaiting } from '@/utils/daily-digest';
 import { buildFollowupActions, deriveRetentionDueSignals, existingRetentionReferenceDate } from '@/utils/followup-policy';
 import { buildThisWeekQueue, type ThisWeekQueue } from '@/utils/this-week-queue';
 import { buildWaitingOnYou, waitingLabel } from '@/utils/waiting-on-you';
+import { buildParkSuggestions, parkSuggestionLabel } from '@/utils/park-suggestion';
 
-async function loadThisWeek(today: string): Promise<{ queue: ThisWeekQueue; waiting: DigestWaiting[] }> {
+async function loadThisWeek(today: string): Promise<{ queue: ThisWeekQueue; waiting: DigestWaiting[]; parkSuggested: DigestParkSuggestion[] }> {
   const [companies, contacts, dealRows, meetingRows, accountEvents, signalRows] = await Promise.all([
     crm.getCompanies(),
     crm.getContacts(),
@@ -42,15 +43,19 @@ async function loadThisWeek(today: string): Promise<{ queue: ThisWeekQueue; wait
   const queue = buildThisWeekQueue({ candidates, retentionDue, signals, today });
 
   const companyName = new Map((companies as Company[]).map(company => [company.id, company.name]));
+  const nameOf = (deal: Deal) => (deal.company_id && companyName.get(deal.company_id)) || deal.client || deal.title || 'Deal';
   // Laya's grades are left out here, so a waiting deal is never marked as "asked"; it is still listed.
   const waiting = buildWaitingOnYou({ deals, meetings, today })
     .sort((a, b) => b.daysWaiting - a.daysWaiting)
     .map(item => ({
-      name: (item.deal.company_id && companyName.get(item.deal.company_id)) || item.deal.client || item.deal.title || 'Deal',
+      name: nameOf(item.deal),
       label: `Buyer replied ${waitingLabel(item.daysWaiting)}, nothing sent since`,
     }));
+  // Same list as the Pipeline's "Park this deal?" filter. The afternoon nudge leaves it out.
+  const parkSuggested = buildParkSuggestions({ deals, meetings })
+    .map(item => ({ name: nameOf(item.deal), label: parkSuggestionLabel(item) }));
 
-  return { queue, waiting };
+  return { queue, waiting, parkSuggested };
 }
 
 export async function loadDailyDigest(today: string, appUrl?: string | null): Promise<DailyDigest> {

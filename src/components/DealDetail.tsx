@@ -33,6 +33,7 @@ import { buildCloseUpdate } from '@/utils/deal-close';
 import { formatBaht } from '@/utils/format';
 import { nudgeChipLabel } from '@/utils/deal-card';
 import { formatScheduleDate } from '@/utils/deal-schedule';
+import { lanePrefill } from '@/utils/lane-playbook';
 import { outreachLanguageLabel, outreachLanguageBadgeColor, outreachLanguageBasisLabel } from '@/utils/contact-identity';
 import LogInteractionModal from '@/components/LogInteractionModal';
 import CompanyLogo from '@/components/CompanyLogo';
@@ -114,7 +115,47 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
     }));
   };
 
-  const clearEdits = () => setEditState({ values: {}, baseline: {} });
+  /** What the lane playbook put in the form, so another lane can swap it but never Pat's own edit. */
+  const [laneFilled, setLaneFilled] = useState<Partial<Pick<DealEditDraft, 'followup_date' | 'next_action'>>>({});
+
+  const clearEdits = () => {
+    setEditState({ values: {}, baseline: {} });
+    setLaneFilled({});
+  };
+
+  const unsetField = (field: DealEditField) => {
+    setEditState(prev => {
+      const values = { ...prev.values };
+      const baseline = { ...prev.baseline };
+      delete values[field];
+      delete baseline[field];
+      return { values, baseline };
+    });
+  };
+
+  // Picking a lane fills in its playbook date and next action (lane-playbook.ts); going back
+  // to the deal's own lane takes them out. A date already on the deal is never replaced.
+  const chooseLane = (target: DealWorkflowAction) => {
+    setField('workflow_action', target);
+    const prefill = target === currentWorkflow ? null : lanePrefill(deal, target, today);
+    const fills = {
+      followup_date: prefill?.dateIsDefault ? prefill.followupDate : null,
+      next_action: prefill?.nextAction ?? null,
+    };
+    const filled: typeof laneFilled = {};
+    for (const field of ['followup_date', 'next_action'] as const) {
+      const ownEdit = field in editState.values && editState.values[field] !== laneFilled[field];
+      if (ownEdit) continue;
+      const value = fills[field];
+      if (value) {
+        setField(field, value);
+        filled[field] = value;
+      } else {
+        unsetField(field);
+      }
+    }
+    setLaneFilled(filled);
+  };
 
   const toggleEditing = () => {
     if (editing) clearEdits();
@@ -407,6 +448,8 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
   // Reads the merged draft, so the form always shows the latest record plus the
   // user's own edits — never the lane the deal has already left.
   const visibleNextAction = editData.next_action;
+  // The lane playbook behind a lane picked in the editor, for the hints under its fields.
+  const lanePlaybook = editing && editData.workflow_action !== currentWorkflow ? lanePrefill(deal, editData.workflow_action, today) : null;
   const isClosed = deal.stage === 'closed_won' || deal.stage === 'closed_lost';
 
   return (
@@ -507,7 +550,7 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
                 <select
                   aria-label="Action lane"
                   value={editData.workflow_action}
-                  onChange={event => setField('workflow_action', event.target.value as DealWorkflowAction)}
+                  onChange={event => chooseLane(event.target.value as DealWorkflowAction)}
                   className="w-full px-3 py-2.5 border border-clay-hairline rounded-lg text-base bg-white dark:bg-clay-card"
                 >
                   {WORKFLOW_LANES.map(lane => (
@@ -572,6 +615,9 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
                   placeholder="Start with a verb: follow up, ask, send, confirm…"
                   className="mt-1 w-full rounded-lg border border-clay-hairline bg-transparent px-3 py-2 text-base"
                 />
+                {laneFilled.next_action && editData.next_action === laneFilled.next_action && deal.next_action?.trim() && deal.next_action.trim() !== laneFilled.next_action && (
+                  <span className="mt-1 block truncate text-xs text-clay-muted">Replaces: {deal.next_action}</span>
+                )}
               </label>
             ) : (
               <p className={clsx('mt-0.5 text-[15px] leading-snug', deal.next_action ? 'text-clay-ink' : 'italic text-clay-muted')}>
@@ -596,6 +642,17 @@ export default function DealDetail({ deal, onClose, onSaved }: DealDetailProps) 
                   onChange={event => setField('followup_date', event.target.value)}
                   className="mt-1 block rounded-lg border border-clay-hairline bg-transparent px-3 py-2 text-base text-clay-ink"
                 />
+                {lanePlaybook?.defaultDate && editData.followup_date === lanePlaybook.defaultDate && (
+                  <span data-lane-date-hint className="mt-1 block">+{lanePlaybook.days} days · {WORKFLOW_BY_ID[editData.workflow_action].shortLabel} default</span>
+                )}
+                {lanePlaybook?.defaultDate && !lanePlaybook.dateIsDefault && editData.followup_date === deal.followup_date && editData.followup_date !== lanePlaybook.defaultDate && (
+                  <span data-lane-date-hint className="mt-1 block">
+                    The deal&apos;s date is kept.{' '}
+                    <button type="button" onClick={() => setField('followup_date', lanePlaybook.defaultDate!)} className="underline decoration-clay-hairline underline-offset-2 hover:text-clay-ink">
+                      Use +{lanePlaybook.days} days
+                    </button>
+                  </span>
+                )}
               </label>
             ) : (
               <p className="text-xs text-clay-muted">

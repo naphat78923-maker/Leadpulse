@@ -255,6 +255,15 @@ describe('filterAndSortBoardDeals', () => {
     // Without review ids the Laya filter shows nothing rather than everything.
     expect(filterAndSortBoardDeals(deals, { attention: 'laya-review', search: '', product: 'all', priority: 'all', today })).toEqual([]);
   });
+
+  it('filters to the deals offered for parking', () => {
+    const parkSuggestedIds = new Set([deals[1].id]);
+    const visible = filterAndSortBoardDeals(deals, {
+      attention: 'park-suggested', search: '', product: 'all', priority: 'all', today, parkSuggestedIds,
+    });
+    expect(visible.map(item => item.id)).toEqual([deals[1].id]);
+    expect(filterAndSortBoardDeals(deals, { attention: 'park-suggested', search: '', product: 'all', priority: 'all', today })).toEqual([]);
+  });
 });
 
 // ════════════════════════════════════════════════════════════════════════════

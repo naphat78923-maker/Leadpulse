@@ -50,7 +50,7 @@ describe('buildDailyDigest', () => {
     const lines = digest.text.split('\n');
     expect(lines[0]).toBe('<b>LeadPulse · Tue 6 Oct</b>');
     expect(lines[1]).toBe('1 waiting on you · 1 due today · 1 overdue · 1 check-in');
-    expect(digest.counts).toEqual({ waiting: 1, overdue: 1, dueToday: 1, checkIns: 1, needsReview: 0 });
+    expect(digest.counts).toEqual({ waiting: 1, overdue: 1, dueToday: 1, checkIns: 1, needsReview: 0, parkSuggested: 0 });
     // Later this week is not today's business.
     expect(digest.text).not.toContain('Friday Co');
     expect(digest.text).toContain('• <b>Late Co</b> · 7d · Call chef');
@@ -72,6 +72,22 @@ describe('buildDailyDigest', () => {
     expect(digest.counts.overdue).toBe(0);
     expect(digest.text).toContain('1 need a decision');
     expect(digest.text).not.toContain('Held Co');
+  });
+
+  it('asks about parking deals at the nudge limit, linking to the Pipeline filter', () => {
+    const digest = buildDailyDigest({
+      queue: queue(),
+      waiting: [],
+      parkSuggested: [{ name: 'Quiet & Co', label: '4 sends, no reply' }],
+      today: TODAY,
+      appUrl: 'https://example.test',
+    });
+    // A question is still worth the message on a day with nothing else.
+    expect(digest.isEmpty).toBe(false);
+    expect(digest.counts.parkSuggested).toBe(1);
+    expect(digest.text.split('\n')[1]).toBe('1 could be parked');
+    expect(digest.text).toContain('<b>Park this deal?</b>\n• <b>Quiet &amp; Co</b> · 4 sends, no reply');
+    expect(digest.text).toContain('<a href="https://example.test/deals?filter=park-suggested">Review on Pipeline</a>');
   });
 
   it('escapes names and actions', () => {
@@ -111,6 +127,17 @@ describe('buildAfternoonNudge', () => {
     expect(nudge.text).not.toContain('Friday Co');
     expect(nudge.text).toContain('• <b>The Sukhothai</b> · Buyer replied today, nothing sent since');
     expect(lines.at(-1)).toBe('<a href="https://example.test">Open This week</a>');
+  });
+
+  it('leaves park suggestions to the morning digest', () => {
+    const nudge = buildAfternoonNudge({
+      queue: queue(),
+      waiting: [],
+      parkSuggested: [{ name: 'Quiet Co', label: '4 sends, no reply' }],
+      today: TODAY,
+    } as Parameters<typeof buildAfternoonNudge>[0]);
+    expect(nudge.isEmpty).toBe(true);
+    expect(nudge.text).not.toContain('Quiet Co');
   });
 
   it('leaves held contacts out', () => {
