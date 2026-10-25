@@ -3,6 +3,9 @@
 import { useState } from 'react';
 import { Deal, DealWorkflowAction, MeetingType, Meeting, SampleStatus, Contact, Company } from '@/types/crm';
 import { WORKFLOW_BY_ID, SAMPLE_STATUS_OPTIONS } from '@/utils/deal-workflow';
+import { lanePrefill } from '@/utils/lane-playbook';
+import { localDateKey } from '@/utils/deal-board';
+import { formatScheduleDate } from '@/utils/deal-schedule';
 import { Blob } from '@/components/blob';
 import { LANE_BLOB_STATE } from '@/utils/lane-blob';
 import ContactPicker from '@/components/ContactPicker';
@@ -50,9 +53,11 @@ const OUTCOME_OPTIONS: Array<{ value: NonNullable<Meeting['outcome']>; label: st
 
 export default function LaneGateModal({ deal, targetLane, contacts = [], companies = [], onCancel, onConfirm }: LaneGateModalProps) {
   const lane = WORKFLOW_BY_ID[targetLane];
+  // The lane's playbook fills the date and next action; a date already on the deal is kept.
+  const prefill = lanePrefill(deal, targetLane, localDateKey());
   const [sampleStatus, setSampleStatus] = useState<SampleStatus | ''>(deal.sample_status || '');
-  const [followupDate, setFollowupDate] = useState<string>(deal.followup_date || '');
-  const [nextAction, setNextAction] = useState<string>('');
+  const [followupDate, setFollowupDate] = useState<string>(prefill.followupDate || '');
+  const [nextAction, setNextAction] = useState<string>(prefill.nextAction || '');
   const [channel, setChannel] = useState<MeetingType>('call');
   const [replyOutcome, setReplyOutcome] = useState<Meeting['outcome'] | ''>('');
   const [replySummary, setReplySummary] = useState<string>('');
@@ -107,8 +112,8 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
       await onConfirm({
         workflow_action: targetLane,
         sample_status: effectiveSample,
-        followup_date: ['testing', 'reschedule'].includes(targetLane) ? followupDate : null,
-        next_action: targetLane === 'outreach' && nextAction.trim() ? nextAction.trim() : null,
+        followup_date: targetLane !== 'outreach' && followupDate ? followupDate : null,
+        next_action: nextAction.trim() || null,
         reply_outcome: targetLane === 'reply' && replyOutcome ? replyOutcome : null,
         reply_summary: targetLane === 'reply' && replySummary.trim() ? replySummary.trim() : null,
         buyer_reply: targetLane === 'reply' && isRealReply ? buyerWords : null,
@@ -126,6 +131,23 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
 
   // Only a real reply (not "no response yet") can carry the buyer's words.
   const isRealReply = replyOutcome === 'positive' || replyOutcome === 'neutral' || replyOutcome === 'negative';
+
+  // Testing and Follow-up need a date; Waiting on reply and Sample take one when given.
+  const dateRequired = targetLane === 'testing' || targetLane === 'reschedule';
+  const dateLabel = targetLane === 'testing' ? 'Testing date' : 'Follow-up date';
+  const useDefault = prefill.defaultDate && prefill.days !== null && (
+    <button type="button" onClick={() => setFollowupDate(prefill.defaultDate!)} className="underline decoration-clay-hairline underline-offset-2 hover:text-clay-ink">
+      Use +{prefill.days} days
+    </button>
+  );
+  const dateHint = !followupDate
+    ? (!dateRequired && deal.followup_date ? `Left empty, the deal keeps ${formatScheduleDate(deal.followup_date)}.` : null)
+    : followupDate === prefill.defaultDate
+      ? `+${prefill.days} days · ${lane.shortLabel} default`
+      : !prefill.dateIsDefault && followupDate === deal.followup_date && useDefault
+        ? <>The deal&apos;s date is kept. {useDefault}</>
+        : null;
+  const replacesNextAction = !!deal.next_action?.trim() && !!nextAction.trim() && nextAction.trim() !== deal.next_action.trim();
 
   const fieldLabel = (label: string, required: boolean) => (
     <span className="zams-mono text-[10px] uppercase tracking-[0.16px] text-clay-muted">
@@ -227,29 +249,11 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
                   </div>
                 </div>
               )}
-              <div>
-                {fieldLabel('Testing date', true)}
-                <input
-                  type="date"
-                  value={followupDate}
-                  onChange={(e) => setFollowupDate(e.target.value)}
-                  className="w-full mt-2 px-3 py-3 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-clay-lavender/40"
-                />
-              </div>
             </>
           )}
 
           {targetLane === 'reschedule' && (
             <>
-              <div>
-                {fieldLabel('Follow-up date', true)}
-                <input
-                  type="date"
-                  value={followupDate}
-                  onChange={(e) => setFollowupDate(e.target.value)}
-                  className="w-full mt-2 px-3 py-3 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-clay-lavender/40"
-                />
-              </div>
               <label className="flex items-start gap-3 rounded-lg border border-clay-hairline px-3 py-3 cursor-pointer">
                 <input
                   type="checkbox"
@@ -376,6 +380,36 @@ export default function LaneGateModal({ deal, targetLane, contacts = [], compani
                   placeholder="e.g. Call K. Oil about the 10kg trial"
                   className="w-full mt-2 px-3 py-3 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-clay-lavender/40"
                 />
+              </div>
+            </>
+          )}
+
+          {targetLane !== 'outreach' && (
+            <>
+              <div>
+                {fieldLabel(dateLabel, dateRequired)}
+                <input
+                  type="date"
+                  aria-label={dateLabel}
+                  value={followupDate}
+                  onChange={(e) => setFollowupDate(e.target.value)}
+                  className="w-full mt-2 px-3 py-3 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-clay-lavender/40"
+                />
+                {dateHint && <p data-lane-date-hint className="mt-1 text-[10px] text-clay-muted">{dateHint}</p>}
+              </div>
+              <div>
+                {fieldLabel('Next action', false)}
+                <input
+                  type="text"
+                  aria-label="Next action"
+                  value={nextAction}
+                  onChange={(e) => setNextAction(e.target.value)}
+                  placeholder="Start with a verb: call, send, ask…"
+                  className="w-full mt-2 px-3 py-3 bg-white dark:bg-clay-card border border-clay-hairline rounded-lg text-sm text-clay-ink focus:outline-none focus:ring-2 focus:ring-clay-lavender/40"
+                />
+                {replacesNextAction && (
+                  <p className="mt-1 text-[10px] text-clay-muted truncate">Replaces: {deal.next_action}</p>
+                )}
               </div>
             </>
           )}

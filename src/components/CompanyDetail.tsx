@@ -419,7 +419,6 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
                   </span>
                 )}
                 <LayaLeadTierBadge signal={leadSignal} />
-                {company.tags.length > 0 && <span className="min-w-0 truncate text-[11px] text-clay-muted">{company.tags.join(', ')}</span>}
               </div>
             )}
           </div>
@@ -1035,6 +1034,11 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
                   <DetailRow label="Address"><span className="text-clay-muted">Waiting for you above</span></DetailRow>
                 ) : null}
                 {company.industry && <DetailRow label="Industry"><span>{company.industry}</span></DetailRow>}
+                {company.tags.length > 0 && (
+                  <DetailRow label="Tags">
+                    {company.tags.map((t) => <span key={t} className="mb-1 mr-1 inline-block rounded bg-clay-card px-1.5 py-0.5 text-xs dark:bg-white/[0.06]">{t}</span>)}
+                  </DetailRow>
+                )}
                 {(acquisitionLabel(company) || company.lead_source) && (
                   <DetailRow label="Source"><span>{acquisitionLabel(company) ?? company.lead_source}</span></DetailRow>
                 )}

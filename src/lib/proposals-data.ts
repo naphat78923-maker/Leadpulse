@@ -21,6 +21,9 @@ import {
   type RejectReason,
 } from '@/utils/proposals';
 import { businessDateKey } from '@/utils/business-time';
+import { sameBusiness } from '@/utils/lead-apply';
+
+export { sameBusiness };
 
 export interface TelegramOps {
   send: (html: string, buttons?: InlineButton[][]) => Promise<number>;
@@ -228,15 +231,6 @@ async function saveNewContact(db: SupabaseClient, proposal: EnrichmentProposal &
   ]);
   await settle(db, id, 'applied', `contact ${newId}`);
   return { status: 'applied', note: `contact ${newId}`, proposal };
-}
-
-/** "Gateaux House Co., Ltd." and "gateaux house" are the same business. */
-export function sameBusiness(a: string | null | undefined, b: string): boolean {
-  const key = (v: string) => v.toLowerCase()
-    .replace(/\b(co|ltd|limited|company|plc|inc|the)\b\.?/g, ' ')
-    .replace(/[^\p{L}\p{N}]+/gu, '');
-  const x = key(a ?? '');
-  return x.length > 0 && x === key(b);
 }
 
 /** new_company: create ONE prospect company from a business a guide named and Laya judged a fit.

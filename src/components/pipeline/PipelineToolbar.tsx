@@ -13,7 +13,7 @@ interface PipelineToolbarProps {
   onSearchChange: (value: string) => void;
   attentionFilter: BoardAttentionFilter;
   onAttentionChange: (value: BoardAttentionFilter) => void;
-  counts: { all: number; overdue: number; today: number; needsReview: number; layaReview: number; missingData?: number; waitingOnYou?: number; stalled?: number };
+  counts: { all: number; overdue: number; today: number; needsReview: number; layaReview: number; missingData?: number; waitingOnYou?: number; stalled?: number; parkSuggested?: number };
   productFilter: string;
   onProductChange: (value: string) => void;
   productOptions: readonly string[];
@@ -64,6 +64,7 @@ export default function PipelineToolbar({
     ['needs-review', 'Needs review', counts.needsReview],
     ['laya-review', 'Laya review', counts.layaReview],
     ['stalled', 'Stalled', counts.stalled ?? 0],
+    ['park-suggested', 'Park this deal?', counts.parkSuggested ?? 0],
     ['missing-data', 'Missing data', counts.missingData ?? 0],
   ] as Array<[BoardAttentionFilter, string, number]>).filter(([value, , count]) => count > 0 || attentionFilter === value);
 

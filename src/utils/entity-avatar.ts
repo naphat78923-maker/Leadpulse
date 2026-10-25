@@ -76,17 +76,43 @@ export function accentFromSeed(seed: string): ClayAccent {
   return CLAY_ACCENTS[idx]!;
 }
 
-/** 1–2 character mark from a display name (Unicode-safe). */
-export function entityInitials(name: string): string {
-  const parts = name
-    .trim()
-    .split(/\s+/)
-    .map(part => part.replace(/[^\p{L}\p{N}]/gu, ''))
-    .filter(Boolean);
+const lettersOnly = (word: string) => word.replace(/[^\p{L}\p{N}]/gu, '');
 
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return Array.from(parts[0]!).slice(0, 2).join('').toUpperCase();
-  return `${Array.from(parts[0]!)[0]}${Array.from(parts.at(-1)!)[0]}`.toUpperCase();
+/** 1–2 character mark from a display name (Unicode-safe). People: first + last word.
+ *  Accounts: the first two words of the trading name (see accountMarkWords). */
+export function entityInitials(name: string, kind: 'person' | 'org' = 'person'): string {
+  const parts = kind === 'org' ? accountMarkWords(name) : [];
+  if (kind === 'org' && parts.length > 0) {
+    if (parts.length === 1) return Array.from(parts[0]!).slice(0, 2).join('').toUpperCase();
+    return `${Array.from(parts[0]!)[0]}${Array.from(parts[1]!)[0]}`.toUpperCase();
+  }
+  const words = name.trim().split(/\s+/).map(lettersOnly).filter(Boolean);
+  if (words.length === 0) return '?';
+  if (words.length === 1) return Array.from(words[0]!).slice(0, 2).join('').toUpperCase();
+  return `${Array.from(words[0]!)[0]}${Array.from(words.at(-1)!)[0]}`.toUpperCase();
+}
+
+// Words that say what kind of company it is, not which one: dropped from the end of an account
+// name (PT and บริษัท from the start) before its initials are picked. Compared letters-only.
+const LEGAL_SUFFIXES = new Set(
+  ['co', 'company', 'ltd', 'limited', 'plc', 'pcl', 'public', 'corp', 'corporation', 'inc', 'llc', 'pte', 'sdn', 'bhd', 'gmbh', 'จำกัด', 'มหาชน']
+    .map(lettersOnly),
+);
+const LEGAL_PREFIXES = new Set(['pt', 'บริษัท', 'the'].map(lettersOnly));
+const isIn = (set: Set<string>, word: string) => set.has(lettersOnly(word).toLowerCase());
+
+/** The words an account's initials come from: "Alice Bakery & Foods Co., Ltd." → Alice, Bakery;
+ *  "Healthy Lux Co., Ltd. (Head Office)" → Healthy, Lux. Text in brackets, a branch after " - ",
+ *  " / " or a comma, legal words and a leading "The" are dropped. Empty when nothing is left. */
+export function accountMarkWords(name: string): string[] {
+  const unbracketed = name.replace(/\([^)]*\)?|（[^）]*）?|\[[^\]]*\]?/g, ' ');
+  for (const segment of unbracketed.split(/\s[-–—|]\s|\/|,/)) {
+    const words = segment.trim().split(/\s+/).filter((w) => lettersOnly(w));
+    while (words.length > 1 && isIn(LEGAL_SUFFIXES, words.at(-1)!)) words.pop();
+    while (words.length > 1 && isIn(LEGAL_PREFIXES, words[0]!)) words.shift();
+    if (words.length > 0) return words.map(lettersOnly);
+  }
+  return [];
 }
 
 /** Person = soft squircle; org = tighter rounded square (subtle shape variant). */

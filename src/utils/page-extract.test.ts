@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractLeadFromHtml, leadFromSocialUrl, nameFromHost } from './page-extract';
+import { extractLeadFromHtml, leadFromSocialUrl, logoCandidates, nameFromHost } from './page-extract';
 
 const PAGE = `<!doctype html><html><head>
 <title>Maison Verte | Plant-based bakery in Bangkok</title>
@@ -91,5 +91,30 @@ describe('leadFromSocialUrl', () => {
 describe('nameFromHost', () => {
   it('title-cases the first label', () => {
     expect(nameFromHost('www.maison-verte.co.th')).toBe('Maison Verte');
+  });
+});
+
+describe('logoCandidates', () => {
+  it('tries the largest touch icon, then og:image, then the largest favicon, then root paths', () => {
+    const html = `<link rel="icon" href="/fav-32.png" sizes="32x32"><link rel="icon" href="/fav-192.png" sizes="192x192">
+      <link rel="apple-touch-icon" href="/touch-120.png" sizes="120x120"><link rel="apple-touch-icon" href="/touch-180.png" sizes="180x180">
+      <meta property="og:image" content="https://cdn.alice.test/og.jpg"><link rel="stylesheet" href="/icons.css">`;
+    expect(logoCandidates(html, 'https://alice.test/en/')).toEqual([
+      { url: 'https://alice.test/touch-180.png', kind: 'touch_icon' },
+      { url: 'https://alice.test/touch-120.png', kind: 'touch_icon' },
+      { url: 'https://alice.test/apple-touch-icon.png', kind: 'touch_icon' },
+      { url: 'https://cdn.alice.test/og.jpg', kind: 'og_image' },
+      { url: 'https://alice.test/fav-192.png', kind: 'favicon' },
+      { url: 'https://alice.test/fav-32.png', kind: 'favicon' },
+      { url: 'https://alice.test/favicon.ico', kind: 'favicon' },
+    ]);
+  });
+
+  it('falls back to the root paths when the page declares nothing, without repeats', () => {
+    expect(logoCandidates('<p>hi</p>', 'https://plain.test/')).toEqual([
+      { url: 'https://plain.test/apple-touch-icon.png', kind: 'touch_icon' },
+      { url: 'https://plain.test/favicon.ico', kind: 'favicon' },
+    ]);
+    expect(logoCandidates('<link rel="shortcut icon" href="/favicon.ico">', 'https://plain.test/').filter((c) => c.kind === 'favicon')).toHaveLength(1);
   });
 });

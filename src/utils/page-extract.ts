@@ -205,3 +205,47 @@ export function extractLeadFromHtml(html: string, pageUrl: string): PageLead {
   }
   return lead;
 }
+
+// ─── Where a site keeps its logo ───
+
+export type LogoSourceKind = 'touch_icon' | 'og_image' | 'favicon';
+
+export interface LogoCandidate {
+  url: string;
+  kind: LogoSourceKind;
+}
+
+/** "180x180" → 180, "any" (an SVG) → large, missing → 0: bigger icons are tried first. */
+function iconSize(tag: string): number {
+  const sizes = (attr(tag, 'sizes') ?? '').toLowerCase();
+  if (sizes.includes('any')) return 4096;
+  return Math.max(0, ...sizes.split(/\s+/).map((size) => Number(size.split('x')[0]) || 0));
+}
+
+/** The images a page offers as its logo, in the order they're worth trying: the touch icon
+ *  (the square icon a phone shows), then og:image, then the favicon. The usual root paths
+ *  (/apple-touch-icon.png, /favicon.ico) are tried last within their kind. */
+export function logoCandidates(html: string, pageUrl: string): LogoCandidate[] {
+  const origin = new URL(pageUrl).origin;
+  const links = (html.match(/<link\b[^>]*>/gi) ?? []).map((tag) => ({
+    tag,
+    rel: (attr(tag, 'rel') ?? '').toLowerCase().split(/\s+/),
+    href: absolute(attr(tag, 'href'), pageUrl),
+  }));
+  const bySize = (a: { tag: string }, b: { tag: string }) => iconSize(b.tag) - iconSize(a.tag);
+  const touch = links.filter((l) => l.rel.some((r) => r.startsWith('apple-touch-icon'))).sort(bySize);
+  const icons = links.filter((l) => l.rel.includes('icon')).sort(bySize);
+  const og = ['og:image', 'og:image:secure_url', 'og:image:url', 'twitter:image']
+    .map((key) => absolute(meta(html, key), pageUrl));
+
+  const found: LogoCandidate[] = [];
+  const add = (url: string | null, kind: LogoSourceKind) => {
+    if (url && !found.some((c) => c.url === url)) found.push({ url, kind });
+  };
+  touch.forEach((l) => add(l.href, 'touch_icon'));
+  add(`${origin}/apple-touch-icon.png`, 'touch_icon');
+  og.forEach((url) => add(url, 'og_image'));
+  icons.forEach((l) => add(l.href, 'favicon'));
+  add(`${origin}/favicon.ico`, 'favicon');
+  return found;
+}

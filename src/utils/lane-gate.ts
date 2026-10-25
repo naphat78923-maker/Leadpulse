@@ -59,7 +59,9 @@ export function buildLaneGateDecision(
     if (input.sample_status) updates.sample_status = input.sample_status;
   }
   if (target === 'reschedule') updates.followup_date = input.followup_date || null;
-  if (target === 'outreach' && input.next_action) updates.next_action = input.next_action;
+  // Waiting on reply and Sample take a date only when one is given: an empty field keeps the deal's.
+  if ((target === 'reply' || target === 'sample') && input.followup_date) updates.followup_date = input.followup_date;
+  if (input.next_action) updates.next_action = input.next_action;
 
   // A reply is only recorded when the client actually responded with a sentiment.
   const hasRealReply = target === 'reply' && isCustomerResponseOutcome(input.reply_outcome);

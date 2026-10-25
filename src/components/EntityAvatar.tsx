@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import clsx from 'clsx';
 import { pressScale, springPress } from '@/lib/motion';
 import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion';
+import LogoImage from '@/components/LogoImage';
 import {
   accentFromSeed,
   CLAY_ACCENT_STYLE,
@@ -49,14 +50,15 @@ export default function EntityAvatar({
   interactive = true,
   neutral = false,
 }: EntityAvatarProps) {
-  const [failed, setFailed] = useState(false);
+  // Remembered per URL, so a replaced logo gets its own chance to load.
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const reduceMotion = usePrefersReducedMotion();
-  const showImg = Boolean(src) && !failed;
+  const showImg = Boolean(src) && failedSrc !== src;
 
   const seed = (id && String(id).trim()) || name.trim() || 'entity';
   const accent = accentFromSeed(seed);
   const palette = CLAY_ACCENT_STYLE[accent];
-  const mark = (initialsProp?.trim() || entityInitials(name)).slice(0, 2);
+  const mark = (initialsProp?.trim() || entityInitials(name, kind)).slice(0, 2);
   const radius = maskRadius(kind);
   const fontSize = Math.max(10, Math.round(size * (mark.length > 1 ? 0.34 : 0.4)));
   const label = kind === 'org' ? `${name} logo` : name;
@@ -83,15 +85,17 @@ export default function EntityAvatar({
     </span>
   );
 
-  const inner = showImg ? (
-    // eslint-disable-next-line @next/next/no-img-element -- remote CRM logos/photos; mask via parent
+  const inner = showImg && kind === 'org' ? (
+    <LogoImage src={src as string} alt={label} onError={() => setFailedSrc(src ?? null)} />
+  ) : showImg ? (
+    // eslint-disable-next-line @next/next/no-img-element -- remote CRM photos; mask via parent
     <img
       src={src as string}
       alt={label}
       width={size}
       height={size}
-      onError={() => setFailed(true)}
-      className={clsx('h-full w-full', kind === 'org' ? 'object-contain p-1' : 'object-cover')}
+      onError={() => setFailedSrc(src ?? null)}
+      className="h-full w-full object-cover"
       style={{ borderRadius: radius }}
       draggable={false}
     />

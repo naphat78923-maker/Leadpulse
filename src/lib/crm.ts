@@ -58,7 +58,8 @@ export async function uploadCompanyLogo(companyId: string, file: File): Promise<
     .upload(path, file, { upsert: true, contentType: 'image/webp', cacheControl: '3600' });
   if (error) throw error;
   const { data } = supabase.storage.from(COMPANY_LOGO_BUCKET).getPublicUrl(path);
-  return data.publicUrl;
+  // Same path on every replace: the version makes browsers (and the tile fit cache) load the new one.
+  return `${data.publicUrl}?v=${Date.now()}`;
 }
 
 export async function deleteCompanyLogo(companyId: string): Promise<void> {

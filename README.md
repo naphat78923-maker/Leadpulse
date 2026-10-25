@@ -314,6 +314,7 @@ docs/                     # Visual system spec, historical-sales proposal
 - [ ] One-tap contact actions and message templates
 - [x] Telegram morning digest (`/api/cron/digest`, weekdays 08:00 Bangkok) and afternoon nudge of what is still open (`/api/cron/nudge`, weekdays 16:00); both need `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `CRON_SECRET`
 - [x] Enrichment proposals on Telegram: Hermes proposes values it verified (`enrichment_proposals`, websites first); the 08:00 and 16:00 runs send them with ✅ Save / ❌ Not theirs, and `/api/telegram/webhook` saves only on Save. The scheduled runs register the webhook themselves with a secret derived from `CRON_SECRET`, and refuse if `TELEGRAM_BOT_TOKEN` is one of Hermes's bots
+- [x] Website lead capture: the VG Saveur enquiry form posts to `/api/leads`; Meta-ad enquiries (utm_source facebook/instagram/meta or an fbclid) arrive tagged `meta_ad` with the campaign, are linked to a known account instead of duplicated, start with a Research deal due today, and alert Telegram. Needs `LEAD_FORM_ORIGINS` (or `LEAD_FORM_SECRET`). Form snippet and setup: [docs/website-lead-form.md](docs/website-lead-form.md)
 - [ ] Web Push notifications
 - [ ] Security hardening: add a login, env-based Supabase keys, tighten RLS "allow all" policies
 

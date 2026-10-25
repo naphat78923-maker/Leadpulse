@@ -134,6 +134,7 @@ export function CrmProvider({ children }: { children: React.ReactNode }) {
         notes: el.notes,
         created_at: el.created_at || new Date().toISOString(),
         updated_at: el.updated_at || new Date().toISOString(),
+        last_contact_date: el.last_contact_date ?? null,
         last_human_touch: el.last_human_touch ?? null,
         next_touch_due: el.next_touch_due ?? null,
         champion_contact_id: el.champion_contact_id ?? null,

@@ -40,6 +40,8 @@ import { WORKFLOW_LANES, WORKFLOW_BY_ID, getWorkflowAction, isOnJourneyBoard, is
 import ExitDealModal, { ExitDealPayload } from '@/components/ExitDealModal';
 import { useLayaGrades } from '@/hooks/useLayaReviewList';
 import OverdueBulkBar from '@/components/pipeline/OverdueBulkBar';
+import ParkSuggestionBar from '@/components/pipeline/ParkSuggestionBar';
+import { buildParkSuggestions } from '@/utils/park-suggestion';
 import MissingDataBar from '@/components/pipeline/MissingDataBar';
 import LayaStatusLine from '@/components/LayaStatusLine';
 import { buildDataGapReport, dealIdsWithGap, isDataGap, type DataGap } from '@/utils/deal-data-gaps';
@@ -91,7 +93,8 @@ function DealsBoard() {
   const [attentionFilter, setAttentionFilter] = useState<BoardAttentionFilter>(
     requestedGap ? 'missing-data'
       : searchParams.get('filter') === 'waiting-on-you' ? 'waiting-on-you'
-      : searchParams.get('filter') === 'stalled' ? 'stalled' : 'all');
+      : searchParams.get('filter') === 'stalled' ? 'stalled'
+      : searchParams.get('filter') === 'park-suggested' ? 'park-suggested' : 'all');
   const [gapFilter, setGapFilter] = useState<DataGap | 'all'>(isDataGap(requestedGap) ? requestedGap : 'all');
   const [boardSort, setBoardSort] = useState<BoardSort>('do-now');
   /** lanes showing every card instead of the first LANE_CARD_CAP */
@@ -209,6 +212,12 @@ function DealsBoard() {
     [actionBoardDeals, dbDeals, timelines, statusNow]
   );
   const stalledIds = useMemo(() => new Set(stalled.map(item => item.deal.id)), [stalled]);
+  // Four sends since the buyer last replied: offered for parking, never parked on its own.
+  const parkSuggestions = useMemo(
+    () => buildParkSuggestions({ deals: actionBoardDeals, meetings: dbMeetings || [] }),
+    [actionBoardDeals, dbMeetings]
+  );
+  const parkSuggestedIds = useMemo(() => new Set(parkSuggestions.map(item => item.deal.id)), [parkSuggestions]);
   const outcomes = useMemo(() => pipelineOutcomes(deals, timelines), [deals, timelines]);
   const layaStatus = useMemo(
     () => (layaLoad === 'ready'
@@ -218,8 +227,8 @@ function DealsBoard() {
   );
 
   const doNowCounts = useMemo(
-    () => ({ ...getDoNowCounts(actionBoardDeals, todayStr, layaReviewIds), missingData: gapReport.total, waitingOnYou: waitingOnYouIds.size, stalled: stalledIds.size }),
-    [actionBoardDeals, todayStr, layaReviewIds, gapReport.total, waitingOnYouIds, stalledIds]
+    () => ({ ...getDoNowCounts(actionBoardDeals, todayStr, layaReviewIds), missingData: gapReport.total, waitingOnYou: waitingOnYouIds.size, stalled: stalledIds.size, parkSuggested: parkSuggestedIds.size }),
+    [actionBoardDeals, todayStr, layaReviewIds, gapReport.total, waitingOnYouIds, stalledIds, parkSuggestedIds]
   );
 
   const visibleActionBoardDeals = useMemo(
@@ -233,11 +242,12 @@ function DealsBoard() {
       missingDataIds,
       waitingOnYouIds,
       stalledIds,
+      parkSuggestedIds,
       sort: boardSort,
       hotness,
       lastContact,
     }),
-    [actionBoardDeals, attentionFilter, searchQuery, productFilter, priorityFilter, todayStr, layaReviewIds, missingDataIds, waitingOnYouIds, stalledIds, boardSort, hotness, lastContact]
+    [actionBoardDeals, attentionFilter, searchQuery, productFilter, priorityFilter, todayStr, layaReviewIds, missingDataIds, waitingOnYouIds, stalledIds, parkSuggestedIds, boardSort, hotness, lastContact]
   );
 
   // Same deals the "Needs review" count uses: lane requirements only apply on the board.
@@ -693,6 +703,13 @@ function DealsBoard() {
 
           {attentionFilter === 'overdue' && (
             <OverdueBulkBar deals={visibleActionBoardDeals} today={todayStr} onDone={refresh} />
+          )}
+
+          {attentionFilter === 'park-suggested' && (
+            <ParkSuggestionBar
+              items={parkSuggestions.filter(item => visibleActionBoardDeals.some(deal => deal.id === item.deal.id))}
+              onPark={deal => setExitModal({ deal, kind: 'park' })}
+            />
           )}
 
           {attentionFilter === 'needs-review' && (
