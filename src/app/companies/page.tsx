@@ -168,16 +168,21 @@ function Accounts() {
     return map;
   }, [contacts]);
 
-  // Proposals waiting for Pat per account. An extra: if it fails to load, rows show without it.
+  // Proposals waiting for Pat per account, and logos found on their sites. Extras: if either
+  // fails to load, rows show without it.
   const [waitingByCompany, setWaitingByCompany] = useState<Map<string, number>>(new Map());
+  const [logoProposals, setLogoProposals] = useState<Set<string>>(new Set());
   useEffect(() => {
     let cancelled = false;
-    crm.getPendingProposals().then((proposals) => {
+    Promise.allSettled([crm.getPendingProposals(), crm.getLogoProposals()]).then(([waitingResult, logoResult]) => {
       if (cancelled) return;
-      const counts = new Map<string, number>();
-      for (const p of proposals) if (p.company_id) counts.set(p.company_id, (counts.get(p.company_id) ?? 0) + 1);
-      setWaitingByCompany(counts);
-    }).catch(() => {});
+      if (waitingResult.status === 'fulfilled') {
+        const counts = new Map<string, number>();
+        for (const p of waitingResult.value) if (p.company_id) counts.set(p.company_id, (counts.get(p.company_id) ?? 0) + 1);
+        setWaitingByCompany(counts);
+      }
+      if (logoResult.status === 'fulfilled') setLogoProposals(new Set(logoResult.value.keys()));
+    });
     return () => { cancelled = true; };
   }, [dbCompanies]);
 
@@ -243,7 +248,9 @@ function Accounts() {
     const people = matchedPeople.get(company.id);
     const makes = company.what_they_make?.trim() || company.industry?.trim() || '';
     const when = rowWhen(sort, followUps.get(company.id), touches.get(company.id), todayKey);
-    const waiting = waitingByCompany.get(company.id) ?? 0;
+    const logoWaiting = !company.logo_url && logoProposals.has(company.id);
+    const waiting = (waitingByCompany.get(company.id) ?? 0) + (logoWaiting ? 1 : 0);
+    const waitingLabel = logoWaiting && waiting === 1 ? 'Logo to review' : `${waiting} to review`;
     const status = STATUS_CHIP[company.status] ?? STATUS_CHIP.prospect;
     return (
       <button
@@ -264,7 +271,7 @@ function Accounts() {
             <span className="truncate text-sm font-medium text-clay-ink">{company.name}</span>
             {waiting > 0 && (
               <span className="shrink-0 rounded-md bg-clay-warning/20 px-1.5 py-px text-[10.5px] font-medium text-clay-warning-strong dark:text-clay-ochre">
-                {waiting} to review
+                {waitingLabel}
               </span>
             )}
           </span>

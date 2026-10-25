@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fetchPublicPage, isPublicAddress, UnsafeUrlError } from './safe-fetch';
+import { fetchPublicImage, fetchPublicPage, isPublicAddress, UnsafeUrlError } from './safe-fetch';
 
 describe('isPublicAddress', () => {
   it('rejects loopback, private, link-local and reserved ranges', () => {
@@ -23,6 +23,14 @@ describe('fetchPublicPage', () => {
   it('refuses unsafe links before making any request', async () => {
     for (const link of ['file:///etc/passwd', 'http://127.0.0.1/', 'http://169.254.169.254/latest/meta-data', 'http://[::1]/', 'https://user:pw@example.com/', 'https://example.com:8443/', 'nope']) {
       await expect(fetchPublicPage(link), link).rejects.toBeInstanceOf(UnsafeUrlError);
+    }
+  });
+});
+
+describe('fetchPublicImage', () => {
+  it('refuses unsafe image links before making any request', async () => {
+    for (const link of ['http://127.0.0.1/logo.png', 'http://169.254.169.254/x.png', 'ftp://example.com/a.png', 'nope']) {
+      await expect(fetchPublicImage(link), link).rejects.toBeInstanceOf(UnsafeUrlError);
     }
   });
 });

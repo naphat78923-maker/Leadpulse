@@ -8,6 +8,7 @@ import { useToast } from '@/components/ToastProvider';
 import { FIT_LABELS, percent, shortUrl, sourceChipLabel, type CompanyFit, type EvidenceRow } from '@/utils/account-profile';
 import { PROPOSAL_FIELDS, displayQuote, proposalButtons, type EnrichmentProposal } from '@/utils/proposals';
 import { FIT_THRESHOLD } from '@/utils/prospectFit';
+import LogoImage from '@/components/LogoImage';
 
 /** Laya's fit grade for the account: the chip, then all three grades as bars. */
 export function FitCard({ fit }: { fit: CompanyFit }) {
@@ -56,11 +57,33 @@ const TIER_LONG: Record<EnrichmentProposal['source_tier'], string> = {
   press: 'a press interview, article or guide',
 };
 
-/** Proposals for this account that are still waiting: the same Save / Not theirs as Telegram. */
-export function WaitingForYou({ proposals, onDecided }: { proposals: EnrichmentProposal[]; onDecided: () => void }) {
+/** A logo found on the account's website, waiting for Use logo or Not theirs. */
+export interface LogoProposal {
+  url: string;
+  /** "alicebakery.co.th", from the account's website */
+  site: string | null;
+  decide: (action: 'use' | 'reject') => Promise<void>;
+}
+
+/** Proposals for this account that are still waiting: the same Save / Not theirs as Telegram,
+ *  and a logo found on their site. */
+export function WaitingForYou({ proposals, logo, onDecided }: { proposals: EnrichmentProposal[]; logo?: LogoProposal | null; onDecided: () => void }) {
   const { addToast } = useToast();
   const [busy, setBusy] = useState<string | null>(null);
-  if (proposals.length === 0) return null;
+  if (proposals.length === 0 && !logo) return null;
+
+  const decideLogo = async (action: 'use' | 'reject') => {
+    if (!logo) return;
+    setBusy(`logo:${action}`);
+    try {
+      await logo.decide(action);
+      addToast(action === 'use' ? 'Logo saved' : 'Not saved');
+    } catch (err) {
+      addToast(err instanceof Error ? `Could not save: ${err.message}` : 'Could not save. Try again.');
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const decide = async (proposal: EnrichmentProposal, action: 'save' | 'reject') => {
     setBusy(`${proposal.id}:${action}`);
@@ -80,8 +103,40 @@ export function WaitingForYou({ proposals, onDecided }: { proposals: EnrichmentP
 
   return (
     <div className="mb-4 rounded-xl bg-clay-warning/15 p-3">
-      <h3 className="text-xs font-semibold text-clay-warning-strong">Waiting for you</h3>
+      <h3 className="text-xs font-semibold text-clay-warning-strong dark:text-clay-ochre">Waiting for you</h3>
       <div className="mt-1 divide-y divide-clay-warning/25">
+        {logo && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5">
+            <span className="relative h-11 w-11 shrink-0 overflow-hidden rounded-[22%]">
+              <LogoImage src={logo.url} alt="Logo found on their site" onError={() => {}} />
+            </span>
+            {/* On a narrow phone the buttons drop to their own line rather than squeezing the site name. */}
+            <span className="min-w-[9rem] flex-1 text-sm text-clay-ink">
+              Logo
+              {logo.site && <span className="block truncate text-[11px] text-clay-muted">{logo.site} · their own site</span>}
+            </span>
+            <span className="ml-auto flex shrink-0 gap-2">
+              <button
+                type="button"
+                onClick={() => decideLogo('use')}
+                disabled={busy !== null}
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-clay-ink px-3 text-xs font-medium text-clay-canvas active:opacity-85 disabled:opacity-60"
+              >
+                {busy === 'logo:use' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Use logo
+              </button>
+              <button
+                type="button"
+                onClick={() => decideLogo('reject')}
+                disabled={busy !== null}
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-clay-hairline bg-white px-3 text-xs font-medium text-clay-ink active:bg-clay-surface disabled:opacity-60 dark:bg-clay-card"
+              >
+                {busy === 'logo:reject' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Not theirs
+              </button>
+            </span>
+          </div>
+        )}
         {proposals.map((proposal) => {
           const [saveLabel, rejectLabel] = proposalButtons(proposal.id, proposal.field)[0].map((b) => b.text.replace(/^\S+\s/, ''));
           const role = proposal.details?.job_title;

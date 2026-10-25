@@ -6,9 +6,10 @@ const crm = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 const query = vi.hoisted(() => ({ params: new URLSearchParams() }));
 
 vi.mock('@/components/CrmProvider', () => ({ useCrm: () => crm.value }));
-const profile = vi.hoisted(() => ({ waiting: [] as Array<{ company_id: string | null }> }));
+const profile = vi.hoisted(() => ({ waiting: [] as Array<{ company_id: string | null }>, logos: new Map<string, string>() }));
 vi.mock('@/lib/crm', () => ({
   getPendingProposals: async () => profile.waiting,
+  getLogoProposals: async () => profile.logos,
   getDuplicateDismissals: async () => new Set<string>(),
 }));
 vi.mock('@/utils/useBusinessDateKey', () => ({ useBusinessDateKey: () => '2026-10-25' }));
@@ -36,6 +37,7 @@ afterEach(() => {
   cleanup();
   query.params = new URLSearchParams();
   profile.waiting = [];
+  profile.logos = new Map();
   window.localStorage.clear();
 });
 
@@ -68,6 +70,16 @@ describe('Accounts page', () => {
     render(<AccountsPage />);
 
     await waitFor(() => expect(screen.getByText('2 to review')).toBeTruthy());
+  });
+
+  it('flags a logo found on their site, alone or with other proposals', async () => {
+    profile.logos = new Map([['c1', 'https://storage.test/p/c1.webp'], ['c2', 'https://storage.test/p/c2.webp']]);
+    profile.waiting = [{ company_id: 'c2' }];
+    setCrm();
+    render(<AccountsPage />);
+
+    await waitFor(() => expect(screen.getByText('Logo to review')).toBeTruthy());
+    expect(screen.getByText('2 to review')).toBeTruthy();
   });
 
   it('shows what each account makes, its next follow-up or last touch, and its status', () => {

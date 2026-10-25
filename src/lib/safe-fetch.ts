@@ -45,8 +45,8 @@ async function assertPublicUrl(url: URL): Promise<void> {
   if (addresses.length === 0 || !addresses.every(isPublicAddress)) throw new UnsafeUrlError('That link does not point to a public website');
 }
 
-/** The HTML of a public page, following a few redirects, or a thrown error. */
-export async function fetchPublicPage(input: string): Promise<{ html: string; url: string }> {
+/** Follows a few redirects, checking every hop is a public website; the final response. */
+async function fetchPublic(input: string, accept: string): Promise<{ response: Response; url: URL }> {
   let url: URL;
   try { url = new URL(input); } catch { throw new UnsafeUrlError('That is not a link'); }
 
@@ -56,7 +56,7 @@ export async function fetchPublicPage(input: string): Promise<{ html: string; ur
     const response = await fetch(url, {
       redirect: 'manual',
       signal: AbortSignal.timeout(TIMEOUT_MS),
-      headers: { 'user-agent': 'Mozilla/5.0 (compatible; LeadPulse/1.0)', accept: 'text/html,application/xhtml+xml' },
+      headers: { 'user-agent': 'Mozilla/5.0 (compatible; LeadPulse/1.0)', accept },
     });
     if (response.status >= 300 && response.status < 400) {
       const next = response.headers.get('location');
@@ -65,20 +65,47 @@ export async function fetchPublicPage(input: string): Promise<{ html: string; ur
       continue;
     }
     if (!response.ok) throw new Error(`The site answered ${response.status}`);
-    if (!/html/i.test(response.headers.get('content-type') ?? '')) throw new Error('That link is not a web page');
-
-    const reader = response.body?.getReader();
-    if (!reader) return { html: '', url: url.toString() };
-    const chunks: Uint8Array[] = [];
-    let size = 0;
-    while (size < MAX_BYTES) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      size += value.byteLength;
-    }
-    await reader.cancel().catch(() => {});
-    return { html: Buffer.concat(chunks).subarray(0, MAX_BYTES).toString('utf8'), url: url.toString() };
+    return { response, url };
   }
   throw new Error('The site redirected too many times');
+}
+
+/** At most `limit` bytes of a response body. */
+async function readCapped(response: Response, limit: number): Promise<Buffer> {
+  const reader = response.body?.getReader();
+  if (!reader) return Buffer.alloc(0);
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  while (size < limit) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    size += value.byteLength;
+  }
+  await reader.cancel().catch(() => {});
+  return Buffer.concat(chunks).subarray(0, limit);
+}
+
+/** The HTML of a public page, following a few redirects, or a thrown error. */
+export async function fetchPublicPage(input: string): Promise<{ html: string; url: string }> {
+  const { response, url } = await fetchPublic(input, 'text/html,application/xhtml+xml');
+  if (!/html/i.test(response.headers.get('content-type') ?? '')) throw new Error('That link is not a web page');
+  return { html: (await readCapped(response, MAX_BYTES)).toString('utf8'), url: url.toString() };
+}
+
+const MAX_IMAGE_BYTES = 3_000_000;
+
+/** The bytes of a public image (an icon or logo a page points to), or a thrown error. A file
+ *  over the size cap is refused rather than cut short, since half an image doesn't decode. */
+export async function fetchPublicImage(input: string): Promise<{ bytes: Buffer; type: string; url: string }> {
+  const { response, url } = await fetchPublic(input, 'image/*');
+  const type = (response.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
+  // Servers often label favicon.ico as octet-stream.
+  if (!type.startsWith('image/') && !(type === 'application/octet-stream' && /\.ico$/i.test(url.pathname))) {
+    await response.body?.cancel().catch(() => {});
+    throw new Error('That link is not an image');
+  }
+  const bytes = await readCapped(response, MAX_IMAGE_BYTES + 1);
+  if (bytes.byteLength > MAX_IMAGE_BYTES) throw new Error('That image is too large');
+  return { bytes, type, url: url.toString() };
 }
