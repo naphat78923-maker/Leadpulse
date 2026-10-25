@@ -1,6 +1,6 @@
 // Finding an account's logo on its own website and leaving it for Pat to approve. Server only.
-// Tries the site's touch icon, then og:image, then favicon (utils/page-extract logoCandidates),
-// turns the first good one into a square WebP and stores it at logos/proposed/<id>.webp in the
+// Tries the site's touch icon, then og:image (unless it's a photo), then favicon (utils/page-extract
+// logoCandidates), turns the first good one into a square WebP and stores it at logos/proposed/<id>.webp in the
 // logo bucket. Nothing is written to the company: Pat's Use logo moves it into place.
 
 import sharp, { type Sharp } from 'sharp';
@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { fetchPublicImage, fetchPublicPage } from '@/lib/safe-fetch';
 import { logoCandidates, type LogoCandidate } from '@/utils/page-extract';
 import { largestIcoImage } from '@/utils/ico';
+import { analyzeLogo } from '@/utils/logo-fit';
 import {
   COMPANY_LOGO_BUCKET,
   PROPOSED_LOGO_DIR,
@@ -66,6 +67,31 @@ async function decode(bytes: Buffer, type: string, url: string): Promise<Decoded
   }
 }
 
+/** Icons a site builder shows when the business set none of its own: Wix's, and the WordPress
+ *  "W" that WordPress serves from /favicon.ico. They'd be proposed as the account's logo. */
+const PLATFORM_DEFAULT_ICON = [
+  /static\.parastorage\.com\/client\/pfavico\.ico/i,
+  /(^|\.)wix\.com\/favicon\.ico/i,
+  /\/wp-includes\/images\/w-logo/i,
+  /(^|\/\/)s\.w\.org\//i,
+];
+export const isPlatformDefaultIcon = (url: string) => PLATFORM_DEFAULT_ICON.some((pattern) => pattern.test(url));
+
+/** A placeholder icon: fully transparent, or one flat colour. */
+async function isBlank({ png }: Decoded): Promise<boolean> {
+  // stats() reads the picture as stored: no fourth channel means it's opaque.
+  const { channels } = await sharp(png).stats();
+  const transparent = channels.length === 4 && channels[3].max < 16;
+  return transparent || channels.slice(0, 3).every((c) => c.max - c.min < 8);
+}
+
+/** A share image (og:image) is often a photo of the room or the food rather than a logo. A
+ *  picture with no plain background around its subject is taken as a photo and skipped. */
+async function isPhoto({ png }: Decoded): Promise<boolean> {
+  const { data, info } = await sharp(png).resize(96, 96, { fit: 'inside' }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  return analyzeLogo(data, info.width, info.height).kind === 'cover';
+}
+
 /** The picture squared on a transparent background, no larger than it was (a 32px icon stays
  *  32px rather than being blown up into a blur), as WebP under the bucket limit. */
 async function square({ png, width, height }: Decoded): Promise<Buffer> {
@@ -91,10 +117,13 @@ export async function findSiteLogo(website: string, fetchers: LogoFetchers = liv
 
   let fallback: { decoded: Decoded; source: LogoCandidate } | null = null;
   for (const source of candidates) {
+    if (isPlatformDefaultIcon(source.url)) continue;
     const image = await fetchers.image(source.url).catch(() => null);
-    if (!image) continue;
+    // Checked again after redirects: WordPress sends /favicon.ico on to its own "W".
+    if (!image || isPlatformDefaultIcon(image.url)) continue;
     const decoded = await decode(image.bytes, image.type, image.url);
-    if (!decoded) continue;
+    if (!decoded || await isBlank(decoded)) continue;
+    if (source.kind === 'og_image' && await isPhoto(decoded)) continue;
     const short = Math.min(decoded.width, decoded.height);
     if (short >= GOOD_SIDE) return { webp: await square(decoded), source, width: decoded.width, height: decoded.height };
     if (short >= SMALLEST_SIDE && (!fallback || short > Math.min(fallback.decoded.width, fallback.decoded.height))) {
