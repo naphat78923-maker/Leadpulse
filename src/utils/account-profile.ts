@@ -91,6 +91,17 @@ export function sourceChipLabel(row: Pick<EvidenceRow, 'source_tier' | 'recorded
 }
 
 /** "gateauxhouse.co.th/contactus" from a source URL. */
+/** "alicebakery.co.th" from a saved website, with or without https://; null when there is none. */
+export function siteHost(website: string | null | undefined): string | null {
+  const raw = website?.trim();
+  if (!raw) return null;
+  try {
+    return new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`).hostname.replace(/^www\./, '') || null;
+  } catch {
+    return null;
+  }
+}
+
 export function shortUrl(url: string): string {
   try {
     const parsed = new URL(url);

@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useEffectEvent, useMemo, useState, useRef } from 'react';
 import { Company, COMPANY_STATUS_LABELS, CompanyStatus, Contact, STAGE_LABELS } from '@/types/crm';
 import Link from 'next/link';
-import { Briefcase, Building2, CalendarClock, X, Edit2, Loader2, Check, UserPlus, Trash2, Gift, GitFork, ShoppingCart, ChevronDown, ChevronRight, Lightbulb, MoreHorizontal, Plus, Sparkles } from 'lucide-react';
+import { Briefcase, Building2, CalendarClock, Globe, X, Edit2, Loader2, Check, UserPlus, Trash2, Gift, GitFork, ShoppingCart, ChevronDown, ChevronRight, Lightbulb, MoreHorizontal, Plus, Sparkles } from 'lucide-react';
 import clsx from 'clsx';
 import { useToast } from '@/components/ToastProvider';
 import { useCrm } from '@/components/CrmProvider';
@@ -14,7 +14,7 @@ import WebsiteFill from '@/components/WebsiteFill';
 import EntityAvatar from '@/components/EntityAvatar';
 import LayaBuyerSignalsSection from '@/components/LayaBuyerSignalsSection';
 import { FitCard, SourceChip, WaitingForYou } from '@/components/AccountProfile';
-import { ROLE_LABELS, dealLabel, fitChipLabel, nextStep, roleOf, rolePatch, suggestDecider, type PersonRole, openDeals, readableNotes, sourcesFor, type CompanyFit, type EvidenceRow } from '@/utils/account-profile';
+import { ROLE_LABELS, siteHost, dealLabel, fitChipLabel, nextStep, roleOf, rolePatch, suggestDecider, type PersonRole, openDeals, readableNotes, sourcesFor, type CompanyFit, type EvidenceRow } from '@/utils/account-profile';
 import LayaLeadTierBadge from '@/components/LayaLeadTierBadge';
 import { bestLeadSignal, dealsWithVerbatimBuyerReply } from '@/utils/lead-scoring';
 import type { EnrichmentProposal } from '@/utils/proposals';
@@ -94,17 +94,19 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
   const [fit, setFit] = useState<CompanyFit | null>(null);
   const [evidence, setEvidence] = useState<EvidenceRow[]>([]);
   const [waiting, setWaiting] = useState<EnrichmentProposal[]>([]);
+  const [logoProposal, setLogoProposal] = useState<string | null>(null);
   const [profileVersion, setProfileVersion] = useState(0);
   useEffect(() => {
     let cancelled = false;
     Promise.allSettled([
-      crm.getCompanyFit(company.id), crm.getCompanyEvidence(company.id), crm.getPendingProposals(company.id),
-    ]).then(([fitResult, evidenceResult, waitingResult]) => {
+      crm.getCompanyFit(company.id), crm.getCompanyEvidence(company.id), crm.getPendingProposals(company.id), crm.getLogoProposals(),
+    ]).then(([fitResult, evidenceResult, waitingResult, logoResult]) => {
       if (cancelled) return;
       // Each part is optional: a failed load leaves that part out rather than blocking the panel.
       setFit(fitResult.status === 'fulfilled' ? fitResult.value : null);
       setEvidence(evidenceResult.status === 'fulfilled' ? evidenceResult.value : []);
       setWaiting(waitingResult.status === 'fulfilled' ? waitingResult.value : []);
+      setLogoProposal(logoResult.status === 'fulfilled' ? logoResult.value.get(company.id) ?? null : null);
     });
     return () => { cancelled = true; };
   }, [company.id, profileVersion]);
@@ -165,10 +167,8 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
   const logoInputRef = useRef<HTMLInputElement | null>(null);
   const [newSale, setNewSale] = useState({ amount: '', date: new Date().toISOString().split('T')[0], product: '' });
 
-  const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (logoInputRef.current) logoInputRef.current.value = '';
-    if (!file) return;
+  // One path for a picked, pasted or dropped image: squared, stored, saved on the account.
+  const uploadLogoFile = async (file: File) => {
     const validationError = validateLogoFile(file);
     if (validationError) {
       setLogoError(validationError);
@@ -181,13 +181,75 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
       const url = await crm.uploadCompanyLogo(company.id, resized);
       await crm.updateCompany(company.id, { logo_url: url });
       onSaved();
-      addToast('Logo uploaded');
-    } catch (err: any) {
+      addToast('Logo saved');
+    } catch (err) {
       console.error('Logo upload failed:', err);
-      setLogoError('Could not upload: ' + (err.message || 'Unknown error'));
+      setLogoError('Could not upload: ' + (err instanceof Error ? err.message : 'Unknown error'));
     } finally {
       setLogoSaving(false);
     }
+  };
+
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (logoInputRef.current) logoInputRef.current.value = '';
+    if (file) void uploadLogoFile(file);
+  };
+
+  // An image pasted (⌘V) while the panel is open becomes the logo, unless it went into a field.
+  const onPastedImage = useEffectEvent((file: File) => { void uploadLogoFile(file); });
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      const file = Array.from(e.clipboardData?.files ?? []).find((f) => f.type.startsWith('image/'));
+      if (!file) return;
+      e.preventDefault();
+      onPastedImage(file);
+    };
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+  }, []);
+
+  // Dragging an image over the panel outlines the logo tile; dropping it anywhere on the panel saves it.
+  const [draggingImage, setDraggingImage] = useState(false);
+  const carriesFile = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes('Files');
+  const dragHandlers = {
+    onDragEnter: (e: React.DragEvent) => { if (carriesFile(e)) { e.preventDefault(); setDraggingImage(true); } },
+    onDragOver: (e: React.DragEvent) => { if (carriesFile(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } },
+    onDragLeave: (e: React.DragEvent) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDraggingImage(false);
+    },
+    onDrop: (e: React.DragEvent) => {
+      if (!carriesFile(e)) return;
+      e.preventDefault();
+      setDraggingImage(false);
+      const file = Array.from(e.dataTransfer.files).find((f) => f.type.startsWith('image/'));
+      if (file) void uploadLogoFile(file);
+      else setLogoError('Drop an image file to use it as the logo.');
+    },
+  };
+
+  // A logo found on their website waits for Use logo / Not theirs.
+  const [findingLogo, setFindingLogo] = useState(false);
+  const handleFindLogo = async () => {
+    setFindingLogo(true);
+    setLogoError(null);
+    try {
+      const url = await crm.findLogoOnSite(company.id);
+      setLogoProposal(url);
+      addToast(url ? 'Found a logo: it waits for you below' : 'No usable logo on their site');
+    } catch (err) {
+      setLogoError('Could not look: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    } finally {
+      setFindingLogo(false);
+    }
+  };
+  const decideLogoProposal = async (action: 'use' | 'reject') => {
+    if (action === 'use') await crm.acceptLogoProposal(company.id);
+    else await crm.rejectLogoProposal(company.id);
+    setLogoProposal(null);
+    if (action === 'use') onSaved();
   };
 
   const handleRemoveLogo = async () => {
@@ -319,9 +381,21 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
         exit="exit"
         transition={tweenSlow}
         onClick={e => e.stopPropagation()}
+        {...dragHandlers}
       >
         <div className="mb-4 flex items-start gap-3.5">
-          <CompanyLogo src={company.logo_url} name={company.name} id={company.id} size={64} />
+          <label
+            htmlFor={`logo-upload-${company.id}`}
+            title="Drop or paste a logo, or tap to choose one"
+            className={clsx('relative shrink-0 cursor-pointer rounded-[22%]', draggingImage && 'outline-2 outline-offset-[3px] outline-dashed outline-clay-lavender')}
+          >
+            <CompanyLogo src={company.logo_url} name={company.name} id={company.id} size={64} />
+            {(draggingImage || logoSaving) && (
+              <span className="absolute inset-0 flex items-center justify-center rounded-[22%] bg-white/75 text-center text-[10.5px] font-semibold leading-tight text-clay-ink dark:bg-white/80 dark:text-[#2b211a]">
+                {logoSaving ? <Loader2 className="h-5 w-5 animate-spin" aria-label="Saving logo" /> : <>Drop<br />logo</>}
+              </span>
+            )}
+          </label>
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-2">
               {editing ? (
@@ -375,6 +449,11 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
                       {logoSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Building2 className="w-4 h-4" />}
                       {company.logo_url ? 'Replace logo' : 'Upload logo'}
                     </label>
+                    {!company.logo_url && !logoProposal && company.website?.trim() && (
+                      <button onClick={() => { setMenuOpen(false); void handleFindLogo(); }} disabled={findingLogo} className="flex w-full items-center gap-2 px-3 py-2 text-left text-clay-ink hover:bg-clay-surface" role="menuitem">
+                        {findingLogo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />} Find logo on their site
+                      </button>
+                    )}
                     {company.logo_url && (
                       <button onClick={() => { setMenuOpen(false); void handleRemoveLogo(); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-clay-ink hover:bg-clay-surface" role="menuitem">
                         <X className="w-4 h-4" /> Remove logo
@@ -645,7 +724,11 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
           </div>
         )}
         {!editing && (
-          <WaitingForYou proposals={waiting} onDecided={() => { setProfileVersion((v) => v + 1); onSaved(); refresh(); }} />
+          <WaitingForYou
+            proposals={waiting}
+            logo={logoProposal && !company.logo_url ? { url: logoProposal, site: siteHost(company.website), decide: decideLogoProposal } : null}
+            onDecided={() => { setProfileVersion((v) => v + 1); onSaved(); refresh(); }}
+          />
         )}
 
         <div className="space-y-3 text-sm">

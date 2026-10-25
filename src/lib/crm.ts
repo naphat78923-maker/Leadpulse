@@ -4,6 +4,14 @@ import { supabase } from './supabase';
 import { Company, Contact, Deal, Meeting } from '@/types/crm';
 import { fitFromAnswers, type CompanyFit, type EvidenceRow } from '@/utils/account-profile';
 import type { EnrichmentProposal, ProposalStatus } from '@/utils/proposals';
+import {
+  COMPANY_LOGO_BUCKET,
+  PROPOSED_LOGO_DIR,
+  companyIdOfLogoFile,
+  logoPath,
+  proposedLogoPath,
+  rejectedLogoPath,
+} from '@/utils/logo-paths';
 import { pairKey } from '@/utils/company-duplicates';
 
 // Soft-delete (archive) helpers — recoverable, never a hard DELETE.
@@ -48,23 +56,70 @@ export async function updateCompany(id: string, updates: Partial<Company>) {
   return data;
 }
 
-// ─── Company logo storage (bucket: company-logos, folder: logos/<id>) ───
-export const COMPANY_LOGO_BUCKET = 'company-logos';
+// ─── Company logo storage (bucket: company-logos; paths in utils/logo-paths) ───
+export { COMPANY_LOGO_BUCKET };
+
+/** A public logo URL with a version, so a replaced file (same path) is loaded fresh. */
+function versionedLogoUrl(path: string, version: string | number = Date.now()): string {
+  const { data } = supabase.storage.from(COMPANY_LOGO_BUCKET).getPublicUrl(path);
+  return `${data.publicUrl}?v=${encodeURIComponent(String(version))}`;
+}
 
 export async function uploadCompanyLogo(companyId: string, file: File): Promise<string> {
-  const path = `logos/${companyId}.webp`;
+  const path = logoPath(companyId);
   const { error } = await supabase.storage
     .from(COMPANY_LOGO_BUCKET)
     .upload(path, file, { upsert: true, contentType: 'image/webp', cacheControl: '3600' });
   if (error) throw error;
-  const { data } = supabase.storage.from(COMPANY_LOGO_BUCKET).getPublicUrl(path);
-  // Same path on every replace: the version makes browsers (and the tile fit cache) load the new one.
-  return `${data.publicUrl}?v=${Date.now()}`;
+  return versionedLogoUrl(path);
 }
 
 export async function deleteCompanyLogo(companyId: string): Promise<void> {
-  const path = `logos/${companyId}.webp`;
-  const { error } = await supabase.storage.from(COMPANY_LOGO_BUCKET).remove([path]);
+  const { error } = await supabase.storage.from(COMPANY_LOGO_BUCKET).remove([logoPath(companyId)]);
+  if (error) throw error;
+}
+
+/** Logos found on accounts' websites, waiting for Pat: companyId → image URL. */
+export async function getLogoProposals(): Promise<Map<string, string>> {
+  const { data, error } = await supabase.storage.from(COMPANY_LOGO_BUCKET).list(PROPOSED_LOGO_DIR, { limit: 1000 });
+  if (error) throw error;
+  const proposals = new Map<string, string>();
+  for (const file of data ?? []) {
+    const companyId = companyIdOfLogoFile(file.name);
+    if (companyId) proposals.set(companyId, versionedLogoUrl(proposedLogoPath(companyId), file.updated_at ?? file.name));
+  }
+  return proposals;
+}
+
+/** Asks the server to look for this account's logo on its website. The URL of what it found, or
+ *  null when the site offered nothing usable. */
+export async function findLogoOnSite(companyId: string): Promise<string | null> {
+  const response = await fetch('/api/logo-proposals', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ companyId }),
+  });
+  const body = await response.json().catch(() => null) as { status?: string; url?: string; error?: string } | null;
+  if (!response.ok) throw new Error(body?.error || 'Could not look for a logo');
+  return body?.status === 'proposed' && body.url ? body.url : null;
+}
+
+/** Use logo: the found logo becomes the account's logo. */
+export async function acceptLogoProposal(companyId: string): Promise<string> {
+  const bucket = supabase.storage.from(COMPANY_LOGO_BUCKET);
+  await bucket.remove([logoPath(companyId)]);
+  const { error } = await bucket.move(proposedLogoPath(companyId), logoPath(companyId));
+  if (error) throw error;
+  const url = versionedLogoUrl(logoPath(companyId));
+  await updateCompany(companyId, { logo_url: url });
+  return url;
+}
+
+/** Not theirs: kept aside under logos/rejected/ so the site isn't asked again. */
+export async function rejectLogoProposal(companyId: string): Promise<void> {
+  const bucket = supabase.storage.from(COMPANY_LOGO_BUCKET);
+  await bucket.remove([rejectedLogoPath(companyId)]);
+  const { error } = await bucket.move(proposedLogoPath(companyId), rejectedLogoPath(companyId));
   if (error) throw error;
 }
 
