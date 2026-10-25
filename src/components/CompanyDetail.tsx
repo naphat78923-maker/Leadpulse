@@ -444,7 +444,7 @@ export default function CompanyDetail({ company, onClose, onSaved, contacts, com
                   <X className="w-5 h-5" />
                 </button>
                 {menuOpen && !editing && (
-                  <div className="absolute right-0 top-10 z-10 w-44 overflow-hidden rounded-xl border border-clay-hairline bg-white py-1 text-sm shadow-lg dark:bg-clay-card" role="menu">
+                  <div className="absolute right-0 top-10 z-10 w-52 overflow-hidden rounded-xl border border-clay-hairline bg-white py-1 text-sm shadow-lg dark:bg-clay-card" role="menu">
                     <label htmlFor={`logo-upload-${company.id}`} onClick={() => setMenuOpen(false)} className="flex cursor-pointer items-center gap-2 px-3 py-2 text-clay-ink hover:bg-clay-surface" role="menuitem">
                       {logoSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Building2 className="w-4 h-4" />}
                       {company.logo_url ? 'Replace logo' : 'Upload logo'}

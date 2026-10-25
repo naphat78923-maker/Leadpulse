@@ -106,15 +106,16 @@ export function WaitingForYou({ proposals, logo, onDecided }: { proposals: Enric
       <h3 className="text-xs font-semibold text-clay-warning-strong dark:text-clay-ochre">Waiting for you</h3>
       <div className="mt-1 divide-y divide-clay-warning/25">
         {logo && (
-          <div className="flex items-center gap-3 py-2.5">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5">
             <span className="relative h-11 w-11 shrink-0 overflow-hidden rounded-[22%]">
               <LogoImage src={logo.url} alt="Logo found on their site" onError={() => {}} />
             </span>
-            <span className="min-w-0 flex-1 text-sm text-clay-ink">
+            {/* On a narrow phone the buttons drop to their own line rather than squeezing the site name. */}
+            <span className="min-w-[9rem] flex-1 text-sm text-clay-ink">
               Logo
               {logo.site && <span className="block truncate text-[11px] text-clay-muted">{logo.site} · their own site</span>}
             </span>
-            <span className="flex shrink-0 gap-2">
+            <span className="ml-auto flex shrink-0 gap-2">
               <button
                 type="button"
                 onClick={() => decideLogo('use')}
